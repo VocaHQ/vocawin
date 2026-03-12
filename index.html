@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SHWKRJMCEN"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-SHWKRJMCEN');
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VocaWin | 100% Offline Voice-to-Text for Windows | Coming Soon</title>
+    <meta name="description" content="VocaWin: 100% offline, private voice-to-text for Windows. No data leaves your system. Open source, free forever. Coming soon.">
+    <meta name="keywords" content="voice to text, speech to text, Windows, offline, private, open source, dictation, whisper, transcription, no cloud, no telemetry">
+    <meta property="og:title" content="VocaWin | 100% Offline Voice-to-Text for Windows">
+    <meta property="og:description" content="Your voice. Your PC. Your privacy. 100% offline voice-to-text for Windows. Open source, private by design, free forever.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://vocawin.com">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="VocaWin | 100% Offline Voice-to-Text for Windows">
+    <meta name="twitter:description" content="Your voice. Your PC. Your privacy. Coming soon.">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="canonical" href="https://vocawin.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --win-blue: #0078D4;
+            --win-blue-dark: #005A9E;
+            --win-blue-light: #0078D4;
+            --win-accent: #0067C0;
+            --win-bg: #FFFFFF;
+            --win-surface: #F5F5F5;
+            --win-surface-light: #E8E8E8;
+            --win-text: #1A1A1A;
+            --win-text-secondary: #616161;
+            --win-border: rgba(0,0,0,0.08);
+            --win-glow: rgba(0, 120, 212, 0.2);
+            --radius: 8px;
+            --radius-lg: 12px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--win-bg);
+            color: var(--win-text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        /* --- NAV --- */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(255,255,255,0.55);
+            backdrop-filter: saturate(180%) blur(30px); -webkit-backdrop-filter: saturate(180%) blur(30px);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            padding: 0 24px; height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+            max-width: 1100px; margin: 0 auto;
+        }
+        nav::before {
+            content: ''; position: fixed; top: 0; left: 0; right: 0; height: 56px;
+            background: rgba(255,255,255,0.55);
+            backdrop-filter: saturate(180%) blur(30px); -webkit-backdrop-filter: saturate(180%) blur(30px);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            z-index: -1;
+        }
+        .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--win-blue-dark); }
+        .nav-brand svg { width: 30px; height: 30px; }
+        .nav-brand span { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+        .nav-links { display: flex; gap: 28px; align-items: center; }
+        .nav-links a { color: var(--win-text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--win-text); }
+        .nav-badge { background: var(--win-blue); color: white; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+        /* --- HERO --- */
+        .hero {
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center;
+            padding: 120px 24px 80px; position: relative;
+        }
+        .hero::before {
+            content: ''; position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 800px;
+            background: radial-gradient(circle, rgba(0,120,212,0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        /* --- WAVEFORM BACKGROUND --- */
+        .waveform-bg {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            overflow: hidden; z-index: 0;
+        }
+        .waveform-bg svg {
+            position: absolute; width: 400%; height: 140%;
+            top: -20%; left: -100%;
+            opacity: 0.1;
+            filter: blur(2px);
+        }
+        .waveform-bg .wave1 { animation: waveMove1 40s linear infinite; }
+        @keyframes waveMove1 { 0% { transform: translateX(0); } 100% { transform: translateX(25%); } }
+        .hero-content {
+            position: relative; z-index: 1;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(0,120,212,0.08); border: 1px solid rgba(0,120,212,0.2);
+            padding: 8px 20px; border-radius: 24px; font-size: 14px;
+            color: var(--win-blue); margin-bottom: 32px;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        .hero-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #FFB900; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .hero h1 {
+            font-size: clamp(42px, 6vw, 72px); font-weight: 700;
+            line-height: 1.08; letter-spacing: -2px; margin-bottom: 24px;
+            animation: fadeInUp 0.8s ease-out 0.1s both;
+        }
+        .hero h1 .gradient {
+            background: linear-gradient(135deg, #0078D4, #0053A6);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero p.subtitle {
+            font-size: clamp(18px, 2.2vw, 22px); color: var(--win-text-secondary);
+            max-width: 640px; margin-bottom: 48px; font-weight: 300;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        /* --- BUTTONS --- */
+        .btn-group { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; animation: fadeInUp 0.8s ease-out 0.3s both; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 32px; border-radius: var(--radius);
+            font-size: 15px; font-weight: 600; text-decoration: none;
+            transition: all 0.2s ease; cursor: pointer; border: none;
+        }
+        .btn-primary { background: var(--win-blue); color: white; }
+        .btn-primary:hover { background: var(--win-blue-dark); transform: translateY(-1px); box-shadow: 0 4px 20px var(--win-glow); }
+        .btn-secondary { background: transparent; color: var(--win-text); border: 1px solid rgba(0,0,0,0.15); }
+        .btn-secondary:hover { border-color: rgba(0,0,0,0.3); background: rgba(0,0,0,0.03); }
+        .btn svg { width: 18px; height: 18px; }
+        /* --- PILL FEATURES --- */
+        .pills { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 48px; animation: fadeInUp 0.8s ease-out 0.4s both; }
+        .pill {
+            display: flex; align-items: center; gap: 6px;
+            background: var(--win-surface); border: 1px solid var(--win-border);
+            padding: 10px 20px; border-radius: 24px; font-size: 14px;
+            color: var(--win-text-secondary); transition: all 0.25s;
+            cursor: pointer; user-select: none;
+        }
+        .pill:hover { border-color: var(--win-blue); color: var(--win-blue); background: rgba(0,120,212,0.05); box-shadow: 0 0 0 3px rgba(0,120,212,0.12); }
+        .pill .icon { font-size: 16px; }
+        /* --- SCROLL INDICATOR --- */
+        .scroll-indicator {
+            position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            color: var(--win-text-secondary); font-size: 12px; font-weight: 500;
+            letter-spacing: 1px; text-transform: uppercase;
+            animation: fadeInUp 0.8s ease-out 0.6s both;
+            cursor: pointer; text-decoration: none;
+        }
+        .scroll-indicator:hover { color: var(--win-blue); }
+        .scroll-chevron {
+            width: 28px; height: 28px;
+            animation: bounceDown 2s ease-in-out infinite;
+        }
+        @keyframes bounceDown {
+            0%, 100% { transform: translateY(0); opacity: 0.5; }
+            50% { transform: translateY(6px); opacity: 1; }
+        }
+        /* --- SECTION SHARED --- */
+        section { padding: 100px 24px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .section-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: var(--win-blue-light); margin-bottom: 12px; }
+        .section-title { font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -1px; margin-bottom: 16px; }
+        .section-subtitle { font-size: 17px; color: var(--win-text-secondary); max-width: 560px; }
+        /* --- FEATURES GRID --- */
+        .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 56px; }
+        .feature-card {
+            background: var(--win-surface); border: 1px solid var(--win-border);
+            border-radius: var(--radius-lg); padding: 32px;
+            transition: all 0.3s ease; position: relative; overflow: hidden;
+        }
+        .feature-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--win-blue), transparent);
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .feature-card:hover { border-color: rgba(0,120,212,0.3); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+        .feature-card:hover::before { opacity: 1; }
+        .feature-icon { font-size: 28px; margin-bottom: 16px; display: block; }
+        .feature-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .feature-card p { font-size: 14px; color: var(--win-text-secondary); line-height: 1.6; }
+        /* --- HOW IT WORKS --- */
+        .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 56px; }
+        .step { text-align: center; position: relative; }
+        .step-num {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: rgba(0,120,212,0.08); border: 2px solid var(--win-blue);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; font-weight: 700; color: var(--win-blue-light);
+            margin: 0 auto 20px;
+        }
+        .step h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .step p { font-size: 14px; color: var(--win-text-secondary); max-width: 280px; margin: 0 auto; }
+        /* --- ECOSYSTEM / SIBLING PROJECTS --- */
+        .eco-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-top: 56px; }
+        .eco-card {
+            background: var(--win-surface); border: 1px solid var(--win-border);
+            border-radius: var(--radius-lg); padding: 36px;
+            transition: all 0.3s; position: relative;
+        }
+        .eco-card:hover { border-color: rgba(0,120,212,0.2); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+        .eco-card .eco-platform { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+        .eco-card.mac .eco-platform { color: #555; }
+        .eco-card.linux .eco-platform { color: #333; }
+        .eco-card h3 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+        .eco-card .eco-desc { font-size: 14px; color: var(--win-text-secondary); margin-bottom: 20px; line-height: 1.6; }
+        .eco-card .eco-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+        .eco-tag { font-size: 12px; padding: 4px 12px; border-radius: 16px; background: rgba(0,0,0,0.04); color: var(--win-text-secondary); }
+        .eco-links { display: flex; gap: 12px; }
+        .eco-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 14px; font-weight: 600; color: var(--win-blue-light);
+            text-decoration: none; transition: color 0.2s;
+        }
+        .eco-link:hover { color: var(--win-blue-dark); }
+        .eco-link svg { width: 16px; height: 16px; }
+        /* --- NOTIFY FORM --- */
+        .notify-section { text-align: center; }
+        .notify-form {
+            display: flex; gap: 12px; max-width: 480px; margin: 32px auto 0;
+            flex-wrap: wrap; justify-content: center;
+        }
+        .notify-form input {
+            flex: 1; min-width: 240px; padding: 14px 20px;
+            background: var(--win-surface); border: 1px solid var(--win-border);
+            border-radius: var(--radius); color: var(--win-text);
+            font-size: 15px; font-family: inherit; outline: none;
+            transition: border-color 0.2s;
+        }
+        .notify-form input::placeholder { color: #666; }
+        .notify-form input:focus { border-color: var(--win-blue); }
+        /* --- FOOTER --- */
+        footer {
+            border-top: 1px solid var(--win-border);
+            padding: 40px 24px; text-align: center;
+            color: var(--win-text-secondary); font-size: 13px;
+        }
+        footer a { color: var(--win-text-secondary); text-decoration: none; transition: color 0.2s; }
+        footer a:hover { color: var(--win-text); }
+        .footer-links { display: flex; gap: 24px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
+        /* --- RESPONSIVE --- */
+        @media (max-width: 768px) {
+            nav { padding: 0 20px; }
+            .nav-links { display: none; }
+            .steps { grid-template-columns: 1fr; gap: 40px; }
+            section { padding: 60px 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+    <a href="/" class="nav-brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <span>VocaWin</span>
+    </a>
+    <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#ecosystem">Ecosystem</a>
+        <a href="#notify">Get Notified</a>
+        <span class="nav-badge">Coming Soon</span>
+    </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+    <div class="waveform-bg">
+        <svg class="wave1" viewBox="0 0 4800 600" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0 300 Q50 200 100 300 Q150 400 200 300 Q250 150 300 300 Q350 450 400 300 Q450 100 500 300 Q550 500 600 300 Q650 180 700 300 Q750 420 800 300 Q850 120 900 300 Q950 480 1000 300 Q1050 160 1100 300 Q1150 440 1200 300 Q1250 200 1300 300 Q1350 400 1400 300 Q1450 150 1500 300 Q1550 450 1600 300 Q1650 100 1700 300 Q1750 500 1800 300 Q1850 180 1900 300 Q1950 420 2000 300 Q2050 120 2100 300 Q2150 480 2200 300 Q2250 160 2300 300 Q2350 440 2400 300 Q2450 200 2500 300 Q2550 400 2600 300 Q2650 150 2700 300 Q2750 450 2800 300 Q2850 100 2900 300 Q2950 500 3000 300 Q3050 180 3100 300 Q3150 420 3200 300 Q3250 120 3300 300 Q3350 480 3400 300 Q3450 160 3500 300 Q3550 440 3600 300 Q3650 200 3700 300 Q3750 400 3800 300 Q3850 150 3900 300 Q3950 450 4000 300 Q4050 100 4100 300 Q4150 500 4200 300 Q4250 180 4300 300 Q4350 420 4400 300 Q4450 120 4500 300 Q4550 480 4600 300 Q4650 160 4700 300 Q4750 440 4800 300" fill="none" stroke="#0078D4" stroke-width="3"/>
+        </svg>
+    </div>
+    <div class="hero-content">
+    <div class="hero-badge">
+        <span class="dot"></span>
+        Coming Soon - In Active Development
+    </div>
+    <h1>Your Voice.<br>Your PC.<br><span class="gradient">Your Privacy.</span></h1>
+    <p class="subtitle">100% offline voice-to-text for Windows. Hold a hotkey, speak, and text appears at your cursor. Open source, private by design, and completely free.</p>
+    <div class="btn-group">
+        <a href="#notify" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            Get Notified
+        </a>
+        <a href="#ecosystem" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Use Mac or Linux?
+        </a>
+    </div>
+    <div class="pills">
+        <div class="pill"><span class="icon">🔒</span> 100% Offline</div>
+        <div class="pill"><span class="icon">🛡️</span> Privacy First</div>
+        <div class="pill"><span class="icon">📖</span> Open Source</div>
+        <div class="pill"><span class="icon">🚫</span> No Data Leaves Your System</div>
+        <div class="pill"><span class="icon">🆓</span> Free Forever</div>
+        <div class="pill"><span class="icon">🖥️</span> Windows Native</div>
+        <div class="pill"><span class="icon">📡</span> Zero Telemetry</div>
+    </div>
+    </div>
+    <a href="#features" class="scroll-indicator">
+        <span>Scroll</span>
+        <svg class="scroll-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </a>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+    <div class="container">
+        <p class="section-label">Privacy-First Features</p>
+        <h2 class="section-title">Everything runs on your machine.</h2>
+        <p class="section-subtitle">No cloud. No accounts. No subscriptions. Just you, your voice, and your Windows PC.</p>
+        <div class="features-grid">
+            <div class="feature-card">
+                <span class="feature-icon">🔒</span>
+                <h3>Zero Network Calls</h3>
+                <p>Audio is processed 100% on-device. Nothing is ever transmitted to any server. Your voice data stays on your PC. Always.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">🗑️</span>
+                <h3>No Audio Storage</h3>
+                <p>Audio buffers are discarded immediately after transcription. Nothing is saved to disk. Ever. Your conversations stay yours.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">📖</span>
+                <h3>Fully Open Source</h3>
+                <p>Every line of code is public on GitHub. Audit it yourself. No hidden anything. Transparent by default.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">📡</span>
+                <h3>No Telemetry</h3>
+                <p>No analytics. No crash reporting. No usage tracking. We literally cannot see what you do. Your privacy is absolute.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">⌨️</span>
+                <h3>System-Wide Text Injection</h3>
+                <p>Transcribed text appears wherever your cursor is. Browsers, Slack, VS Code, Word, Excel, terminals. Everywhere.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">🎯</span>
+                <h3>Push-to-Talk &amp; Toggle</h3>
+                <p>Hold a hotkey to record or double-tap to toggle. Simple, predictable, works exactly the way you expect.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">🌍</span>
+                <h3>99+ Languages</h3>
+                <p>Auto-detect or specify your language. English, Spanish, French, German, Chinese, Japanese, and many more supported.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">⚡</span>
+                <h3>GPU Accelerated</h3>
+                <p>Leverages NVIDIA CUDA, AMD, and Intel GPU acceleration for blazing fast transcription on Windows hardware.</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">⚙️</span>
+                <h3>Fully Configurable</h3>
+                <p>Choose hotkeys, models, languages, silence detection thresholds. A settings panel that puts you in full control.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works" style="background: var(--win-surface);">
+    <div class="container" style="text-align:center;">
+        <p class="section-label">How It Works</p>
+        <h2 class="section-title">Three steps. That's it.</h2>
+        <p class="section-subtitle" style="margin: 0 auto 0;">No accounts. No sign-ups. No cloud. Just install and speak.</p>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Press Your Hotkey</h3>
+                <p>Press and hold your chosen hotkey. The system tray icon lights up. You're recording.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>Speak</h3>
+                <p>Say whatever you want. Your audio is processed entirely on your PC. Nothing leaves your machine.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Release</h3>
+                <p>Text appears at your cursor. In any app. Browser, Slack, VS Code, Word. Anywhere on Windows.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ECOSYSTEM -->
+<section id="ecosystem">
+    <div class="container">
+        <p class="section-label">The Voca Ecosystem</p>
+        <h2 class="section-title">Voice-to-text on every platform.</h2>
+        <p class="section-subtitle">VocaWin joins a family of privacy-first, offline voice dictation tools. Same mission, every operating system.</p>
+        <div class="eco-grid">
+            <div class="eco-card mac">
+                <p class="eco-platform"><img src="https://cdn.simpleicons.org/apple/000000" alt="Apple" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;"> macOS</p>
+                <h3>VocaMac <span class="nav-badge" style="font-size:11px;vertical-align:middle;">Beta</span></h3>
+                <p class="eco-desc">100% offline voice-to-text for macOS. Apple Silicon native with CoreML &amp; Neural Engine acceleration via WhisperKit.</p>
+                <div class="eco-tags">
+                    <span class="eco-tag">Apple Silicon</span>
+                    <span class="eco-tag">CoreML</span>
+                    <span class="eco-tag">WhisperKit</span>
+                    <span class="eco-tag">AGPL-3.0</span>
+                </div>
+                <div class="eco-links">
+                    <a href="https://vocamac.com" target="_blank" class="eco-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        vocamac.com
+                    </a>
+                    <a href="https://github.com/jatinkrmalik/vocamac" target="_blank" class="eco-link">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        GitHub
+                    </a>
+                </div>
+            </div>
+            <div class="eco-card linux">
+                <p class="eco-platform"><img src="https://cdn.simpleicons.org/linux/000000" alt="Linux" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;"> Linux</p>
+                <h3>VocaLinux <span class="nav-badge" style="font-size:11px;vertical-align:middle;">Beta</span></h3>
+                <p class="eco-desc">100% offline voice dictation for Linux. Powered by whisper.cpp with Vulkan GPU support. Works on X11 &amp; Wayland across all major distros. The original.</p>
+                <div class="eco-tags">
+                    <span class="eco-tag">whisper.cpp</span>
+                    <span class="eco-tag">Vulkan GPU</span>
+                    <span class="eco-tag">X11 &amp; Wayland</span>
+                    <span class="eco-tag">GPL-3.0</span>
+                </div>
+                <div class="eco-links">
+                    <a href="https://vocalinux.com" target="_blank" class="eco-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        vocalinux.com
+                    </a>
+                    <a href="https://github.com/jatinkrmalik/vocalinux" target="_blank" class="eco-link">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- NOTIFY -->
+<section id="notify" class="notify-section" style="background: var(--win-surface);">
+    <div class="container">
+        <p class="section-label">Stay in the Loop</p>
+        <h2 class="section-title">Be the first to know when VocaWin launches.</h2>
+        <p class="section-subtitle" style="margin: 0 auto;">We're building voice-to-text for Windows the right way: private, offline, and open source. Star us on GitHub to follow progress.</p>
+        <div class="notify-form">
+            <a href="https://github.com/jatinkrmalik/vocawin" target="_blank" class="btn btn-primary" style="width:100%;justify-content:center;">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                ⭐ Star on GitHub to Follow Progress
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <div class="footer-links">
+        <a href="https://github.com/jatinkrmalik/vocawin" target="_blank">GitHub</a>
+        <a href="https://vocamac.com" target="_blank">VocaMac</a>
+        <a href="https://vocalinux.com" target="_blank">VocaLinux</a>
+        <a href="#features">Features</a>
+        <a href="#ecosystem">Ecosystem</a>
+    </div>
+    <p>&copy; 2025 VocaWin. Open source, private by design, free forever.</p>
+    <p style="margin-top: 12px; font-size: 13px;">
+        Made with ❤️ by <a href="https://x.com/intent/user?screen_name=jatinkrmalik" target="_blank" rel="noopener">Jatin K Malik</a>
+    </p>
+</footer>
+
+</body>
+</html>
