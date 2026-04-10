@@ -48,11 +48,17 @@ VocaWin is part of a family of privacy-first, offline voice dictation tools. Sam
 | 🐧 Linux | **VocaLinux** | [vocalinux.com](https://vocalinux.com) | [jatinkrmalik/vocalinux](https://github.com/jatinkrmalik/vocalinux) | Beta v0.8.0 |
 | 🖥️ Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [jatinkrmalik/vocawin](https://github.com/jatinkrmalik/vocawin) | Coming Soon |
 
-## Tech Stack (Planned)
+## Tech Stack (Current Direction)
 
-- **Speech Engine**: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) with GPU acceleration
+- **Language**: C++ (native Windows app)
+- **UI Framework**: WinUI 3 (Windows App SDK)
+- **Speech Engine**: [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
+- **Audio Input**: WASAPI (Windows Audio Session API)
+- **Text Injection**: Windows `SendInput` (with clipboard-preserving fallback)
+- **GPU Backends**:
+  - Phase 1/2: CUDA + Vulkan
+  - Planned follow-up: DirectML backend path
 - **Platform**: Windows 10/11
-- **GPU Support**: NVIDIA CUDA, AMD, Intel
 - **Languages**: 99+ via Whisper models
 
 ## System Requirements (Expected)
@@ -61,6 +67,22 @@ VocaWin is part of a family of privacy-first, offline voice dictation tools. Sam
 - 4 GB RAM (8 GB+ recommended for larger models)
 - Microphone
 - GPU recommended for faster transcription (NVIDIA, AMD, or Intel)
+
+## Windows Development Environment
+
+Because VocaWin is a native Windows application, real feature validation must be done on Windows (hotkeys, tray behavior, WASAPI audio capture, and text injection).
+
+Recommended setup:
+
+- Windows 11 machine or VM (Parallels/UTM acceptable for early dev)
+- Visual Studio 2022 with Desktop C++ workload
+- Windows SDK (10/11)
+- CMake + Ninja
+- vcpkg
+- LLVM tools (for coverage)
+- WiX Toolset v4 (for MSI packaging in later phases)
+
+Note: macOS can still be used for docs/planning and generic C++ work, but Windows is the source of truth for runtime behavior.
 
 ## Website
 
@@ -76,14 +98,17 @@ The landing page at [vocawin.com](https://vocawin.com) is hosted via GitHub Page
 
 ## Development Status
 
-Phase 1 foundation scaffolding is now in progress in this repository:
+Phase 1 foundation scaffolding is implemented in this repository:
 
 - C++ project layout with `src/` modules for app, config, util, and UI
 - Root `CMakeLists.txt` and `CMakePresets.json`
 - Settings and logging scaffolding
 - Single-instance guard scaffolding
 - Basic tray icon service stub
-- Initial test scaffolding under `tests/`
+- Multi-target tests under `tests/`
+- Coverage gate script: `scripts/check_coverage.sh` (80%+ line coverage target)
+
+CI now runs real build and test steps for the current foundation, including coverage enforcement.
 
 See `docs/SPEC.md` for the complete engineering and product spec.
 
