@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feat/**"]
+  pull_request:
+
+jobs:
+  lint-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify scaffold files exist
+        run: |
+          test -f CMakeLists.txt
+          test -f CMakePresets.json
+          test -f vcpkg.json
+          test -f src/main.cpp
+          test -f src/app/AppController.h
+          test -f src/app/AppController.cpp
+          test -f src/app/SingleInstance.h
+          test -f src/app/SingleInstance.cpp
+          test -f src/config/Settings.h
+          test -f src/config/SettingsStore.h
+          test -f src/util/Logger.h
+          test -f src/ui/TrayIcon.h
+          test -f tests/CMakeLists.txt

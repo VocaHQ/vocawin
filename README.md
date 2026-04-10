@@ -74,6 +74,19 @@ The landing page at [vocawin.com](https://vocawin.com) is hosted via GitHub Page
 4. The `CNAME` file maps the custom domain `vocawin.com`
 5. Configure your DNS to point `vocawin.com` to GitHub Pages
 
+## Development Status
+
+Phase 1 foundation scaffolding is now in progress in this repository:
+
+- C++ project layout with `src/` modules for app, config, util, and UI
+- Root `CMakeLists.txt` and `CMakePresets.json`
+- Settings and logging scaffolding
+- Single-instance guard scaffolding
+- Basic tray icon service stub
+- Initial test scaffolding under `tests/`
+
+See `docs/SPEC.md` for the complete engineering and product spec.
+
 ## Contributing
 
 VocaWin is in early development. Stay tuned for contribution guidelines. In the meantime, star the repo to follow progress!

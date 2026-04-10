@@ -1,0 +1,17 @@
+build/
+out/
+.DS_Store
+*.user
+*.VC.db
+*.VC.opendb
+*.suo
+*.pdb
+*.obj
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.log
+*.tmp
+.vs/
