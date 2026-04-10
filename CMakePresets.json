@@ -7,9 +7,7 @@
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VOCAWIN_BUILD_TESTS": "ON",
-        "CMAKE_CXX_FLAGS": "--coverage",
-        "CMAKE_EXE_LINKER_FLAGS": "--coverage"
+        "VOCAWIN_BUILD_TESTS": "ON"
       }
     },
     {

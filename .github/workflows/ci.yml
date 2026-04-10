@@ -6,7 +6,29 @@ on:
   pull_request:
 
 jobs:
-  lint-structure:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          brew install cmake ninja llvm
+
+      - name: Configure debug build
+        run: cmake --preset debug
+
+      - name: Build debug targets
+        run: cmake --build --preset debug
+
+      - name: Run unit tests
+        run: ctest --preset debug
+
+      - name: Enforce coverage threshold
+        run: ./scripts/check_coverage.sh
+
+  scaffold-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
