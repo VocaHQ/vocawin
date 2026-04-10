@@ -7,7 +7,9 @@
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VOCAWIN_BUILD_TESTS": "ON"
+        "VOCAWIN_BUILD_TESTS": "ON",
+        "CMAKE_CXX_FLAGS": "--coverage",
+        "CMAKE_EXE_LINKER_FLAGS": "--coverage"
       }
     },
     {
@@ -17,6 +19,17 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "VOCAWIN_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "coverage",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VOCAWIN_BUILD_TESTS": "ON",
+        "CMAKE_CXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping",
+        "CMAKE_EXE_LINKER_FLAGS": "-fprofile-instr-generate"
       }
     }
   ],
@@ -28,6 +41,10 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
     }
   ],
   "testPresets": [
@@ -41,6 +58,13 @@
     {
       "name": "release",
       "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
       "output": {
         "outputOnFailure": true
       }

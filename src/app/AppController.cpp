@@ -2,6 +2,21 @@
 
 namespace vocawin {
 
+namespace {
+
+std::wstring mutexNameFromPath(const std::filesystem::path& path) {
+    const auto value = path.string();
+    return std::wstring(value.begin(), value.end());
+}
+
+}  // namespace
+
+AppController::AppController(std::filesystem::path data_root)
+    : data_root_(std::move(data_root)),
+      single_instance_(L"Global\\VocaWinMutex-" + mutexNameFromPath(data_root_)),
+      settings_store_(data_root_ / "config.json"),
+      logger_(data_root_ / "logs" / "vocawin.log") {}
+
 bool AppController::initialize() {
     if (!single_instance_.acquire()) {
         return false;
