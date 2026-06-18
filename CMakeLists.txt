@@ -39,6 +39,7 @@ add_library(vocawin_core STATIC
     src/app/AppController.cpp
     src/app/SingleInstance.cpp
     src/audio/AudioBuffer.cpp
+    src/audio/AudioCapture.cpp
     src/audio/SilenceDetector.cpp
     src/audio/SoundFeedback.cpp
     src/config/Settings.cpp
@@ -62,7 +63,7 @@ target_compile_definitions(vocawin_core PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(vocawin_core PRIVATE advapi32 user32 winmm)
+    target_link_libraries(vocawin_core PRIVATE advapi32 user32 winmm ole32 mmdevapi)
 endif()
 
 if(VOCAWIN_WITH_WHISPER)

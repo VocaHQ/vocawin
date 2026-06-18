@@ -179,3 +179,17 @@ target_link_libraries(test_model_manager PRIVATE
 )
 
 add_test(NAME test_model_manager COMMAND test_model_manager)
+
+add_executable(test_audio_capture
+    test_audio_capture.cpp
+)
+
+target_include_directories(test_audio_capture PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_audio_capture PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_audio_capture COMMAND test_audio_capture)
