@@ -81,3 +81,17 @@ target_link_libraries(test_audio_buffer PRIVATE
 )
 
 add_test(NAME test_audio_buffer COMMAND test_audio_buffer)
+
+add_executable(test_silence_detector
+    test_silence_detector.cpp
+)
+
+target_include_directories(test_silence_detector PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_silence_detector PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_silence_detector COMMAND test_silence_detector)

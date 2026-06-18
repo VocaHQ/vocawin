@@ -12,6 +12,7 @@ add_library(vocawin_core STATIC
     src/app/AppController.cpp
     src/app/SingleInstance.cpp
     src/audio/AudioBuffer.cpp
+    src/audio/SilenceDetector.cpp
     src/config/Settings.cpp
     src/config/SettingsStore.cpp
     src/ui/TrayIcon.cpp
