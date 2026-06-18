@@ -109,3 +109,17 @@ target_link_libraries(test_clipboard_manager PRIVATE
 )
 
 add_test(NAME test_clipboard_manager COMMAND test_clipboard_manager)
+
+add_executable(test_text_injector
+    test_text_injector.cpp
+)
+
+target_include_directories(test_text_injector PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_text_injector PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_text_injector COMMAND test_text_injector)

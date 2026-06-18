@@ -16,6 +16,7 @@ add_library(vocawin_core STATIC
     src/config/Settings.cpp
     src/config/SettingsStore.cpp
     src/input/ClipboardManager.cpp
+    src/input/TextInjector.cpp
     src/ui/TrayIcon.cpp
     src/util/Logger.cpp
 )
