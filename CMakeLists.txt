@@ -15,6 +15,7 @@ add_library(vocawin_core STATIC
     src/audio/SilenceDetector.cpp
     src/config/Settings.cpp
     src/config/SettingsStore.cpp
+    src/input/ClipboardManager.cpp
     src/ui/TrayIcon.cpp
     src/util/Logger.cpp
 )
@@ -30,7 +31,7 @@ target_compile_definitions(vocawin_core PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(vocawin_core PRIVATE advapi32)
+    target_link_libraries(vocawin_core PRIVATE advapi32 user32)
 endif()
 
 add_executable(vocawin

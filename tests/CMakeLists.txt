@@ -95,3 +95,17 @@ target_link_libraries(test_silence_detector PRIVATE
 )
 
 add_test(NAME test_silence_detector COMMAND test_silence_detector)
+
+add_executable(test_clipboard_manager
+    test_clipboard_manager.cpp
+)
+
+target_include_directories(test_clipboard_manager PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_clipboard_manager PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_clipboard_manager COMMAND test_clipboard_manager)
