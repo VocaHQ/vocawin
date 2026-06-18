@@ -46,6 +46,7 @@ add_library(vocawin_core STATIC
     src/input/ClipboardManager.cpp
     src/input/HotkeyManager.cpp
     src/input/TextInjector.cpp
+    src/speech/ModelManager.cpp
     src/ui/TrayIcon.cpp
     src/util/Logger.cpp
 )
