@@ -20,6 +20,7 @@ int main() {
     assert(in.is_open());
 
     std::string all((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
     assert(all.find("logger initialized") != std::string::npos);
     assert(all.find("[INFO] hello") != std::string::npos);
     assert(all.find("[ERROR] boom") != std::string::npos);
