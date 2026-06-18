@@ -26,7 +26,10 @@ jobs:
         run: ctest --preset debug
 
       - name: Enforce coverage threshold
-        run: ./scripts/check_coverage.sh
+        run: |
+          cmake --preset coverage
+          cmake --build --preset coverage
+          python3 scripts/check_coverage.py
 
   scaffold-check:
     runs-on: ubuntu-latest

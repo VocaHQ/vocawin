@@ -1,0 +1,647 @@
+        -:    0:Source:C:/Users/jkmal/tools/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/c++/system_error
+        -:    0:Graph:build\coverage\CMakeFiles\vocawin_core.dir\src\app/AppController.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1:// <system_error> -*- C++ -*-
+        -:    2:
+        -:    3:// Copyright (C) 2007-2026 Free Software Foundation, Inc.
+        -:    4://
+        -:    5:// This file is part of the GNU ISO C++ Library.  This library is free
+        -:    6:// software; you can redistribute it and/or modify it under the
+        -:    7:// terms of the GNU General Public License as published by the
+        -:    8:// Free Software Foundation; either version 3, or (at your option)
+        -:    9:// any later version.
+        -:   10:
+        -:   11:// This library is distributed in the hope that it will be useful,
+        -:   12:// but WITHOUT ANY WARRANTY; without even the implied warranty of
+        -:   13:// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        -:   14:// GNU General Public License for more details.
+        -:   15:
+        -:   16:// Under Section 7 of GPL version 3, you are granted additional
+        -:   17:// permissions described in the GCC Runtime Library Exception, version
+        -:   18:// 3.1, as published by the Free Software Foundation.
+        -:   19:
+        -:   20:// You should have received a copy of the GNU General Public License and
+        -:   21:// a copy of the GCC Runtime Library Exception along with this program;
+        -:   22:// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+        -:   23:// <http://www.gnu.org/licenses/>.
+        -:   24:
+        -:   25:/** @file include/system_error
+        -:   26: *  This is a Standard C++ Library header.
+        -:   27: */
+        -:   28:
+        -:   29:#ifndef _GLIBCXX_SYSTEM_ERROR
+        -:   30:#define _GLIBCXX_SYSTEM_ERROR 1
+        -:   31:
+        -:   32:#ifdef _GLIBCXX_SYSHDR
+        -:   33:#pragma GCC system_header
+        -:   34:#endif
+        -:   35:
+        -:   36:#include <bits/requires_hosted.h> // OS-dependent
+        -:   37:
+        -:   38:#if __cplusplus < 201103L
+        -:   39:# include <bits/c++0x_warning.h>
+        -:   40:#else
+        -:   41:
+        -:   42:#include <bits/c++config.h>
+        -:   43:#include <bits/error_constants.h>
+        -:   44:#include <iosfwd>
+        -:   45:#include <stdexcept>
+        -:   46:#if __cplusplus > 201703L
+        -:   47:# include <compare>
+        -:   48:#endif
+        -:   49:
+        -:   50:namespace std _GLIBCXX_VISIBILITY(default)
+        -:   51:{
+        -:   52:_GLIBCXX_BEGIN_NAMESPACE_VERSION
+        -:   53:
+        -:   54:  /** @addtogroup diagnostics
+        -:   55:   * @{
+        -:   56:   */
+        -:   57:
+        -:   58:  class error_code;
+        -:   59:  class error_condition;
+        -:   60:  class system_error;
+        -:   61:
+        -:   62:  /// is_error_code_enum
+        -:   63:  template<typename _Tp>
+        -:   64:    struct is_error_code_enum : public false_type { };
+        -:   65:
+        -:   66:  /// is_error_condition_enum
+        -:   67:  template<typename _Tp>
+        -:   68:    struct is_error_condition_enum : public false_type { };
+        -:   69:
+        -:   70:  template<>
+        -:   71:    struct is_error_condition_enum<errc>
+        -:   72:    : public true_type { };
+        -:   73:
+        -:   74:#if __cplusplus > 201402L
+        -:   75:  template <typename _Tp>
+        -:   76:    inline constexpr bool is_error_code_enum_v =
+        -:   77:      is_error_code_enum<_Tp>::value;
+        -:   78:  template <typename _Tp>
+        -:   79:    inline constexpr bool is_error_condition_enum_v =
+        -:   80:      is_error_condition_enum<_Tp>::value;
+        -:   81:#endif // C++17
+        -:   82:  /// @}
+        -:   83:
+        -:   84:_GLIBCXX_BEGIN_INLINE_ABI_NAMESPACE(_V2)
+        -:   85:
+        -:   86:  /** @addtogroup diagnostics
+        -:   87:   * @{
+        -:   88:   */
+        -:   89:
+        -:   90:  /** Abstract base class for types defining a category of error codes.
+        -:   91:   *
+        -:   92:   * An error category defines a context that gives meaning to the integer
+        -:   93:   * stored in an `error_code` or `error_condition` object. For example,
+        -:   94:   * the standard `errno` constants such a `EINVAL` and `ENOMEM` are
+        -:   95:   * associated with the "generic" category and other OS-specific error
+        -:   96:   * numbers are associated with the "system" category, but a user-defined
+        -:   97:   * category might give different meanings to the same numerical values.
+        -:   98:   *
+        -:   99:   * A user-defined category can override the `equivalent` member functions
+        -:  100:   * to define correspondence between errors in different categories.
+        -:  101:   * For example, a category for errors from disk I/O could consider some
+        -:  102:   * of its error numbers equivalent to ENOSPC and ENOENT in the generic
+        -:  103:   * category.
+        -:  104:   *
+        -:  105:   * @headerfile system_error
+        -:  106:   * @since C++11
+        -:  107:   */
+        -:  108:  class error_category
+        -:  109:  {
+        -:  110:  public:
+        -:  111:    constexpr error_category() noexcept = default;
+        -:  112:
+        -:  113:    virtual ~error_category();
+        -:  114:
+        -:  115:    error_category(const error_category&) = delete;
+        -:  116:    error_category& operator=(const error_category&) = delete;
+        -:  117:
+        -:  118:    /// A string that identifies the error category.
+        -:  119:    virtual const char*
+        -:  120:    name() const noexcept = 0;
+        -:  121:
+        -:  122:    // We need two different virtual functions here, one returning a
+        -:  123:    // COW string and one returning an SSO string. Their positions in the
+        -:  124:    // vtable must be consistent for dynamic dispatch to work, but which one
+        -:  125:    // the name "message()" finds depends on which ABI the caller is using.
+        -:  126:#if _GLIBCXX_USE_CXX11_ABI
+        -:  127:  private:
+        -:  128:    _GLIBCXX_DEFAULT_ABI_TAG
+        -:  129:    virtual __cow_string
+        -:  130:    _M_message(int) const;
+        -:  131:
+        -:  132:  public:
+        -:  133:    /// A description of the error condition corresponding to the number.
+        -:  134:    _GLIBCXX_DEFAULT_ABI_TAG
+        -:  135:    virtual string
+        -:  136:    message(int) const = 0;
+        -:  137:#else
+        -:  138:    virtual string
+        -:  139:    message(int) const = 0;
+        -:  140:
+        -:  141:  private:
+        -:  142:    virtual __sso_string
+        -:  143:    _M_message(int) const;
+        -:  144:#endif
+        -:  145:
+        -:  146:  public:
+        -:  147:    /// Return an error_condition corresponding to `i` in this category.
+        -:  148:    virtual error_condition
+        -:  149:    default_error_condition(int __i) const noexcept;
+        -:  150:
+        -:  151:    /// Test whether `cond` corresponds to `i` for this category.
+        -:  152:    virtual bool
+        -:  153:    equivalent(int __i, const error_condition& __cond) const noexcept;
+        -:  154:
+        -:  155:    /// Test whether `code` corresponds to `i` for this category.
+        -:  156:    virtual bool
+        -:  157:    equivalent(const error_code& __code, int __i) const noexcept;
+        -:  158:
+        -:  159:    /// An error_category only compares equal to itself.
+        -:  160:    [[__nodiscard__]]
+        -:  161:    bool
+        -:  162:    operator==(const error_category& __other) const noexcept
+        -:  163:    { return this == &__other; }
+        -:  164:
+        -:  165:    /// Ordered comparison that defines a total order for error categories.
+        -:  166:#if __cpp_lib_three_way_comparison
+        -:  167:    [[nodiscard]]
+        -:  168:    strong_ordering
+        -:  169:    operator<=>(const error_category& __rhs) const noexcept
+        -:  170:    { return std::compare_three_way()(this, &__rhs); }
+        -:  171:#else
+        -:  172:    bool
+        -:  173:    operator<(const error_category& __other) const noexcept
+        -:  174:    { return less<const error_category*>()(this, &__other); }
+        -:  175:
+        -:  176:    bool
+        -:  177:    operator!=(const error_category& __other) const noexcept
+        -:  178:    { return this != &__other; }
+        -:  179:#endif
+        -:  180:  };
+        -:  181:
+        -:  182:  // DR 890.
+        -:  183:
+        -:  184:  /// Error category for `errno` error codes.
+        -:  185:  [[__nodiscard__, __gnu__::__const__]]
+        -:  186:  const error_category&
+        -:  187:  generic_category() noexcept;
+        -:  188:
+        -:  189:  /// Error category for other error codes defined by the OS.
+        -:  190:  [[__nodiscard__, __gnu__::__const__]]
+        -:  191:  const error_category&
+        -:  192:  system_category() noexcept;
+        -:  193:
+        -:  194:  /// @}
+        -:  195:
+        -:  196:_GLIBCXX_END_INLINE_ABI_NAMESPACE(_V2)
+        -:  197:
+        -:  198:  /** @addtogroup diagnostics
+        -:  199:   * @{
+        -:  200:   */
+        -:  201:
+        -:  202:namespace __adl_only
+        -:  203:{
+        -:  204:  void make_error_code() = delete;
+        -:  205:  void make_error_condition() = delete;
+        -:  206:}
+        -:  207:
+        -:  208:  /** Class error_code
+        -:  209:   *
+        -:  210:   * This class is a value type storing an integer error number and a
+        -:  211:   * category that gives meaning to the error number. Typically this is done
+        -:  212:   * close the the point where the error happens, to capture the original
+        -:  213:   * error value.
+        -:  214:   *
+        -:  215:   * An `error_code` object can be used to store the original error value
+        -:  216:   * emitted by some subsystem, with a category relevant to the subsystem.
+        -:  217:   * For example, errors from POSIX library functions can be represented by
+        -:  218:   * an `errno` value and the "generic" category, but errors from an HTTP
+        -:  219:   * library might be represented by an HTTP response status code (e.g. 404)
+        -:  220:   * and a custom category defined by the library.
+        -:  221:   *
+        -:  222:   * @headerfile system_error
+        -:  223:   * @since C++11
+        -:  224:   */
+        -:  225:  class error_code
+        -:  226:  {
+        -:  227:    template<typename _ErrorCodeEnum>
+        -:  228:      using _Check
+        -:  229:	= __enable_if_t<is_error_code_enum<_ErrorCodeEnum>::value>;
+        -:  230:
+        -:  231:  public:
+        -:  232:    error_code() noexcept
+        -:  233:    : _M_value(0), _M_cat(&system_category()) { }
+        -:  234:
+    #####:  235:    error_code(int __v, const error_category& __cat) noexcept
+    #####:  236:    : _M_value(__v), _M_cat(&__cat) { }
+        -:  237:
+        -:  238:    /// Initialize with a user-defined type, by calling make_error_code.
+        -:  239:    template<typename _ErrorCodeEnum,
+        -:  240:	     typename = _Check<_ErrorCodeEnum>>
+        -:  241:      error_code(_ErrorCodeEnum __e) noexcept
+        -:  242:      {
+        -:  243:	using __adl_only::make_error_code;
+        -:  244:	*this = make_error_code(__e);
+        -:  245:      }
+        -:  246:
+        -:  247:    error_code(const error_code&) = default;
+        -:  248:    error_code& operator=(const error_code&) = default;
+        -:  249:
+        -:  250:    void
+        -:  251:    assign(int __v, const error_category& __cat) noexcept
+        -:  252:    {
+        -:  253:      _M_value = __v;
+        -:  254:      _M_cat = &__cat;
+        -:  255:    }
+        -:  256:
+        -:  257:    void
+        -:  258:    clear() noexcept
+        -:  259:    { assign(0, system_category()); }
+        -:  260:
+        -:  261:    /// The error value.
+        -:  262:    [[__nodiscard__]]
+        -:  263:    int
+        -:  264:    value() const noexcept { return _M_value; }
+        -:  265:
+        -:  266:    /// The error category that this error belongs to.
+        -:  267:    [[__nodiscard__]]
+        -:  268:    const error_category&
+        -:  269:    category() const noexcept { return *_M_cat; }
+        -:  270:
+        -:  271:    /// An `error_condition` for this error's category and value.
+        -:  272:    error_condition
+        -:  273:    default_error_condition() const noexcept;
+        -:  274:
+        -:  275:    /// The category's description of the value.
+        -:  276:    _GLIBCXX_DEFAULT_ABI_TAG
+        -:  277:    string
+        -:  278:    message() const
+        -:  279:    { return category().message(value()); }
+        -:  280:
+        -:  281:    /// Test whether `value()` is non-zero.
+        -:  282:    [[__nodiscard__]]
+        -:  283:    explicit operator bool() const noexcept
+        -:  284:    { return _M_value != 0; }
+        -:  285:
+        -:  286:    // DR 804.
+        -:  287:  private:
+        -:  288:    int            		_M_value;
+        -:  289:    const error_category* 	_M_cat;
+        -:  290:  };
+        -:  291:
+        -:  292:  // C++11 19.5.2.5 non-member functions
+        -:  293:
+        -:  294:  /** Create an `error_code` representing a standard `errc` condition.
+        -:  295:   *
+        -:  296:   * The `std::errc` constants correspond to `errno` macros and so use the
+        -:  297:   * generic category.
+        -:  298:   *
+        -:  299:   * @relates error_code
+        -:  300:   * @since C++11
+        -:  301:   */
+        -:  302:  [[__nodiscard__]]
+        -:  303:  inline error_code
+    #####:  304:  make_error_code(errc __e) noexcept
+    #####:  305:  { return error_code(static_cast<int>(__e), generic_category()); }
+        -:  306:
+        -:  307:  /** Ordered comparison for std::error_code.
+        -:  308:   *
+        -:  309:   * This defines a total order by comparing the categories, and then
+        -:  310:   * if they are equal comparing the values.
+        -:  311:   *
+        -:  312:   * @relates error_code
+        -:  313:   * @since C++11
+        -:  314:   */
+        -:  315:#if __cpp_lib_three_way_comparison
+        -:  316:  [[nodiscard]]
+        -:  317:  inline strong_ordering
+        -:  318:  operator<=>(const error_code& __lhs, const error_code& __rhs) noexcept
+        -:  319:  {
+        -:  320:    if (auto __c = __lhs.category() <=> __rhs.category(); __c != 0)
+        -:  321:      return __c;
+        -:  322:    return __lhs.value() <=> __rhs.value();
+        -:  323:  }
+        -:  324:#else
+        -:  325:  inline bool
+        -:  326:  operator<(const error_code& __lhs, const error_code& __rhs) noexcept
+        -:  327:  {
+        -:  328:    return (__lhs.category() < __rhs.category()
+        -:  329:	    || (__lhs.category() == __rhs.category()
+        -:  330:		&& __lhs.value() < __rhs.value()));
+        -:  331:  }
+        -:  332:#endif
+        -:  333:
+        -:  334:  /** Write a std::error_code to an ostream.
+        -:  335:   *
+        -:  336:   * @relates error_code
+        -:  337:   * @since C++11
+        -:  338:   */
+        -:  339:  template<typename _CharT, typename _Traits>
+        -:  340:    basic_ostream<_CharT, _Traits>&
+        -:  341:    operator<<(basic_ostream<_CharT, _Traits>& __os, const error_code& __e)
+        -:  342:    { return (__os << __e.category().name() << ':' << __e.value()); }
+        -:  343:
+        -:  344:  /** Class error_condition
+        -:  345:   *
+        -:  346:   * This class represents error conditions that may be visible at an API
+        -:  347:   * boundary. Different `error_code` values that can occur within a library
+        -:  348:   * or module might map to the same `error_condition`.
+        -:  349:   *
+        -:  350:   * An `error_condition` represents something that the program can test for,
+        -:  351:   * and subsequently take appropriate action.
+        -:  352:   *
+        -:  353:   * @headerfile system_error
+        -:  354:   * @since C++11
+        -:  355:   */
+        -:  356:  class error_condition
+        -:  357:  {
+        -:  358:    template<typename _ErrorConditionEnum>
+        -:  359:      using _Check
+        -:  360:	= __enable_if_t<is_error_condition_enum<_ErrorConditionEnum>::value>;
+        -:  361:
+        -:  362:  public:
+        -:  363:    /// Initialize with a zero (no error) value and the generic category.
+        -:  364:    error_condition() noexcept
+        -:  365:    : _M_value(0), _M_cat(&generic_category()) { }
+        -:  366:
+        -:  367:    /// Initialize with the specified value and category.
+        -:  368:    error_condition(int __v, const error_category& __cat) noexcept
+        -:  369:    : _M_value(__v), _M_cat(&__cat) { }
+        -:  370:
+        -:  371:    /// Initialize with a user-defined type, by calling make_error_condition.
+        -:  372:    template<typename _ErrorConditionEnum,
+        -:  373:	     typename = _Check<_ErrorConditionEnum>>
+        -:  374:      error_condition(_ErrorConditionEnum __e) noexcept
+        -:  375:      {
+        -:  376:	using __adl_only::make_error_condition;
+        -:  377:	*this = make_error_condition(__e);
+        -:  378:      }
+        -:  379:
+        -:  380:    error_condition(const error_condition&) = default;
+        -:  381:    error_condition& operator=(const error_condition&) = default;
+        -:  382:
+        -:  383:    /// Set the value and category.
+        -:  384:    void
+        -:  385:    assign(int __v, const error_category& __cat) noexcept
+        -:  386:    {
+        -:  387:      _M_value = __v;
+        -:  388:      _M_cat = &__cat;
+        -:  389:    }
+        -:  390:
+        -:  391:    /// Reset the value and category to the default-constructed state.
+        -:  392:    void
+        -:  393:    clear() noexcept
+        -:  394:    { assign(0, generic_category()); }
+        -:  395:
+        -:  396:    // C++11 19.5.3.4 observers
+        -:  397:
+        -:  398:    /// The error value.
+        -:  399:    [[__nodiscard__]]
+        -:  400:    int
+        -:  401:    value() const noexcept { return _M_value; }
+        -:  402:
+        -:  403:    /// The error category that this error belongs to.
+        -:  404:    [[__nodiscard__]]
+        -:  405:    const error_category&
+        -:  406:    category() const noexcept { return *_M_cat; }
+        -:  407:
+        -:  408:    /// The category's description of the value.
+        -:  409:    _GLIBCXX_DEFAULT_ABI_TAG
+        -:  410:    string
+        -:  411:    message() const
+        -:  412:    { return category().message(value()); }
+        -:  413:
+        -:  414:    /// Test whether `value()` is non-zero.
+        -:  415:    [[__nodiscard__]]
+        -:  416:    explicit operator bool() const noexcept
+        -:  417:    { return _M_value != 0; }
+        -:  418:
+        -:  419:    // DR 804.
+        -:  420:  private:
+        -:  421:    int 			_M_value;
+        -:  422:    const error_category* 	_M_cat;
+        -:  423:  };
+        -:  424:
+        -:  425:  // C++11 19.5.3.5 non-member functions
+        -:  426:
+        -:  427:  /** Create an `error_condition` representing a standard `errc` condition.
+        -:  428:   *
+        -:  429:   * The `std::errc` constants correspond to `errno` macros and so use the
+        -:  430:   * generic category.
+        -:  431:   *
+        -:  432:   * @relates error_condition
+        -:  433:   * @since C++11
+        -:  434:   */
+        -:  435:  [[__nodiscard__]]
+        -:  436:  inline error_condition
+        -:  437:  make_error_condition(errc __e) noexcept
+        -:  438:  { return error_condition(static_cast<int>(__e), generic_category()); }
+        -:  439:
+        -:  440:  // C++11 19.5.4 Comparison operators
+        -:  441:
+        -:  442:  /** Equality comparison for std::error_code.
+        -:  443:   *
+        -:  444:   * Returns true only if they have the same category and the same value.
+        -:  445:   *
+        -:  446:   * @relates error_condition
+        -:  447:   * @since C++11
+        -:  448:   */
+        -:  449:  [[__nodiscard__]]
+        -:  450:  inline bool
+        -:  451:  operator==(const error_code& __lhs, const error_code& __rhs) noexcept
+        -:  452:  {
+        -:  453:    return __lhs.category() == __rhs.category()
+        -:  454:	     && __lhs.value() == __rhs.value();
+        -:  455:  }
+        -:  456:
+        -:  457:  /** Equality comparison for std::error_code and std::error_condition.
+        -:  458:   *
+        -:  459:   * Uses each category's `equivalent` member function to check whether
+        -:  460:   * the values correspond to an equivalent error in that category.
+        -:  461:   *
+        -:  462:   * @relates error_condition
+        -:  463:   * @since C++11
+        -:  464:   */
+        -:  465:  [[__nodiscard__]]
+        -:  466:  inline bool
+        -:  467:  operator==(const error_code& __lhs, const error_condition& __rhs) noexcept
+        -:  468:  {
+        -:  469:    return __lhs.category().equivalent(__lhs.value(), __rhs)
+        -:  470:	     || __rhs.category().equivalent(__lhs, __rhs.value());
+        -:  471:  }
+        -:  472:
+        -:  473:  /** Equality comparison for std::error_condition.
+        -:  474:   *
+        -:  475:   * Returns true only if they have the same category and the same value.
+        -:  476:   *
+        -:  477:   * @relates error_condition
+        -:  478:   * @since C++11
+        -:  479:   */
+        -:  480:  [[__nodiscard__]]
+        -:  481:  inline bool
+        -:  482:  operator==(const error_condition& __lhs,
+        -:  483:	     const error_condition& __rhs) noexcept
+        -:  484:  {
+        -:  485:    return __lhs.category() == __rhs.category()
+        -:  486:	     && __lhs.value() == __rhs.value();
+        -:  487:  }
+        -:  488:
+        -:  489:  /** Ordered comparison for std::error_condition.
+        -:  490:   *
+        -:  491:   * This defines a total order by comparing the categories, and then
+        -:  492:   * if they are equal comparing the values.
+        -:  493:   *
+        -:  494:   * @relates error_condition
+        -:  495:   * @since C++11
+        -:  496:   */
+        -:  497:#if __cpp_lib_three_way_comparison
+        -:  498:  [[nodiscard]]
+        -:  499:  inline strong_ordering
+        -:  500:  operator<=>(const error_condition& __lhs,
+        -:  501:	      const error_condition& __rhs) noexcept
+        -:  502:  {
+        -:  503:    if (auto __c = __lhs.category() <=> __rhs.category(); __c != 0)
+        -:  504:      return __c;
+        -:  505:    return __lhs.value() <=> __rhs.value();
+        -:  506:  }
+        -:  507:#else
+        -:  508:  inline bool
+        -:  509:  operator<(const error_condition& __lhs,
+        -:  510:	    const error_condition& __rhs) noexcept
+        -:  511:  {
+        -:  512:    return (__lhs.category() < __rhs.category()
+        -:  513:	    || (__lhs.category() == __rhs.category()
+        -:  514:		&& __lhs.value() < __rhs.value()));
+        -:  515:  }
+        -:  516:
+        -:  517:  /// @relates error_condition
+        -:  518:  inline bool
+        -:  519:  operator==(const error_condition& __lhs, const error_code& __rhs) noexcept
+        -:  520:  {
+        -:  521:    return (__rhs.category().equivalent(__rhs.value(), __lhs)
+        -:  522:	    || __lhs.category().equivalent(__rhs, __lhs.value()));
+        -:  523:  }
+        -:  524:
+        -:  525:  /// @relates error_code
+        -:  526:  inline bool
+        -:  527:  operator!=(const error_code& __lhs, const error_code& __rhs) noexcept
+        -:  528:  { return !(__lhs == __rhs); }
+        -:  529:
+        -:  530:  /// @relates error_code
+        -:  531:  inline bool
+        -:  532:  operator!=(const error_code& __lhs, const error_condition& __rhs) noexcept
+        -:  533:  { return !(__lhs == __rhs); }
+        -:  534:
+        -:  535:  /// @relates error_condition
+        -:  536:  inline bool
+        -:  537:  operator!=(const error_condition& __lhs, const error_code& __rhs) noexcept
+        -:  538:  { return !(__lhs == __rhs); }
+        -:  539:
+        -:  540:  /// @relates error_condition
+        -:  541:  inline bool
+        -:  542:  operator!=(const error_condition& __lhs,
+        -:  543:	     const error_condition& __rhs) noexcept
+        -:  544:  { return !(__lhs == __rhs); }
+        -:  545:#endif // three_way_comparison
+        -:  546:  /// @}
+        -:  547:
+        -:  548:  /**
+        -:  549:   * @brief An exception type that includes an `error_code` value.
+        -:  550:   *
+        -:  551:   * Typically used to report errors from the operating system and other
+        -:  552:   * low-level APIs.
+        -:  553:   *
+        -:  554:   * @headerfile system_error
+        -:  555:   * @since C++11
+        -:  556:   * @ingroup exceptions
+        -:  557:   */
+        -:  558:  class system_error : public std::runtime_error
+        -:  559:  {
+        -:  560:  private:
+        -:  561:    error_code 	_M_code;
+        -:  562:
+        -:  563:  public:
+        -:  564:    system_error(error_code __ec = error_code())
+        -:  565:    : runtime_error(__ec.message()), _M_code(__ec) { }
+        -:  566:
+        -:  567:    system_error(error_code __ec, const string& __what)
+        -:  568:    : runtime_error(__what + (": " + __ec.message())), _M_code(__ec) { }
+        -:  569:
+        -:  570:    system_error(error_code __ec, const char* __what)
+        -:  571:    : runtime_error(__what + (": " + __ec.message())), _M_code(__ec) { }
+        -:  572:
+        -:  573:    system_error(int __v, const error_category& __ecat, const char* __what)
+        -:  574:    : system_error(error_code(__v, __ecat), __what) { }
+        -:  575:
+        -:  576:    system_error(int __v, const error_category& __ecat)
+        -:  577:    : runtime_error(error_code(__v, __ecat).message()),
+        -:  578:      _M_code(__v, __ecat) { }
+        -:  579:
+        -:  580:    system_error(int __v, const error_category& __ecat, const string& __what)
+        -:  581:    : runtime_error(__what + (": " + error_code(__v, __ecat).message())),
+        -:  582:      _M_code(__v, __ecat) { }
+        -:  583:
+        -:  584:#if __cplusplus >= 201103L
+        -:  585:    system_error (const system_error &) = default;
+        -:  586:    system_error &operator= (const system_error &) = default;
+        -:  587:#endif
+        -:  588:
+        -:  589:    virtual ~system_error() noexcept;
+        -:  590:
+        -:  591:    const error_code&
+        -:  592:    code() const noexcept { return _M_code; }
+        -:  593:  };
+        -:  594:
+        -:  595:_GLIBCXX_END_NAMESPACE_VERSION
+        -:  596:} // namespace
+        -:  597:
+        -:  598:#include <bits/functional_hash.h>
+        -:  599:
+        -:  600:namespace std _GLIBCXX_VISIBILITY(default)
+        -:  601:{
+        -:  602:_GLIBCXX_BEGIN_NAMESPACE_VERSION
+        -:  603:
+        -:  604:#ifndef _GLIBCXX_COMPATIBILITY_CXX0X
+        -:  605:  // DR 1182.
+        -:  606:  /// std::hash specialization for error_code.
+        -:  607:  /// @relates error_code
+        -:  608:  template<>
+        -:  609:    struct hash<error_code>
+        -:  610:    : public __hash_base<size_t, error_code>
+        -:  611:    {
+        -:  612:      size_t
+        -:  613:      operator()(const error_code& __e) const noexcept
+        -:  614:      {
+        -:  615:	const size_t __tmp = std::_Hash_impl::hash(__e.value());
+        -:  616:	return std::_Hash_impl::__hash_combine(&__e.category(), __tmp);
+        -:  617:      }
+        -:  618:    };
+        -:  619:#endif // _GLIBCXX_COMPATIBILITY_CXX0X
+        -:  620:
+        -:  621:#if __cplusplus >= 201703L
+        -:  622:  // DR 2686.
+        -:  623:  /// std::hash specialization for error_condition.
+        -:  624:  /// @relates error_condition
+        -:  625:  template<>
+        -:  626:    struct hash<error_condition>
+        -:  627:    : public __hash_base<size_t, error_condition>
+        -:  628:    {
+        -:  629:      size_t
+        -:  630:      operator()(const error_condition& __e) const noexcept
+        -:  631:      {
+        -:  632:	const size_t __tmp = std::_Hash_impl::hash(__e.value());
+        -:  633:	return std::_Hash_impl::__hash_combine(&__e.category(), __tmp);
+        -:  634:      }
+        -:  635:    };
+        -:  636:#endif
+        -:  637:
+        -:  638:_GLIBCXX_END_NAMESPACE_VERSION
+        -:  639:} // namespace
+        -:  640:
+        -:  641:#endif // C++11
+        -:  642:
+        -:  643:#endif // _GLIBCXX_SYSTEM_ERROR

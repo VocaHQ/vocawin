@@ -1,0 +1,956 @@
+        -:    0:Source:C:/Users/jkmal/tools/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/c++/string_view
+        -:    0:Graph:build\coverage\CMakeFiles\vocawin_core.dir\src\app/AppController.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1:// Components for manipulating non-owning sequences of characters -*- C++ -*-
+        -:    2:
+        -:    3:// Copyright (C) 2013-2026 Free Software Foundation, Inc.
+        -:    4://
+        -:    5:// This file is part of the GNU ISO C++ Library.  This library is free
+        -:    6:// software; you can redistribute it and/or modify it under the
+        -:    7:// terms of the GNU General Public License as published by the
+        -:    8:// Free Software Foundation; either version 3, or (at your option)
+        -:    9:// any later version.
+        -:   10:
+        -:   11:// This library is distributed in the hope that it will be useful,
+        -:   12:// but WITHOUT ANY WARRANTY; without even the implied warranty of
+        -:   13:// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        -:   14:// GNU General Public License for more details.
+        -:   15:
+        -:   16:// Under Section 7 of GPL version 3, you are granted additional
+        -:   17:// permissions described in the GCC Runtime Library Exception, version
+        -:   18:// 3.1, as published by the Free Software Foundation.
+        -:   19:
+        -:   20:// You should have received a copy of the GNU General Public License and
+        -:   21:// a copy of the GCC Runtime Library Exception along with this program;
+        -:   22:// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+        -:   23:// <http://www.gnu.org/licenses/>.
+        -:   24:
+        -:   25:/** @file include/string_view
+        -:   26: *  This is a Standard C++ Library header.
+        -:   27: */
+        -:   28:
+        -:   29://
+        -:   30:// N3762 basic_string_view library
+        -:   31://
+        -:   32:
+        -:   33:#ifndef _GLIBCXX_STRING_VIEW
+        -:   34:#define _GLIBCXX_STRING_VIEW 1
+        -:   35:
+        -:   36:#ifdef _GLIBCXX_SYSHDR
+        -:   37:#pragma GCC system_header
+        -:   38:#endif
+        -:   39:
+        -:   40:#define __glibcxx_want_constexpr_char_traits
+        -:   41:#define __glibcxx_want_constexpr_string_view
+        -:   42:#define __glibcxx_want_freestanding_string_view
+        -:   43:#define __glibcxx_want_starts_ends_with
+        -:   44:#define __glibcxx_want_string_contains
+        -:   45:#define __glibcxx_want_string_subview
+        -:   46:#define __glibcxx_want_string_view
+        -:   47:#include <bits/version.h>
+        -:   48:
+        -:   49:#if __cplusplus >= 201703L
+        -:   50:
+        -:   51:#include <bits/char_traits.h>
+        -:   52:#ifndef __glibcxx_exc_in_string
+        -:   53:#define __glibcxx_exc_in_string 2
+        -:   54:#include <bits/stdexcept_throw.h>
+        -:   55:#endif
+        -:   56:#include <bits/functional_hash.h>
+        -:   57:#include <bits/range_access.h>
+        -:   58:#include <bits/stl_algobase.h>
+        -:   59:#include <ext/numeric_traits.h>
+        -:   60:
+        -:   61:#if __cplusplus >= 202002L
+        -:   62:# include <bits/ranges_base.h>
+        -:   63:#endif
+        -:   64:
+        -:   65:#if _GLIBCXX_HOSTED
+        -:   66:# include <iosfwd>
+        -:   67:# include <bits/ostream_insert.h>
+        -:   68:#endif
+        -:   69:
+        -:   70:namespace std _GLIBCXX_VISIBILITY(default)
+        -:   71:{
+        -:   72:_GLIBCXX_BEGIN_NAMESPACE_VERSION
+        -:   73:
+        -:   74:  // Helper for basic_string and basic_string_view members.
+        -:   75:  constexpr size_t
+        -:   76:  __sv_check(size_t __size, size_t __pos, const char* __s)
+        -:   77:  {
+        -:   78:    if (__pos > __size)
+        -:   79:      __throw_out_of_range_fmt(__N("%s: __pos (which is %zu) > __size "
+        -:   80:				   "(which is %zu)"), __s, __pos, __size);
+        -:   81:    return __pos;
+        -:   82:  }
+        -:   83:
+        -:   84:  // Helper for basic_string members.
+        -:   85:  // NB: __sv_limit doesn't check for a bad __pos value.
+        -:   86:  constexpr size_t
+        -:   87:  __sv_limit(size_t __size, size_t __pos, size_t __off) noexcept
+        -:   88:  {
+        -:   89:   const bool __testoff =  __off < __size - __pos;
+        -:   90:   return __testoff ? __off : __size - __pos;
+        -:   91:  }
+        -:   92:
+        -:   93:  /**
+        -:   94:   *  @class basic_string_view <string_view>
+        -:   95:   *  @brief  A non-owning reference to a string.
+        -:   96:   *
+        -:   97:   *  @ingroup strings
+        -:   98:   *  @ingroup sequences
+        -:   99:   *
+        -:  100:   *  @tparam _CharT  Type of character
+        -:  101:   *  @tparam _Traits  Traits for character type, defaults to
+        -:  102:   *                   char_traits<_CharT>.
+        -:  103:   *
+        -:  104:   *  A basic_string_view looks like this:
+        -:  105:   *
+        -:  106:   *  @code
+        -:  107:   *    _CharT*    _M_str
+        -:  108:   *    size_t     _M_len
+        -:  109:   *  @endcode
+        -:  110:   */
+        -:  111:  template<typename _CharT, typename _Traits = std::char_traits<_CharT>>
+        -:  112:    class basic_string_view
+        -:  113:    {
+        -:  114:      static_assert(!is_array_v<_CharT>);
+        -:  115:      static_assert(is_trivially_copyable_v<_CharT>
+        -:  116:	  && is_trivially_default_constructible_v<_CharT>
+        -:  117:	  && is_standard_layout_v<_CharT>);
+        -:  118:      static_assert(is_same_v<_CharT, typename _Traits::char_type>);
+        -:  119:
+        -:  120:    public:
+        -:  121:
+        -:  122:      // types
+        -:  123:      using traits_type		= _Traits;
+        -:  124:      using value_type		= _CharT;
+        -:  125:      using pointer		= value_type*;
+        -:  126:      using const_pointer	= const value_type*;
+        -:  127:      using reference		= value_type&;
+        -:  128:      using const_reference	= const value_type&;
+        -:  129:      using const_iterator	= const value_type*;
+        -:  130:      using iterator		= const_iterator;
+        -:  131:      using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+        -:  132:      using reverse_iterator	= const_reverse_iterator;
+        -:  133:      using size_type		= size_t;
+        -:  134:      using difference_type	= ptrdiff_t;
+        -:  135:      static constexpr size_type npos = size_type(-1);
+        -:  136:
+        -:  137:      // [string.view.cons], construction and assignment
+        -:  138:
+        -:  139:      constexpr
+        -:  140:      basic_string_view() noexcept
+        -:  141:      : _M_len{0}, _M_str{nullptr}
+        -:  142:      { }
+        -:  143:
+        -:  144:      constexpr basic_string_view(const basic_string_view&) noexcept = default;
+        -:  145:
+        -:  146:      [[__gnu__::__nonnull__]]
+        -:  147:      constexpr
+    #####:  148:      basic_string_view(const _CharT* __str) noexcept
+    #####:  149:      : _M_len{traits_type::length(__str)},
+    #####:  150:	_M_str{__str}
+    #####:  151:      { }
+        -:  152:
+        -:  153:      constexpr
+    #####:  154:      basic_string_view(const _CharT* __str, size_type __len) noexcept
+    #####:  155:      : _M_len{__len}, _M_str{__str}
+    #####:  156:      { }
+        -:  157:
+        -:  158:#if __cplusplus >= 202002L && __cpp_lib_concepts
+        -:  159:      template<contiguous_iterator _It, sized_sentinel_for<_It> _End>
+        -:  160:	requires same_as<iter_value_t<_It>, _CharT>
+        -:  161:	  && (!convertible_to<_End, size_type>)
+        -:  162:	constexpr
+        -:  163:	basic_string_view(_It __first, _End __last)
+        -:  164:	noexcept(noexcept(__last - __first))
+        -:  165:	: _M_len(__last - __first), _M_str(std::to_address(__first))
+        -:  166:	{ }
+        -:  167:
+        -:  168:#if __cplusplus > 202002L
+        -:  169:      template<typename _Range, typename _DRange = remove_cvref_t<_Range>>
+        -:  170:	requires (!is_same_v<_DRange, basic_string_view>)
+        -:  171:	  && ranges::contiguous_range<_Range>
+        -:  172:	  && ranges::sized_range<_Range>
+        -:  173:	  && is_same_v<ranges::range_value_t<_Range>, _CharT>
+        -:  174:	  && (!is_convertible_v<_Range, const _CharT*>)
+        -:  175:	  && (!requires (_DRange& __d) {
+        -:  176:		__d.operator ::std::basic_string_view<_CharT, _Traits>();
+        -:  177:	      })
+        -:  178:	constexpr explicit
+        -:  179:	basic_string_view(_Range&& __r)
+        -:  180:	noexcept(noexcept(ranges::size(__r)) && noexcept(ranges::data(__r)))
+        -:  181:	: _M_len(ranges::size(__r)), _M_str(ranges::data(__r))
+        -:  182:	{ }
+        -:  183:
+        -:  184:      basic_string_view(nullptr_t) = delete;
+        -:  185:#endif // C++23
+        -:  186:#endif // C++20
+        -:  187:
+        -:  188:      constexpr basic_string_view&
+        -:  189:      operator=(const basic_string_view&) noexcept = default;
+        -:  190:
+        -:  191:      // [string.view.iterators], iterator support
+        -:  192:
+        -:  193:      [[nodiscard]]
+        -:  194:      constexpr const_iterator
+        -:  195:      begin() const noexcept
+        -:  196:      { return this->_M_str; }
+        -:  197:
+        -:  198:      [[nodiscard]]
+        -:  199:      constexpr const_iterator
+        -:  200:      end() const noexcept
+        -:  201:      { return this->_M_str + this->_M_len; }
+        -:  202:
+        -:  203:      [[nodiscard]]
+        -:  204:      constexpr const_iterator
+        -:  205:      cbegin() const noexcept
+        -:  206:      { return this->_M_str; }
+        -:  207:
+        -:  208:      [[nodiscard]]
+        -:  209:      constexpr const_iterator
+        -:  210:      cend() const noexcept
+        -:  211:      { return this->_M_str + this->_M_len; }
+        -:  212:
+        -:  213:      [[nodiscard]]
+        -:  214:      constexpr const_reverse_iterator
+        -:  215:      rbegin() const noexcept
+        -:  216:      { return const_reverse_iterator(this->end()); }
+        -:  217:
+        -:  218:      [[nodiscard]]
+        -:  219:      constexpr const_reverse_iterator
+        -:  220:      rend() const noexcept
+        -:  221:      { return const_reverse_iterator(this->begin()); }
+        -:  222:
+        -:  223:      [[nodiscard]]
+        -:  224:      constexpr const_reverse_iterator
+        -:  225:      crbegin() const noexcept
+        -:  226:      { return const_reverse_iterator(this->end()); }
+        -:  227:
+        -:  228:      [[nodiscard]]
+        -:  229:      constexpr const_reverse_iterator
+        -:  230:      crend() const noexcept
+        -:  231:      { return const_reverse_iterator(this->begin()); }
+        -:  232:
+        -:  233:      // [string.view.capacity], capacity
+        -:  234:
+        -:  235:      [[nodiscard]]
+        -:  236:      constexpr size_type
+    #####:  237:      size() const noexcept
+    #####:  238:      { return this->_M_len; }
+------------------
+_ZNKSt17basic_string_viewIwSt11char_traitsIwEE4sizeEv:
+    #####:  237:      size() const noexcept
+    #####:  238:      { return this->_M_len; }
+------------------
+_ZNKSt17basic_string_viewIcSt11char_traitsIcEE4sizeEv:
+    #####:  237:      size() const noexcept
+    #####:  238:      { return this->_M_len; }
+------------------
+        -:  239:
+        -:  240:      [[nodiscard]]
+        -:  241:      constexpr size_type
+        -:  242:      length() const noexcept
+        -:  243:      { return _M_len; }
+        -:  244:
+        -:  245:      [[nodiscard]]
+        -:  246:      constexpr size_type
+        -:  247:      max_size() const noexcept
+        -:  248:      {
+        -:  249:	return (npos - sizeof(size_type) - sizeof(void*))
+        -:  250:		/ sizeof(value_type) / 4;
+        -:  251:      }
+        -:  252:
+        -:  253:      [[nodiscard]]
+        -:  254:      constexpr bool
+        -:  255:      empty() const noexcept
+        -:  256:      { return this->_M_len == 0; }
+        -:  257:
+        -:  258:      // [string.view.access], element access
+        -:  259:
+        -:  260:      [[nodiscard]]
+        -:  261:      constexpr const_reference
+        -:  262:      operator[](size_type __pos) const noexcept
+        -:  263:      {
+        -:  264:	__glibcxx_assert(__pos < this->_M_len);
+        -:  265:	return *(this->_M_str + __pos);
+        -:  266:      }
+        -:  267:
+        -:  268:      [[nodiscard]]
+        -:  269:      constexpr const_reference
+        -:  270:      at(size_type __pos) const
+        -:  271:      {
+        -:  272:	if (__pos >= _M_len)
+        -:  273:	  __throw_out_of_range_fmt(__N("basic_string_view::at: __pos "
+        -:  274:				       "(which is %zu) >= this->size() "
+        -:  275:				       "(which is %zu)"), __pos, this->size());
+        -:  276:	return *(this->_M_str + __pos);
+        -:  277:      }
+        -:  278:
+        -:  279:      [[nodiscard]]
+        -:  280:      constexpr const_reference
+        -:  281:      front() const noexcept
+        -:  282:      {
+        -:  283:	__glibcxx_assert(this->_M_len > 0);
+        -:  284:	return *this->_M_str;
+        -:  285:      }
+        -:  286:
+        -:  287:      [[nodiscard]]
+        -:  288:      constexpr const_reference
+        -:  289:      back() const noexcept
+        -:  290:      {
+        -:  291:	__glibcxx_assert(this->_M_len > 0);
+        -:  292:	return *(this->_M_str + this->_M_len - 1);
+        -:  293:      }
+        -:  294:
+        -:  295:      [[nodiscard]]
+        -:  296:      constexpr const_pointer
+    #####:  297:      data() const noexcept
+    #####:  298:      { return this->_M_str; }
+------------------
+_ZNKSt17basic_string_viewIwSt11char_traitsIwEE4dataEv:
+    #####:  297:      data() const noexcept
+    #####:  298:      { return this->_M_str; }
+------------------
+_ZNKSt17basic_string_viewIcSt11char_traitsIcEE4dataEv:
+    #####:  297:      data() const noexcept
+    #####:  298:      { return this->_M_str; }
+------------------
+        -:  299:
+        -:  300:      // [string.view.modifiers], modifiers:
+        -:  301:
+        -:  302:      constexpr void
+        -:  303:      remove_prefix(size_type __n) noexcept
+        -:  304:      {
+        -:  305:	__glibcxx_assert(this->_M_len >= __n);
+        -:  306:	this->_M_str += __n;
+        -:  307:	this->_M_len -= __n;
+        -:  308:      }
+        -:  309:
+        -:  310:      constexpr void
+        -:  311:      remove_suffix(size_type __n) noexcept
+        -:  312:      {
+        -:  313:	__glibcxx_assert(this->_M_len >= __n);
+        -:  314:	this->_M_len -= __n;
+        -:  315:      }
+        -:  316:
+        -:  317:      constexpr void
+        -:  318:      swap(basic_string_view& __sv) noexcept
+        -:  319:      {
+        -:  320:	auto __tmp = *this;
+        -:  321:	*this = __sv;
+        -:  322:	__sv = __tmp;
+        -:  323:      }
+        -:  324:
+        -:  325:      // [string.view.ops], string operations:
+        -:  326:
+        -:  327:      _GLIBCXX20_CONSTEXPR
+        -:  328:      size_type
+        -:  329:      copy(_CharT* __str, size_type __n, size_type __pos = 0) const
+        -:  330:      {
+        -:  331:	__glibcxx_requires_string_len(__str, __n);
+        -:  332:	__pos = std::__sv_check(size(), __pos, "basic_string_view::copy");
+        -:  333:	const size_type __rlen = std::min<size_t>(__n, _M_len - __pos);
+        -:  334:	// _GLIBCXX_RESOLVE_LIB_DEFECTS
+        -:  335:	// 2777. basic_string_view::copy should use char_traits::copy
+        -:  336:	traits_type::copy(__str, data() + __pos, __rlen);
+        -:  337:	return __rlen;
+        -:  338:      }
+        -:  339:
+        -:  340:      [[nodiscard]]
+        -:  341:      constexpr basic_string_view
+        -:  342:      substr(size_type __pos = 0, size_type __n = npos) const noexcept(false)
+        -:  343:      {
+        -:  344:	__pos = std::__sv_check(size(), __pos, "basic_string_view::substr");
+        -:  345:	const size_type __rlen = std::min<size_t>(__n, _M_len - __pos);
+        -:  346:	return basic_string_view{_M_str + __pos, __rlen};
+        -:  347:      }
+        -:  348:
+        -:  349:#ifdef __glibcxx_string_subview // >= C++26
+        -:  350:      [[nodiscard]]
+        -:  351:      constexpr basic_string_view
+        -:  352:      subview(size_type __pos = 0, size_type __n = npos) const
+        -:  353:      { return substr(__pos, __n); }
+        -:  354:#endif
+        -:  355:
+        -:  356:      [[nodiscard]]
+        -:  357:      constexpr int
+        -:  358:      compare(basic_string_view __str) const noexcept
+        -:  359:      {
+        -:  360:	const size_type __rlen = std::min(this->_M_len, __str._M_len);
+        -:  361:	int __ret = traits_type::compare(this->_M_str, __str._M_str, __rlen);
+        -:  362:	if (__ret == 0)
+        -:  363:	  __ret = _S_compare(this->_M_len, __str._M_len);
+        -:  364:	return __ret;
+        -:  365:      }
+        -:  366:
+        -:  367:      [[nodiscard]]
+        -:  368:      constexpr int
+        -:  369:      compare(size_type __pos1, size_type __n1, basic_string_view __str) const
+        -:  370:      { return this->substr(__pos1, __n1).compare(__str); }
+        -:  371:
+        -:  372:      [[nodiscard]]
+        -:  373:      constexpr int
+        -:  374:      compare(size_type __pos1, size_type __n1,
+        -:  375:	      basic_string_view __str, size_type __pos2, size_type __n2) const
+        -:  376:      {
+        -:  377:	return this->substr(__pos1, __n1).compare(__str.substr(__pos2, __n2));
+        -:  378:      }
+        -:  379:
+        -:  380:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  381:      constexpr int
+        -:  382:      compare(const _CharT* __str) const noexcept
+        -:  383:      { return this->compare(basic_string_view{__str}); }
+        -:  384:
+        -:  385:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  386:      constexpr int
+        -:  387:      compare(size_type __pos1, size_type __n1, const _CharT* __str) const
+        -:  388:      { return this->substr(__pos1, __n1).compare(basic_string_view{__str}); }
+        -:  389:
+        -:  390:      [[nodiscard]]
+        -:  391:      constexpr int
+        -:  392:      compare(size_type __pos1, size_type __n1,
+        -:  393:	      const _CharT* __str, size_type __n2) const noexcept(false)
+        -:  394:      {
+        -:  395:	return this->substr(__pos1, __n1)
+        -:  396:		   .compare(basic_string_view(__str, __n2));
+        -:  397:      }
+        -:  398:
+        -:  399:#ifdef __cpp_lib_starts_ends_with // C++ >= 20
+        -:  400:      [[nodiscard]]
+        -:  401:      constexpr bool
+        -:  402:      starts_with(basic_string_view __x) const noexcept
+        -:  403:      {
+        -:  404:	return _M_len >= __x._M_len
+        -:  405:	  && traits_type::compare(_M_str, __x._M_str, __x._M_len) == 0;
+        -:  406:      }
+        -:  407:
+        -:  408:      [[nodiscard]]
+        -:  409:      constexpr bool
+        -:  410:      starts_with(_CharT __x) const noexcept
+        -:  411:      { return !this->empty() && traits_type::eq(this->front(), __x); }
+        -:  412:
+        -:  413:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  414:      constexpr bool
+        -:  415:      starts_with(const _CharT* __x) const noexcept
+        -:  416:      { return this->starts_with(basic_string_view(__x)); }
+        -:  417:
+        -:  418:      [[nodiscard]]
+        -:  419:      constexpr bool
+        -:  420:      ends_with(basic_string_view __x) const noexcept
+        -:  421:      {
+        -:  422:	const auto __len = this->size();
+        -:  423:	const auto __xlen = __x.size();
+        -:  424:	return __len >= __xlen
+        -:  425:	  && traits_type::compare(end() - __xlen, __x.data(), __xlen) == 0;
+        -:  426:      }
+        -:  427:
+        -:  428:      [[nodiscard]]
+        -:  429:      constexpr bool
+        -:  430:      ends_with(_CharT __x) const noexcept
+        -:  431:      { return !this->empty() && traits_type::eq(this->back(), __x); }
+        -:  432:
+        -:  433:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  434:      constexpr bool
+        -:  435:      ends_with(const _CharT* __x) const noexcept
+        -:  436:      { return this->ends_with(basic_string_view(__x)); }
+        -:  437:#endif // __cpp_lib_starts_ends_with
+        -:  438:
+        -:  439:#if __cplusplus > 202002L
+        -:  440:#if _GLIBCXX_HOSTED && !defined(__cpp_lib_string_contains)
+        -:  441:      // This FTM is not freestanding as it also implies matching <string>
+        -:  442:      // support, and <string> is omitted from the freestanding subset.
+        -:  443:# error "libstdc++ bug: string_contains not defined when it should be"
+        -:  444:#endif // HOSTED
+        -:  445:      [[nodiscard]]
+        -:  446:      constexpr bool
+        -:  447:      contains(basic_string_view __x) const noexcept
+        -:  448:      { return this->find(__x) != npos; }
+        -:  449:
+        -:  450:      [[nodiscard]]
+        -:  451:      constexpr bool
+        -:  452:      contains(_CharT __x) const noexcept
+        -:  453:      { return this->find(__x) != npos; }
+        -:  454:
+        -:  455:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  456:      constexpr bool
+        -:  457:      contains(const _CharT* __x) const noexcept
+        -:  458:      { return this->find(__x) != npos; }
+        -:  459:#endif // C++23
+        -:  460:
+        -:  461:      // [string.view.find], searching
+        -:  462:
+        -:  463:      [[nodiscard]]
+        -:  464:      constexpr size_type
+        -:  465:      find(basic_string_view __str, size_type __pos = 0) const noexcept
+        -:  466:      { return this->find(__str._M_str, __pos, __str._M_len); }
+        -:  467:
+        -:  468:      [[nodiscard]]
+        -:  469:      constexpr size_type
+        -:  470:      find(_CharT __c, size_type __pos = 0) const noexcept;
+        -:  471:
+        -:  472:      [[nodiscard]]
+        -:  473:      constexpr size_type
+        -:  474:      find(const _CharT* __str, size_type __pos, size_type __n) const noexcept;
+        -:  475:
+        -:  476:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  477:      constexpr size_type
+        -:  478:      find(const _CharT* __str, size_type __pos = 0) const noexcept
+        -:  479:      { return this->find(__str, __pos, traits_type::length(__str)); }
+        -:  480:
+        -:  481:      [[nodiscard]]
+        -:  482:      constexpr size_type
+        -:  483:      rfind(basic_string_view __str, size_type __pos = npos) const noexcept
+        -:  484:      { return this->rfind(__str._M_str, __pos, __str._M_len); }
+        -:  485:
+        -:  486:      [[nodiscard]]
+        -:  487:      constexpr size_type
+        -:  488:      rfind(_CharT __c, size_type __pos = npos) const noexcept;
+        -:  489:
+        -:  490:      [[nodiscard]]
+        -:  491:      constexpr size_type
+        -:  492:      rfind(const _CharT* __str, size_type __pos, size_type __n) const noexcept;
+        -:  493:
+        -:  494:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  495:      constexpr size_type
+        -:  496:      rfind(const _CharT* __str, size_type __pos = npos) const noexcept
+        -:  497:      { return this->rfind(__str, __pos, traits_type::length(__str)); }
+        -:  498:
+        -:  499:      [[nodiscard]]
+        -:  500:      constexpr size_type
+        -:  501:      find_first_of(basic_string_view __str, size_type __pos = 0) const noexcept
+        -:  502:      { return this->find_first_of(__str._M_str, __pos, __str._M_len); }
+        -:  503:
+        -:  504:      [[nodiscard]]
+        -:  505:      constexpr size_type
+        -:  506:      find_first_of(_CharT __c, size_type __pos = 0) const noexcept
+        -:  507:      { return this->find(__c, __pos); }
+        -:  508:
+        -:  509:      [[nodiscard]]
+        -:  510:      constexpr size_type
+        -:  511:      find_first_of(const _CharT* __str, size_type __pos,
+        -:  512:		    size_type __n) const noexcept;
+        -:  513:
+        -:  514:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  515:      constexpr size_type
+        -:  516:      find_first_of(const _CharT* __str, size_type __pos = 0) const noexcept
+        -:  517:      { return this->find_first_of(__str, __pos, traits_type::length(__str)); }
+        -:  518:
+        -:  519:      [[nodiscard]]
+        -:  520:      constexpr size_type
+        -:  521:      find_last_of(basic_string_view __str,
+        -:  522:		   size_type __pos = npos) const noexcept
+        -:  523:      { return this->find_last_of(__str._M_str, __pos, __str._M_len); }
+        -:  524:
+        -:  525:      [[nodiscard]]
+        -:  526:      constexpr size_type
+        -:  527:      find_last_of(_CharT __c, size_type __pos=npos) const noexcept
+        -:  528:      { return this->rfind(__c, __pos); }
+        -:  529:
+        -:  530:      [[nodiscard]]
+        -:  531:      constexpr size_type
+        -:  532:      find_last_of(const _CharT* __str, size_type __pos,
+        -:  533:		   size_type __n) const noexcept;
+        -:  534:
+        -:  535:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  536:      constexpr size_type
+        -:  537:      find_last_of(const _CharT* __str, size_type __pos = npos) const noexcept
+        -:  538:      { return this->find_last_of(__str, __pos, traits_type::length(__str)); }
+        -:  539:
+        -:  540:      [[nodiscard]]
+        -:  541:      constexpr size_type
+        -:  542:      find_first_not_of(basic_string_view __str,
+        -:  543:			size_type __pos = 0) const noexcept
+        -:  544:      { return this->find_first_not_of(__str._M_str, __pos, __str._M_len); }
+        -:  545:
+        -:  546:      [[nodiscard]]
+        -:  547:      constexpr size_type
+        -:  548:      find_first_not_of(_CharT __c, size_type __pos = 0) const noexcept;
+        -:  549:
+        -:  550:      [[nodiscard]]
+        -:  551:      constexpr size_type
+        -:  552:      find_first_not_of(const _CharT* __str,
+        -:  553:			size_type __pos, size_type __n) const noexcept;
+        -:  554:
+        -:  555:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  556:      constexpr size_type
+        -:  557:      find_first_not_of(const _CharT* __str, size_type __pos = 0) const noexcept
+        -:  558:      {
+        -:  559:	return this->find_first_not_of(__str, __pos,
+        -:  560:				       traits_type::length(__str));
+        -:  561:      }
+        -:  562:
+        -:  563:      [[nodiscard]]
+        -:  564:      constexpr size_type
+        -:  565:      find_last_not_of(basic_string_view __str,
+        -:  566:		       size_type __pos = npos) const noexcept
+        -:  567:      { return this->find_last_not_of(__str._M_str, __pos, __str._M_len); }
+        -:  568:
+        -:  569:      [[nodiscard]]
+        -:  570:      constexpr size_type
+        -:  571:      find_last_not_of(_CharT __c, size_type __pos = npos) const noexcept;
+        -:  572:
+        -:  573:      [[nodiscard]]
+        -:  574:      constexpr size_type
+        -:  575:      find_last_not_of(const _CharT* __str,
+        -:  576:		       size_type __pos, size_type __n) const noexcept;
+        -:  577:
+        -:  578:      [[nodiscard, __gnu__::__nonnull__]]
+        -:  579:      constexpr size_type
+        -:  580:      find_last_not_of(const _CharT* __str,
+        -:  581:		       size_type __pos = npos) const noexcept
+        -:  582:      {
+        -:  583:	return this->find_last_not_of(__str, __pos,
+        -:  584:				      traits_type::length(__str));
+        -:  585:      }
+        -:  586:
+        -:  587:    private:
+        -:  588:
+        -:  589:      static constexpr int
+        -:  590:      _S_compare(size_type __n1, size_type __n2) noexcept
+        -:  591:      {
+        -:  592:	using __limits = __gnu_cxx::__int_traits<int>;
+        -:  593:	const difference_type __diff = __n1 - __n2;
+        -:  594:	if (__diff > __limits::__max)
+        -:  595:	  return __limits::__max;
+        -:  596:	if (__diff < __limits::__min)
+        -:  597:	  return __limits::__min;
+        -:  598:	return static_cast<int>(__diff);
+        -:  599:      }
+        -:  600:
+        -:  601:      size_t	    _M_len;
+        -:  602:      const _CharT* _M_str;
+        -:  603:    };
+        -:  604:
+        -:  605:#if __cplusplus > 201703L && __cpp_lib_concepts && __cpp_deduction_guides
+        -:  606:  template<contiguous_iterator _It, sized_sentinel_for<_It> _End>
+        -:  607:    basic_string_view(_It, _End) -> basic_string_view<iter_value_t<_It>>;
+        -:  608:
+        -:  609:#if __cplusplus > 202002L
+        -:  610:  template<ranges::contiguous_range _Range>
+        -:  611:    basic_string_view(_Range&&)
+        -:  612:      -> basic_string_view<ranges::range_value_t<_Range>>;
+        -:  613:#endif
+        -:  614:#endif
+        -:  615:
+        -:  616:  // [string.view.comparison], non-member basic_string_view comparison function
+        -:  617:
+        -:  618:  // Several of these functions use type_identity_t to create a non-deduced
+        -:  619:  // context, so that only one argument participates in template argument
+        -:  620:  // deduction and the other argument gets implicitly converted to the deduced
+        -:  621:  // type (see N3766).
+        -:  622:
+        -:  623:#if __cpp_lib_three_way_comparison
+        -:  624:  template<typename _CharT, typename _Traits>
+        -:  625:    [[nodiscard]]
+        -:  626:    constexpr bool
+        -:  627:    operator==(basic_string_view<_CharT, _Traits> __x,
+        -:  628:	       type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  629:    noexcept
+        -:  630:    { return __x.size() == __y.size() && __x.compare(__y) == 0; }
+        -:  631:
+        -:  632:  template<typename _CharT, typename _Traits>
+        -:  633:    [[nodiscard]]
+        -:  634:    constexpr auto
+        -:  635:    operator<=>(basic_string_view<_CharT, _Traits> __x,
+        -:  636:		__type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  637:    noexcept
+        -:  638:    -> decltype(__detail::__char_traits_cmp_cat<_Traits>(0))
+        -:  639:    { return __detail::__char_traits_cmp_cat<_Traits>(__x.compare(__y)); }
+        -:  640:#else
+        -:  641:  template<typename _CharT, typename _Traits>
+        -:  642:    [[nodiscard]]
+        -:  643:    constexpr bool
+        -:  644:    operator==(basic_string_view<_CharT, _Traits> __x,
+        -:  645:	       __type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  646:    noexcept
+        -:  647:    { return __x.size() == __y.size() && __x.compare(__y) == 0; }
+        -:  648:
+        -:  649:  template<typename _CharT, typename _Traits>
+        -:  650:    [[nodiscard]]
+        -:  651:    constexpr bool
+        -:  652:    operator==(basic_string_view<_CharT, _Traits> __x,
+        -:  653:	       basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  654:    { return __x.size() == __y.size() && __x.compare(__y) == 0; }
+        -:  655:
+        -:  656:  template<typename _CharT, typename _Traits>
+        -:  657:    [[nodiscard]]
+        -:  658:    constexpr bool
+        -:  659:    operator==(__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+        -:  660:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  661:    { return __x.size() == __y.size() && __x.compare(__y) == 0; }
+        -:  662:
+        -:  663:  template<typename _CharT, typename _Traits>
+        -:  664:    [[nodiscard]]
+        -:  665:    constexpr bool
+        -:  666:    operator!=(basic_string_view<_CharT, _Traits> __x,
+        -:  667:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  668:    { return !(__x == __y); }
+        -:  669:
+        -:  670:  template<typename _CharT, typename _Traits>
+        -:  671:    [[nodiscard]]
+        -:  672:    constexpr bool
+        -:  673:    operator!=(basic_string_view<_CharT, _Traits> __x,
+        -:  674:               __type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  675:    noexcept
+        -:  676:    { return !(__x == __y); }
+        -:  677:
+        -:  678:  template<typename _CharT, typename _Traits>
+        -:  679:    [[nodiscard]]
+        -:  680:    constexpr bool
+        -:  681:    operator!=(__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+        -:  682:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  683:    { return !(__x == __y); }
+        -:  684:
+        -:  685:  template<typename _CharT, typename _Traits>
+        -:  686:    [[nodiscard]]
+        -:  687:    constexpr bool
+        -:  688:    operator< (basic_string_view<_CharT, _Traits> __x,
+        -:  689:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  690:    { return __x.compare(__y) < 0; }
+        -:  691:
+        -:  692:  template<typename _CharT, typename _Traits>
+        -:  693:    [[nodiscard]]
+        -:  694:    constexpr bool
+        -:  695:    operator< (basic_string_view<_CharT, _Traits> __x,
+        -:  696:               __type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  697:    noexcept
+        -:  698:    { return __x.compare(__y) < 0; }
+        -:  699:
+        -:  700:  template<typename _CharT, typename _Traits>
+        -:  701:    [[nodiscard]]
+        -:  702:    constexpr bool
+        -:  703:    operator< (__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+        -:  704:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  705:    { return __x.compare(__y) < 0; }
+        -:  706:
+        -:  707:  template<typename _CharT, typename _Traits>
+        -:  708:    [[nodiscard]]
+        -:  709:    constexpr bool
+        -:  710:    operator> (basic_string_view<_CharT, _Traits> __x,
+        -:  711:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  712:    { return __x.compare(__y) > 0; }
+        -:  713:
+        -:  714:  template<typename _CharT, typename _Traits>
+        -:  715:    [[nodiscard]]
+        -:  716:    constexpr bool
+        -:  717:    operator> (basic_string_view<_CharT, _Traits> __x,
+        -:  718:               __type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  719:    noexcept
+        -:  720:    { return __x.compare(__y) > 0; }
+        -:  721:
+        -:  722:  template<typename _CharT, typename _Traits>
+        -:  723:    [[nodiscard]]
+        -:  724:    constexpr bool
+        -:  725:    operator> (__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+        -:  726:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  727:    { return __x.compare(__y) > 0; }
+        -:  728:
+        -:  729:  template<typename _CharT, typename _Traits>
+        -:  730:    [[nodiscard]]
+        -:  731:    constexpr bool
+        -:  732:    operator<=(basic_string_view<_CharT, _Traits> __x,
+        -:  733:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  734:    { return __x.compare(__y) <= 0; }
+        -:  735:
+        -:  736:  template<typename _CharT, typename _Traits>
+        -:  737:    [[nodiscard]]
+        -:  738:    constexpr bool
+        -:  739:    operator<=(basic_string_view<_CharT, _Traits> __x,
+        -:  740:               __type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  741:    noexcept
+        -:  742:    { return __x.compare(__y) <= 0; }
+        -:  743:
+        -:  744:  template<typename _CharT, typename _Traits>
+        -:  745:    [[nodiscard]]
+        -:  746:    constexpr bool
+        -:  747:    operator<=(__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+        -:  748:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  749:    { return __x.compare(__y) <= 0; }
+        -:  750:
+        -:  751:  template<typename _CharT, typename _Traits>
+        -:  752:    [[nodiscard]]
+        -:  753:    constexpr bool
+        -:  754:    operator>=(basic_string_view<_CharT, _Traits> __x,
+        -:  755:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  756:    { return __x.compare(__y) >= 0; }
+        -:  757:
+        -:  758:  template<typename _CharT, typename _Traits>
+        -:  759:    [[nodiscard]]
+        -:  760:    constexpr bool
+        -:  761:    operator>=(basic_string_view<_CharT, _Traits> __x,
+        -:  762:               __type_identity_t<basic_string_view<_CharT, _Traits>> __y)
+        -:  763:    noexcept
+        -:  764:    { return __x.compare(__y) >= 0; }
+        -:  765:
+        -:  766:  template<typename _CharT, typename _Traits>
+        -:  767:    [[nodiscard]]
+        -:  768:    constexpr bool
+        -:  769:    operator>=(__type_identity_t<basic_string_view<_CharT, _Traits>> __x,
+        -:  770:               basic_string_view<_CharT, _Traits> __y) noexcept
+        -:  771:    { return __x.compare(__y) >= 0; }
+        -:  772:#endif // three-way comparison
+        -:  773:
+        -:  774:#if _GLIBCXX_HOSTED
+        -:  775:  // [string.view.io], Inserters and extractors
+        -:  776:  template<typename _CharT, typename _Traits>
+        -:  777:    inline basic_ostream<_CharT, _Traits>&
+        -:  778:    operator<<(basic_ostream<_CharT, _Traits>& __os,
+        -:  779:	       basic_string_view<_CharT,_Traits> __str)
+        -:  780:    { return __ostream_insert(__os, __str.data(), __str.size()); }
+        -:  781:#endif // HOSTED
+        -:  782:
+        -:  783:  // basic_string_view typedef names
+        -:  784:
+        -:  785:  using string_view = basic_string_view<char>;
+        -:  786:  using wstring_view = basic_string_view<wchar_t>;
+        -:  787:#ifdef _GLIBCXX_USE_CHAR8_T
+        -:  788:  using u8string_view = basic_string_view<char8_t>;
+        -:  789:#endif
+        -:  790:  using u16string_view = basic_string_view<char16_t>;
+        -:  791:  using u32string_view = basic_string_view<char32_t>;
+        -:  792:
+        -:  793:  // [string.view.hash], hash support:
+        -:  794:
+        -:  795:  template<typename _Tp>
+        -:  796:    struct hash;
+        -:  797:
+        -:  798:  template<>
+        -:  799:    struct hash<string_view>
+        -:  800:    : public __hash_base<size_t, string_view>
+        -:  801:    {
+        -:  802:      [[nodiscard]]
+        -:  803:      size_t
+        -:  804:      operator()(const string_view& __str) const noexcept
+        -:  805:      { return std::_Hash_impl::hash(__str.data(), __str.length()); }
+        -:  806:    };
+        -:  807:
+        -:  808:  template<>
+        -:  809:    struct __is_fast_hash<hash<string_view>> : std::false_type
+        -:  810:    { };
+        -:  811:
+        -:  812:  template<>
+        -:  813:    struct hash<wstring_view>
+        -:  814:    : public __hash_base<size_t, wstring_view>
+        -:  815:    {
+        -:  816:      [[nodiscard]]
+        -:  817:      size_t
+        -:  818:      operator()(const wstring_view& __s) const noexcept
+        -:  819:      { return std::_Hash_impl::hash(__s.data(),
+        -:  820:                                     __s.length() * sizeof(wchar_t)); }
+        -:  821:    };
+        -:  822:
+        -:  823:  template<>
+        -:  824:    struct __is_fast_hash<hash<wstring_view>> : std::false_type
+        -:  825:    { };
+        -:  826:
+        -:  827:#ifdef _GLIBCXX_USE_CHAR8_T
+        -:  828:  template<>
+        -:  829:    struct hash<u8string_view>
+        -:  830:    : public __hash_base<size_t, u8string_view>
+        -:  831:    {
+        -:  832:      [[nodiscard]]
+        -:  833:      size_t
+        -:  834:      operator()(const u8string_view& __str) const noexcept
+        -:  835:      { return std::_Hash_impl::hash(__str.data(), __str.length()); }
+        -:  836:    };
+        -:  837:
+        -:  838:  template<>
+        -:  839:    struct __is_fast_hash<hash<u8string_view>> : std::false_type
+        -:  840:    { };
+        -:  841:#endif
+        -:  842:
+        -:  843:  template<>
+        -:  844:    struct hash<u16string_view>
+        -:  845:    : public __hash_base<size_t, u16string_view>
+        -:  846:    {
+        -:  847:      [[nodiscard]]
+        -:  848:      size_t
+        -:  849:      operator()(const u16string_view& __s) const noexcept
+        -:  850:      { return std::_Hash_impl::hash(__s.data(),
+        -:  851:                                     __s.length() * sizeof(char16_t)); }
+        -:  852:    };
+        -:  853:
+        -:  854:  template<>
+        -:  855:    struct __is_fast_hash<hash<u16string_view>> : std::false_type
+        -:  856:    { };
+        -:  857:
+        -:  858:  template<>
+        -:  859:    struct hash<u32string_view>
+        -:  860:    : public __hash_base<size_t, u32string_view>
+        -:  861:    {
+        -:  862:      [[nodiscard]]
+        -:  863:      size_t
+        -:  864:      operator()(const u32string_view& __s) const noexcept
+        -:  865:      { return std::_Hash_impl::hash(__s.data(),
+        -:  866:                                     __s.length() * sizeof(char32_t)); }
+        -:  867:    };
+        -:  868:
+        -:  869:  template<>
+        -:  870:    struct __is_fast_hash<hash<u32string_view>> : std::false_type
+        -:  871:    { };
+        -:  872:
+        -:  873:  inline namespace literals
+        -:  874:  {
+        -:  875:  inline namespace string_view_literals
+        -:  876:  {
+        -:  877:#pragma GCC diagnostic push
+        -:  878:#pragma GCC diagnostic ignored "-Wliteral-suffix"
+        -:  879:    inline constexpr basic_string_view<char>
+        -:  880:    operator""sv(const char* __str, size_t __len) noexcept
+        -:  881:    { return basic_string_view<char>{__str, __len}; }
+        -:  882:
+        -:  883:    inline constexpr basic_string_view<wchar_t>
+        -:  884:    operator""sv(const wchar_t* __str, size_t __len) noexcept
+        -:  885:    { return basic_string_view<wchar_t>{__str, __len}; }
+        -:  886:
+        -:  887:#ifdef _GLIBCXX_USE_CHAR8_T
+        -:  888:    inline constexpr basic_string_view<char8_t>
+        -:  889:    operator""sv(const char8_t* __str, size_t __len) noexcept
+        -:  890:    { return basic_string_view<char8_t>{__str, __len}; }
+        -:  891:#endif
+        -:  892:
+        -:  893:    inline constexpr basic_string_view<char16_t>
+        -:  894:    operator""sv(const char16_t* __str, size_t __len) noexcept
+        -:  895:    { return basic_string_view<char16_t>{__str, __len}; }
+        -:  896:
+        -:  897:    inline constexpr basic_string_view<char32_t>
+        -:  898:    operator""sv(const char32_t* __str, size_t __len) noexcept
+        -:  899:    { return basic_string_view<char32_t>{__str, __len}; }
+        -:  900:
+        -:  901:#pragma GCC diagnostic pop
+        -:  902:  } // namespace string_literals
+        -:  903:  } // namespace literals
+        -:  904:
+        -:  905:#if __cpp_lib_concepts
+        -:  906:  namespace ranges
+        -:  907:  {
+        -:  908:    // Opt-in to borrowed_range concept
+        -:  909:    template<typename _CharT, typename _Traits>
+        -:  910:      inline constexpr bool
+        -:  911:	enable_borrowed_range<basic_string_view<_CharT, _Traits>> = true;
+        -:  912:
+        -:  913:    // Opt-in to view concept
+        -:  914:    template<typename _CharT, typename _Traits>
+        -:  915:      inline constexpr bool
+        -:  916:	enable_view<basic_string_view<_CharT, _Traits>> = true;
+        -:  917:  }
+        -:  918:#endif
+        -:  919:_GLIBCXX_END_NAMESPACE_VERSION
+        -:  920:} // namespace std
+        -:  921:
+        -:  922:#include <bits/string_view.tcc>
+        -:  923:
+        -:  924:#if __glibcxx_exc_in_string == 2
+        -:  925:#undef __glibcxx_exc_in_string
+        -:  926:#if (_GLIBCXX_HOSTED && __cpp_exceptions && __cplusplus > 202302L \
+        -:  927:     && __cpp_constexpr_exceptions >= 202411L)
+        -:  928:#include <bits/stdexcept_throw.h>
+        -:  929:#endif
+        -:  930:#endif
+        -:  931:
+        -:  932:#endif // C++17
+        -:  933:
+        -:  934:#endif // _GLIBCXX_STRING_VIEW
