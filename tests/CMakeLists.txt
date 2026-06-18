@@ -123,3 +123,17 @@ target_link_libraries(test_text_injector PRIVATE
 )
 
 add_test(NAME test_text_injector COMMAND test_text_injector)
+
+add_executable(test_sound_feedback
+    test_sound_feedback.cpp
+)
+
+target_include_directories(test_sound_feedback PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sound_feedback PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_sound_feedback COMMAND test_sound_feedback)

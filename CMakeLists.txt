@@ -13,6 +13,7 @@ add_library(vocawin_core STATIC
     src/app/SingleInstance.cpp
     src/audio/AudioBuffer.cpp
     src/audio/SilenceDetector.cpp
+    src/audio/SoundFeedback.cpp
     src/config/Settings.cpp
     src/config/SettingsStore.cpp
     src/input/ClipboardManager.cpp
@@ -32,7 +33,7 @@ target_compile_definitions(vocawin_core PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(vocawin_core PRIVATE advapi32 user32)
+    target_link_libraries(vocawin_core PRIVATE advapi32 user32 winmm)
 endif()
 
 add_executable(vocawin
