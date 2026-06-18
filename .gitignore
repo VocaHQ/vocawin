@@ -15,3 +15,10 @@ out/
 *.log
 *.tmp
 .vs/
+*.gcov
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+__pycache__/
+.cache/
