@@ -67,3 +67,17 @@ target_link_libraries(test_tray_icon PRIVATE
 )
 
 add_test(NAME test_tray_icon COMMAND test_tray_icon)
+
+add_executable(test_audio_buffer
+    test_audio_buffer.cpp
+)
+
+target_include_directories(test_audio_buffer PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_audio_buffer PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_audio_buffer COMMAND test_audio_buffer)

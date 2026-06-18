@@ -11,6 +11,7 @@ option(VOCAWIN_BUILD_TESTS "Build unit tests" ON)
 add_library(vocawin_core STATIC
     src/app/AppController.cpp
     src/app/SingleInstance.cpp
+    src/audio/AudioBuffer.cpp
     src/config/Settings.cpp
     src/config/SettingsStore.cpp
     src/ui/TrayIcon.cpp
