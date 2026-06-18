@@ -13,9 +13,13 @@ int main() {
     {
         vocawin::SettingsStore store(path);
         const vocawin::Settings defaults = store.load();
-        assert(defaults.model_id == "base");
+        assert(defaults.model_id == "base.en");
         assert(defaults.language == "auto");
         assert(defaults.launch_at_startup);
+        assert(defaults.hotkey_vk_code == 0xA3);  // VK_RCONTROL
+        assert(defaults.activation_mode == 0);
+        assert(defaults.silence_threshold == 0.01f);
+        assert(defaults.text_injection_method == 0);
     }
 
     // Save + load happy path.
