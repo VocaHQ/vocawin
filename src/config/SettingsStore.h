@@ -13,6 +13,8 @@ public:
     Settings load() const;
     bool save(const Settings& settings) const;
 
+    const std::filesystem::path& configPath() const { return config_path_; }
+
 private:
     std::filesystem::path config_path_;
 };

@@ -43,6 +43,7 @@ int main(int argc, char* argv[]) {
     std::cout << "VocaWin initialized. State=" << static_cast<int>(app.state()) << "\n";
 
 #if defined(_WIN32)
+    app.onQuitRequested = []() { PostQuitMessage(0); };
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);

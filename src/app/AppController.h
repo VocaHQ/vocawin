@@ -52,6 +52,8 @@ public:
     std::function<void(State)> onStateChanged;
     std::function<void(float)> onAudioLevelChanged;
     std::function<void(std::wstring)> onTranscriptionComplete;
+    std::function<void()> onAboutRequested;
+    std::function<void()> onQuitRequested;
 
 private:
     void setState(State newState);

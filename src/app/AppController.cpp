@@ -1,5 +1,9 @@
 #include "app/AppController.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>
+#endif
 #include <utility>
 
 namespace vocawin {
@@ -19,7 +23,41 @@ AppController::AppController(std::filesystem::path data_root)
       settings_store_(data_root_ / "config.json"),
       logger_(data_root_ / "logs" / "vocawin.log"),
       model_manager_(data_root_ / "models"),
-      sound_feedback_(data_root_ / "sounds") {}
+      sound_feedback_(data_root_ / "sounds") {
+    tray_icon_.setPaths(settings_store_.configPath().wstring(),
+                        (data_root_ / "logs").wstring());
+    tray_icon_.onMenuCommand = [this](TrayIcon::MenuCommand cmd) {
+        switch (cmd) {
+            case TrayIcon::MenuCommand::ToggleRecording:
+                if (state_ == State::Recording) {
+                    stopRecordingAndTranscribe();
+                } else {
+                    startRecording();
+                }
+                break;
+            case TrayIcon::MenuCommand::OpenSettings: {
+                const auto path = settings_store_.configPath();
+                ShellExecuteW(nullptr, L"open", path.wstring().c_str(),
+                              nullptr, nullptr, SW_SHOWNORMAL);
+                break;
+            }
+            case TrayIcon::MenuCommand::OpenLogs: {
+                const auto dir = data_root_ / "logs";
+                std::error_code ec;
+                std::filesystem::create_directories(dir, ec);
+                ShellExecuteW(nullptr, L"open", dir.wstring().c_str(),
+                              nullptr, nullptr, SW_SHOWNORMAL);
+                break;
+            }
+            case TrayIcon::MenuCommand::About:
+                if (onAboutRequested) onAboutRequested();
+                break;
+            case TrayIcon::MenuCommand::Quit:
+                if (onQuitRequested) onQuitRequested();
+                break;
+        }
+    };
+}
 
 AppController::~AppController() {
     shutdown();

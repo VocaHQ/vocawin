@@ -116,6 +116,34 @@ void TrayIcon::setTooltip(const std::wstring& tooltip) {
     }
 }
 
+void TrayIcon::setPaths(const std::wstring& settingsPath,
+                        const std::wstring& logsDir) {
+    settingsPath_ = settingsPath;
+    logsDir_ = logsDir;
+}
+
+bool TrayIcon::pumpMessage() {
+#if defined(_WIN32)
+    if (hwnd_ == nullptr) return false;
+    MSG msg;
+    while (PeekMessageW(&msg, static_cast<HWND>(hwnd_), 0, 0, PM_REMOVE)) {
+        if (msg.message == WM_USER + 1) {
+            onTrayMessage(static_cast<unsigned int>(msg.lParam));
+            return true;
+        }
+        if (msg.message == WM_COMMAND) {
+            onMenuCommandId(static_cast<unsigned int>(LOWORD(msg.wParam)));
+            return true;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return false;
+#else
+    return false;
+#endif
+}
+
 bool TrayIcon::updateNotifyArea() {
 #if defined(_WIN32)
     if (nid_ == nullptr) {
@@ -147,5 +175,56 @@ bool TrayIcon::updateNotifyArea() {
     return true;
 #endif
 }
+
+#if defined(_WIN32)
+void TrayIcon::showContextMenu() {
+    HMENU hMenu = CreatePopupMenu();
+    if (hMenu == nullptr) return;
+
+    AppendMenuW(hMenu, MF_STRING, kMenuToggle, state_ == State::Recording
+                                                       ? L"Stop Recording"
+                                                       : L"Start Recording");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(hMenu, MF_STRING | (settingsPath_.empty() ? MF_GRAYED : 0),
+                kMenuSettings, L"Open Settings File...");
+    AppendMenuW(hMenu, MF_STRING | (logsDir_.empty() ? MF_GRAYED : 0),
+                kMenuLogs, L"Open Log Folder...");
+    AppendMenuW(hMenu, MF_STRING, kMenuAbout, L"About VocaWin");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(hMenu, MF_STRING, kMenuQuit, L"Quit");
+
+    POINT pt;
+    GetCursorPos(&pt);
+    SetForegroundWindow(static_cast<HWND>(hwnd_));
+    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RIGHTALIGN,
+                    pt.x, pt.y, 0, static_cast<HWND>(hwnd_), nullptr);
+    DestroyMenu(hMenu);
+}
+
+void TrayIcon::onTrayMessage(unsigned int msg) {
+    switch (msg) {
+        case WM_RBUTTONUP:
+            showContextMenu();
+            break;
+        case WM_LBUTTONDBLCLK:
+            if (onMenuCommand) onMenuCommand(MenuCommand::ToggleRecording);
+            break;
+        default:
+            break;
+    }
+}
+
+void TrayIcon::onMenuCommandId(unsigned int id) {
+    if (!onMenuCommand) return;
+    switch (id) {
+        case kMenuToggle:   onMenuCommand(MenuCommand::ToggleRecording); break;
+        case kMenuSettings: onMenuCommand(MenuCommand::OpenSettings);  break;
+        case kMenuLogs:     onMenuCommand(MenuCommand::OpenLogs);      break;
+        case kMenuAbout:    onMenuCommand(MenuCommand::About);         break;
+        case kMenuQuit:     onMenuCommand(MenuCommand::Quit);          break;
+        default: break;
+    }
+}
+#endif  // _WIN32
 
 }  // namespace vocawin
