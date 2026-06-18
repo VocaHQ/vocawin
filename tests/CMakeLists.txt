@@ -193,3 +193,17 @@ target_link_libraries(test_audio_capture PRIVATE
 )
 
 add_test(NAME test_audio_capture COMMAND test_audio_capture)
+
+add_executable(test_whisper_engine
+    test_whisper_engine.cpp
+)
+
+target_include_directories(test_whisper_engine PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_whisper_engine PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_whisper_engine COMMAND test_whisper_engine)
