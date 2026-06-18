@@ -64,7 +64,7 @@ target_compile_definitions(vocawin_core PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(vocawin_core PRIVATE advapi32 user32 winmm ole32 mmdevapi)
+    target_link_libraries(vocawin_core PRIVATE advapi32 user32 winmm ole32 mmdevapi shell32)
 endif()
 
 if(VOCAWIN_WITH_WHISPER)
