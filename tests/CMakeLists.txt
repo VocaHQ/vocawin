@@ -151,3 +151,17 @@ target_link_libraries(test_whisper_compile PRIVATE
 )
 
 add_test(NAME test_whisper_compile COMMAND test_whisper_compile)
+
+add_executable(test_hotkey_manager
+    test_hotkey_manager.cpp
+)
+
+target_include_directories(test_hotkey_manager PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_hotkey_manager PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_hotkey_manager COMMAND test_hotkey_manager)
