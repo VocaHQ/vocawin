@@ -137,3 +137,17 @@ target_link_libraries(test_sound_feedback PRIVATE
 )
 
 add_test(NAME test_sound_feedback COMMAND test_sound_feedback)
+
+add_executable(test_whisper_compile
+    test_whisper_compile.cpp
+)
+
+target_include_directories(test_whisper_compile PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_whisper_compile PRIVATE
+    vocawin_core
+)
+
+add_test(NAME test_whisper_compile COMMAND test_whisper_compile)
