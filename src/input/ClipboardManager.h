@@ -18,6 +18,8 @@ public:
 
     ClipboardManager(const ClipboardManager&) = delete;
     ClipboardManager& operator=(const ClipboardManager&) = delete;
+    ClipboardManager(ClipboardManager&& other) noexcept;
+    ClipboardManager& operator=(ClipboardManager&& other) noexcept;
 
     // Deep-copy every clipboard format currently on the clipboard. Returns
     // true on success (at least one format was captured).

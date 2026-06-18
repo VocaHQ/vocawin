@@ -35,6 +35,40 @@ ClipboardManager::~ClipboardManager() {
 #endif
 }
 
+ClipboardManager::ClipboardManager(ClipboardManager&& other) noexcept
+    : saved_(std::move(other.saved_)),
+      hasSaved_(other.hasSaved_)
+#if defined(_WIN32)
+      , hwnd_(other.hwnd_)
+#endif
+{
+    other.hasSaved_ = false;
+#if defined(_WIN32)
+    other.hwnd_ = nullptr;
+#endif
+}
+
+ClipboardManager& ClipboardManager::operator=(ClipboardManager&& other) noexcept {
+    if (this != &other) {
+        clearSaved();
+#if defined(_WIN32)
+        if (hwnd_ != nullptr) {
+            DestroyWindow(static_cast<HWND>(hwnd_));
+        }
+#endif
+        saved_ = std::move(other.saved_);
+        hasSaved_ = other.hasSaved_;
+#if defined(_WIN32)
+        hwnd_ = other.hwnd_;
+#endif
+        other.hasSaved_ = false;
+#if defined(_WIN32)
+        other.hwnd_ = nullptr;
+#endif
+    }
+    return *this;
+}
+
 bool ClipboardManager::save() {
     clearSaved();
 #if defined(_WIN32)

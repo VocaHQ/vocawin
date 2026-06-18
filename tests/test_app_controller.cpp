@@ -5,23 +5,30 @@
 
 #include "app/AppController.h"
 
+namespace {
+
+void writeCustomConfig(const std::filesystem::path& root) {
+    std::filesystem::create_directories(root);
+    std::ofstream out(root / "config.json");
+    out << "{\n";
+    out << "  \"modelId\": \"small\",\n";
+    out << "  \"language\": \"de\",\n";
+    out << "  \"launchAtStartup\": false,\n";
+    out << "  \"soundEffects\": false,\n";
+    out << "  \"preserveClipboard\": false\n";
+    out << "}\n";
+    out.close();
+}
+
+}  // namespace
+
 int main() {
     const std::filesystem::path root = "build/test-app-controller";
     std::filesystem::remove_all(root);
 
+    // 1. Custom config path: initialize should load custom values.
     {
-        // Existing config path: initialize should load custom values.
-        std::filesystem::create_directories(root);
-        std::ofstream out(root / "config.json");
-        out << "{\n";
-        out << "  \"modelId\": \"small\",\n";
-        out << "  \"language\": \"de\",\n";
-        out << "  \"launchAtStartup\": false,\n";
-        out << "  \"soundEffects\": false,\n";
-        out << "  \"preserveClipboard\": false\n";
-        out << "}\n";
-        out.close();
-
+        writeCustomConfig(root);
         vocawin::AppController app(root);
         const bool initialized = app.initialize();
         assert(initialized);
@@ -38,21 +45,80 @@ int main() {
         assert(!app.isInitialized());
     }
 
+    // 2. Single-instance guard.
     {
         vocawin::AppController app1(root);
-        const bool initialized1 = app1.initialize();
-        assert(initialized1);
-
+        assert(app1.initialize());
         vocawin::AppController app2(root);
-        const bool initialized2 = app2.initialize();
+        const bool init2 = app2.initialize();
 #if defined(_WIN32)
-        assert(!initialized2);
+        assert(!init2);
 #else
-        assert(initialized2);
+        assert(init2);
         app2.shutdown();
 #endif
-
         app1.shutdown();
+    }
+
+    // 3. State before init is NotLoaded.
+    {
+        vocawin::AppController app(root);
+        assert(app.state() == vocawin::AppController::State::NotLoaded);
+    }
+
+    // 4. State after init is NotLoaded (no model downloaded in this test env).
+    {
+        writeCustomConfig(root);
+        vocawin::AppController app(root);
+        assert(app.initialize());
+        // Either Idle (model found) or NotLoaded (model missing) is valid.
+        const auto s = app.state();
+        assert(s == vocawin::AppController::State::Idle ||
+               s == vocawin::AppController::State::NotLoaded);
+    }
+
+    // 5. startRecording before init: no crash, state unchanged.
+    {
+        vocawin::AppController app(root);
+        const auto before = app.state();
+        app.startRecording();
+        assert(app.state() == before);
+    }
+
+    // 6. cancelRecording on a fresh controller: no crash, state unchanged.
+    {
+        vocawin::AppController app(root);
+        const auto before = app.state();
+        app.cancelRecording();
+        assert(app.state() == before);
+    }
+
+    // 7. stopRecordingAndTranscribe without model: no crash.
+    {
+        writeCustomConfig(root);
+        vocawin::AppController app(root);
+        app.initialize();
+        app.stopRecordingAndTranscribe();
+        app.shutdown();
+    }
+
+    // 8. onStateChanged callback can be registered without crash.
+    {
+        writeCustomConfig(root);
+        vocawin::AppController app(root);
+        int callbackCount = 0;
+        app.onStateChanged = [&callbackCount](vocawin::AppController::State) {
+            ++callbackCount;
+        };
+        app.initialize();
+        (void)callbackCount;
+        app.shutdown();
+    }
+
+    // 9. lastError() starts empty.
+    {
+        vocawin::AppController app(root);
+        assert(app.lastError().empty());
     }
 
     std::filesystem::remove_all(root);
