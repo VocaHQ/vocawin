@@ -32,6 +32,13 @@ public:
     // Re-arm: clear timeoutFired and reset lastLoudTime to now.
     void reset();
 
+    void applyConfig(const Config& c) {
+        threshold_ = c.threshold;
+        silenceDurationMs_ = c.durationMs;
+    }
+    float threshold() const { return threshold_; }
+    std::uint32_t durationMs() const { return silenceDurationMs_; }
+
     bool isSilent() const { return silent_; }
     std::chrono::milliseconds silenceDuration() const;
 

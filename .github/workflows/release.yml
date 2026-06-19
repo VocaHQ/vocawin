@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build MSI and publish GitHub Release
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure (CPU + Vulkan release)
+        run: cmake --preset release-vulkan
+
+      - name: Build
+        run: cmake --build build/release-vulkan -j4
+
+      - name: Stage MinGW runtime DLLs
+        shell: pwsh
+        run: |
+          $mingw = "C:/msys64/mingw64/bin"
+          if (Test-Path $mingw) {
+            Get-ChildItem "$mingw/libgcc_s_seh-1.dll","$mingw/libstdc++-6.dll","$mingw/libwinpthread-1.dll" |
+              Copy-Item -Destination "build/release-vulkan/" -Force
+          }
+
+      - name: Run tests
+        run: |
+          $mingw = "C:/msys64/mingw64/bin"
+          Get-ChildItem "$mingw/libgcc_s_seh-1.dll","$mingw/libstdc++-6.dll","$mingw/libwinpthread-1.dll" |
+            Copy-Item -Destination "build/release-vulkan/tests/" -Force
+          ctest --test-dir build/release-vulkan --output-on-failure
+
+      - name: Install WiX
+        run: dotnet tool install --global wix || dotnet tool update --global wix
+
+      - name: Build MSI
+        working-directory: installer
+        run: wix build VocaWin.wxs -arch x64 -out VocaWin.msi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/VocaWin.msi
+            build/release-vulkan/vocawin.exe
+          generate_release_notes: true

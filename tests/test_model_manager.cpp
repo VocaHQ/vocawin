@@ -109,5 +109,42 @@ int main() {
         assert(rec.id == "small.en");
     }
 
+    // 12. downloadFromUrl: copy a local file to the canonical models
+    //     path. The MVP doesn't ship an HTTP client; the test
+    //     exercises the local-file branch via a file:// URL.
+    {
+        const std::filesystem::path dir = "build/test-model-manager";
+        std::filesystem::remove_all(dir);
+        vocawin::ModelManager mm(dir);
+
+        const std::filesystem::path srcDir = "build/test-model-manager-src";
+        std::filesystem::create_directories(srcDir);
+        const std::filesystem::path src = srcDir / "ggml-tiny.en.bin";
+        std::ofstream(src).write("fake model bytes", 16);
+
+        const std::string fileUrl = "file:///" +
+            std::filesystem::absolute(src).generic_string();
+        bool progressed = false;
+        const bool ok = mm.downloadModel("tiny.en", fileUrl,
+            [&progressed](float p) {
+                if (p > 0.0f && p <= 1.0f) progressed = true;
+            });
+        assert(ok);
+        assert(progressed);
+        assert(mm.isModelDownloaded("tiny.en"));
+
+        std::filesystem::remove_all(srcDir);
+        std::filesystem::remove_all(dir);
+    }
+
+    // 13. downloadModel: unknown model id returns false.
+    {
+        const std::filesystem::path dir = "build/test-model-manager";
+        std::filesystem::create_directories(dir);
+        vocawin::ModelManager mm(dir);
+        assert(!mm.downloadModel("nope", "file:///nope", nullptr));
+        std::filesystem::remove_all(dir);
+    }
+
     return 0;
 }

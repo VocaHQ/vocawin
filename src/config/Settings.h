@@ -11,6 +11,8 @@ struct Settings {
     bool launch_at_startup{true};
     bool sound_effects{true};
     bool preserve_clipboard{true};
+    bool show_cursor_indicator{true};
+    bool translate_to_english{false};
 
     // VK_RCONTROL
     std::uint32_t hotkey_vk_code{0xA3};

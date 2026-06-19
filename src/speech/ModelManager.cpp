@@ -1,6 +1,8 @@
 #include "speech/ModelManager.h"
 
 #include <algorithm>
+#include <fstream>
+#include <system_error>
 
 namespace vocawin {
 
@@ -34,6 +36,12 @@ const std::vector<ModelManager::ModelInfo>& catalog() {
         {"medium",    "Medium (Multilingual, 769M params)",
          "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
          1500 * kMB,  2100 * kMB},
+        {"large-v3",         "Large v3 (Multilingual, 1550M params)",
+         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+         2900 * kMB,  3900 * kMB},
+        {"large-v3-turbo",   "Large v3 Turbo (Multilingual, 809M params)",
+         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+         809 * kMB,   1200 * kMB},
     };
     return kModels;
 }
@@ -76,6 +84,68 @@ bool ModelManager::isModelDownloaded(const std::string& modelId) const {
 std::filesystem::path
 ModelManager::getModelPath(const std::string& modelId) const {
     return modelsDir_ / ("ggml-" + modelId + ".bin");
+}
+
+bool ModelManager::downloadModel(const std::string& modelId,
+                                 const std::string& url,
+                                 ProgressCallback onProgress) {
+    const auto* meta = findById(modelId);
+    if (meta == nullptr) {
+        return false;
+    }
+    std::string effectiveUrl = url;
+    if (effectiveUrl.empty()) {
+        effectiveUrl = meta->url;
+    }
+    if (effectiveUrl.empty()) {
+        return false;
+    }
+
+    constexpr const char* kFilePrefix = "file:///";
+    constexpr std::size_t kFilePrefixLen = 8;
+    if (effectiveUrl.compare(0, kFilePrefixLen, kFilePrefix) != 0) {
+        // HTTPS / http downloads require WinHTTP, which is out of
+        // scope for the MVP. Surface a clear failure to the caller.
+        return false;
+    }
+
+    std::filesystem::path src = effectiveUrl.substr(kFilePrefixLen);
+
+    std::error_code ec;
+    std::filesystem::create_directories(modelsDir_, ec);
+    if (ec) {
+        return false;
+    }
+    const auto dst = getModelPath(modelId);
+
+    std::ifstream in(src, std::ios::binary);
+    if (!in.good()) {
+        return false;
+    }
+    std::ofstream out(dst, std::ios::binary | std::ios::trunc);
+    if (!out.good()) {
+        return false;
+    }
+    constexpr std::size_t kBuf = 64 * 1024;
+    char buf[kBuf];
+    std::uint64_t total = 0;
+    in.seekg(0, std::ios::end);
+    const std::streamoff len = in.tellg();
+    in.seekg(0, std::ios::beg);
+    while (in) {
+        in.read(buf, kBuf);
+        const std::streamsize n = in.gcount();
+        if (n <= 0) break;
+        out.write(buf, n);
+        total += static_cast<std::uint64_t>(n);
+        if (onProgress && len > 0) {
+            onProgress(static_cast<float>(
+                static_cast<double>(total) /
+                static_cast<double>(len)));
+        }
+    }
+    if (onProgress) onProgress(1.0f);
+    return out.good();
 }
 
 ModelManager::ModelInfo

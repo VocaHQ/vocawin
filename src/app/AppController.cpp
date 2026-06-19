@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #endif
+#include <filesystem>
 #include <utility>
 
 namespace vocawin {
@@ -15,17 +16,79 @@ std::wstring mutexNameFromPath(const std::filesystem::path& path) {
     return std::wstring(value.begin(), value.end());
 }
 
+std::filesystem::path resolveExecutablePath() {
+#if defined(_WIN32)
+    wchar_t buf[MAX_PATH];
+    const DWORD n = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) {
+        return std::filesystem::current_path() / "vocawin.exe";
+    }
+    return std::filesystem::path(std::wstring(buf, buf + n));
+#else
+    return std::filesystem::current_path() / "vocawin.exe";
+#endif
+}
+
+std::filesystem::path defaultDataRoot() {
+#if defined(_WIN32)
+    if (const wchar_t* local = _wgetenv(L"LOCALAPPDATA"); local != nullptr && *local != L'\0') {
+        return std::filesystem::path(local) / L"VocaWin";
+    }
+    if (const char* profile = std::getenv("USERPROFILE"); profile != nullptr && *profile != '\0') {
+        return std::filesystem::path(profile) / L"AppData" / L"Local" / L"VocaWin";
+    }
+#endif
+    return std::filesystem::path("vocawin");
+}
+
 }  // namespace
 
 AppController::AppController(std::filesystem::path data_root)
-    : data_root_(std::move(data_root)),
+    : data_root_(data_root.empty() ? defaultDataRoot() : std::move(data_root)),
       single_instance_(L"Global\\VocaWinMutex-" + mutexNameFromPath(data_root_)),
       settings_store_(data_root_ / "config.json"),
       logger_(data_root_ / "logs" / "vocawin.log"),
       model_manager_(data_root_ / "models"),
-      sound_feedback_(data_root_ / "sounds") {
+      sound_feedback_(data_root_ / "sounds"),
+      onboarding_window_(data_root_ / "onboarded.json"),
+      autostart_(resolveExecutablePath()) {
     tray_icon_.setPaths(settings_store_.configPath().wstring(),
                         (data_root_ / "logs").wstring());
+#if defined(_WIN32)
+    {
+        wchar_t exeDir[MAX_PATH] = {};
+        const DWORD n = ::GetModuleFileNameW(nullptr, exeDir, MAX_PATH);
+        if (n > 0 && n < MAX_PATH) {
+            std::filesystem::path p(exeDir);
+            p = p.parent_path();
+            if (std::filesystem::exists(p / "tray-idle.ico")) {
+                tray_icon_.setIconDirectory(p.wstring());
+                overlay_window_.setIconDirectory(p.wstring());
+            }
+        }
+    }
+#endif
+    settings_window_.setLoadHandler([this]() { return settings_store_.load(); });
+    settings_window_.setSaveHandler([this](const Settings& s) {
+        if (!settings_store_.save(s)) {
+            logger_.error("failed to save settings");
+            return false;
+        }
+        settings_ = s;
+        applySettings();
+        syncAutostartFromSettings();
+        logger_.info("settings saved");
+        return true;
+    });
+    settings_window_.setSystemInfoHandler([]() { return std::wstring(L"Windows"); });
+    settings_window_.setOnAboutHandler([]() {
+        return std::wstring(L"VocaWin MVP - 100% offline voice-to-text");
+    });
+
+    onboarding_window_.setOnFinished([this]() {
+        logger_.info("onboarding completed");
+    });
+
     tray_icon_.onMenuCommand = [this](TrayIcon::MenuCommand cmd) {
         switch (cmd) {
             case TrayIcon::MenuCommand::ToggleRecording:
@@ -35,12 +98,11 @@ AppController::AppController(std::filesystem::path data_root)
                     startRecording();
                 }
                 break;
-            case TrayIcon::MenuCommand::OpenSettings: {
-                const auto path = settings_store_.configPath();
-                ShellExecuteW(nullptr, L"open", path.wstring().c_str(),
-                              nullptr, nullptr, SW_SHOWNORMAL);
+            case TrayIcon::MenuCommand::OpenSettings:
+                if (!settings_window_.show()) {
+                    logger_.error("failed to open settings window");
+                }
                 break;
-            }
             case TrayIcon::MenuCommand::OpenLogs: {
                 const auto dir = data_root_ / "logs";
                 std::error_code ec;
@@ -102,6 +164,7 @@ bool AppController::initialize() {
     SilenceDetector::Config sdCfg;
     sdCfg.threshold = settings_.silence_threshold;
     sdCfg.durationMs = settings_.silence_duration_ms;
+    silence_detector_.applyConfig(sdCfg);
 
     AudioCapture::Config acCfg;
     acCfg.sampleRate = 16000;
@@ -109,7 +172,7 @@ bool AppController::initialize() {
     acCfg.bufferDurationMs = 100;
     acCfg.deviceIndex = -1;
 
-    (void)hkCfg; (void)sdCfg; (void)acCfg;  // consumed in wireCallbacks
+    (void)hkCfg; (void)acCfg;  // consumed in wireCallbacks
 
     whisper_engine_.setLanguage(settings_.language);
 
@@ -123,8 +186,53 @@ bool AppController::initialize() {
     setState(model_manager_.isModelDownloaded(settings_.model_id)
                  ? State::Idle
                  : State::NotLoaded);
+    syncAutostartFromSettings();
+    overlay_window_.setEnabled(settings_.show_cursor_indicator);
+
+    if (!onboarding_window_.isOnboarded()) {
+        logger_.info("first run, launching onboarding wizard");
+        onboarding_window_.show();
+    }
+
+    notifier_.setEnabled(settings_.sound_effects);
     initialized_ = true;
     return true;
+}
+
+void AppController::applySettings() {
+    sound_feedback_.setEnabled(settings_.sound_effects);
+
+    text_injector_ = TextInjector(TextInjector::Config{
+        settings_.preserve_clipboard,
+        settings_.text_injection_method == 0
+            ? TextInjector::Method::SendInput
+            : TextInjector::Method::ClipboardPaste,
+        settings_.paste_delay_ms,
+        settings_.restore_delay_ms,
+    });
+
+    HotkeyManager::Config hkCfg;
+    hkCfg.virtualKeyCode = settings_.hotkey_vk_code;
+    hkCfg.mode = settings_.activation_mode == 0
+                     ? HotkeyManager::ActivationMode::PushToTalk
+                     : HotkeyManager::ActivationMode::DoubleTapToggle;
+    hkCfg.doubleTapThresholdMs = settings_.double_tap_threshold_ms;
+
+    SilenceDetector::Config sdCfg;
+    sdCfg.threshold = settings_.silence_threshold;
+    sdCfg.durationMs = settings_.silence_duration_ms;
+    silence_detector_.applyConfig(sdCfg);
+
+    hotkey_manager_.stop();
+    if (!hotkey_manager_.start(hkCfg)) {
+        logger_.info("hotkey manager not restarted (no interactive session?)");
+    }
+
+    whisper_engine_.setLanguage(settings_.language);
+    whisper_engine_.setTranslateMode(settings_.translate_to_english);
+    notifier_.setEnabled(settings_.sound_effects);
+    syncAutostartFromSettings();
+    loadConfiguredModel();
 }
 
 void AppController::shutdown() {
@@ -155,26 +263,27 @@ const Settings& AppController::settings() const { return settings_; }
 
 void AppController::startRecording() {
     if (!initialized_) return;
-    std::lock_guard<std::mutex> lk(state_mutex_);
-    if (state_ != State::Idle && state_ != State::NotLoaded) {
-        return;
+    bool audioOk = false;
+    {
+        std::lock_guard<std::mutex> lk(state_mutex_);
+        if (state_ != State::Idle && state_ != State::NotLoaded) {
+            return;
+        }
+        audio_capture_.clearBuffer();
+        AudioCapture::Config cfg;
+        cfg.sampleRate = 16000;
+        cfg.channels = 1;
+        cfg.bufferDurationMs = 100;
+        cfg.deviceIndex = -1;
+        audioOk = audio_capture_.start(cfg);
+        if (!audioOk) {
+            last_error_ = L"Failed to start audio capture (no device?)";
+        }
     }
-    audio_capture_.clearBuffer();
-    AudioCapture::Config cfg;
-    cfg.sampleRate = 16000;
-    cfg.channels = 1;
-    cfg.bufferDurationMs = 100;
-    cfg.deviceIndex = -1;
-    const bool started = audio_capture_.start(cfg);
-    if (!started) {
-        last_error_ = L"Failed to start audio capture (no device?)";
-        setState(State::Error);
-        return;
-    }
-    if (settings_.sound_effects) {
+    if (audioOk && settings_.sound_effects) {
         sound_feedback_.play(SoundFeedback::Cue::Start);
     }
-    setState(State::Recording);
+    setState(audioOk ? State::Recording : State::Error);
 }
 
 void AppController::stopRecordingAndTranscribe() {
@@ -220,7 +329,13 @@ void AppController::wireCallbacks() {
     hotkey_manager_.onHotkeyReleased = [this]() { stopRecordingAndTranscribe(); };
 
     audio_capture_.onAudioLevel = [this](float level) {
+        silence_detector_.feedSample(level);
         if (onAudioLevelChanged) onAudioLevelChanged(level);
+    };
+    silence_detector_.onSilenceTimeout = [this]() {
+        if (state_ == State::Recording) {
+            stopRecordingAndTranscribe();
+        }
     };
 }
 
@@ -244,8 +359,13 @@ void AppController::loadConfiguredModel() {
         return;
     }
     const auto path = model_manager_.getModelPath(settings_.model_id);
-    if (whisper_engine_.loadModel(path, 4)) {
-        logger_.info("loaded model: " + settings_.model_id);
+    const auto caps = GpuDetector::detect();
+    WhisperEngine::GpuBackend backend;
+    backend.name = caps.activeBackendName;
+    backend.deviceName = caps.gpuName;
+    if (whisper_engine_.loadModel(path, backend, 4)) {
+        logger_.info("loaded model " + settings_.model_id +
+                     " on " + backend.name);
     } else {
         last_error_ = L"Failed to load model";
         logger_.error("failed to load model: " + settings_.model_id);
@@ -272,9 +392,50 @@ void AppController::setState(State newState) {
         state_ = newState;
     }
     tray_icon_.setState(mapState(newState));
+    if (newState == State::Recording) {
+        overlay_window_.setState(OverlayWindow::State::Recording);
+        if (settings_.show_cursor_indicator) overlay_window_.show();
+    } else if (newState == State::Processing) {
+        overlay_window_.setState(OverlayWindow::State::Processing);
+        if (settings_.show_cursor_indicator) overlay_window_.show();
+    } else {
+        overlay_window_.hide();
+    }
+    if (newState == State::Error && notifier_.isEnabled()) {
+        notifier_.show(L"VocaWin error", last_error_.empty()
+                                          ? std::wstring(L"Unknown error")
+                                          : last_error_);
+    }
     if (onStateChanged) onStateChanged(newState);
     logger_.info("state: " + std::to_string(static_cast<int>(old)) +
                  " -> " + std::to_string(static_cast<int>(newState)));
+}
+
+void AppController::syncAutostartFromSettings() {
+#if defined(_WIN32)
+    const bool want = settings_.launch_at_startup;
+    if (want && !autostart_.isEnabled()) {
+        if (!autostart_.enable()) {
+            logger_.error("failed to enable autostart");
+        }
+    } else if (!want && autostart_.isEnabled()) {
+        if (!autostart_.disable()) {
+            logger_.error("failed to disable autostart");
+        }
+    }
+#else
+    (void)autostart_;
+#endif
+}
+
+bool AppController::downloadModel(const std::string& modelId) {
+    const std::string id = modelId.empty() ? settings_.model_id : modelId;
+    logger_.info("downloading model: " + id);
+    return model_manager_.downloadModel(
+        id, "",
+        [this](float p) {
+            if (download_progress_) download_progress_(p);
+        });
 }
 
 }  // namespace vocawin

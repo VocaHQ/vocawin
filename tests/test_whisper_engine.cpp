@@ -34,7 +34,7 @@ int main() {
         vocawin::WhisperEngine eng;
         const std::filesystem::path missing = "build/test-whisper-engine/missing.bin";
         std::filesystem::remove(missing);
-        assert(!eng.loadModel(missing, 1));
+        assert(!eng.loadModel(missing, vocawin::WhisperEngine::GpuBackend{"CPU", ""}, 1));
         assert(!eng.isModelLoaded());
     }
 

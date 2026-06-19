@@ -17,6 +17,7 @@ struct WhisperEngine::Impl {
     whisper_context* ctx{nullptr};
     std::string language{"auto"};
     bool translate{false};
+    GpuBackend backend{"CPU", "Generic CPU"};
 };
 
 namespace {
@@ -64,13 +65,15 @@ bool WhisperEngine::isModelLoaded() const {
 }
 
 bool WhisperEngine::loadModel(const std::filesystem::path& modelPath,
+                              const GpuBackend& gpu,
                               int nThreads) {
     unloadModel();
     if (!std::filesystem::exists(modelPath)) {
         return false;
     }
+    impl_->backend = gpu;
     whisper_context_params cparams = whisper_context_default_params();
-    cparams.use_gpu = false;
+    cparams.use_gpu = (gpu.name == "CUDA" || gpu.name == "Vulkan");
     cparams.flash_attn = false;
     impl_->ctx = whisper_init_from_file_with_params(
         modelPath.string().c_str(), cparams);
@@ -86,6 +89,10 @@ void WhisperEngine::unloadModel() {
         whisper_free(impl_->ctx);
         impl_->ctx = nullptr;
     }
+}
+
+const WhisperEngine::GpuBackend& WhisperEngine::gpuBackend() const {
+    return impl_->backend;
 }
 
 void WhisperEngine::setLanguage(const std::string& lang) {

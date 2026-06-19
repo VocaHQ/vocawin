@@ -1,209 +1,86 @@
-add_executable(test_single_instance
-    test_single_instance.cpp
+set(VOCAWIN_TESTS
+    test_single_instance
+    test_settings_store
+    test_app_controller
+    test_logger
+    test_tray_icon
+    test_audio_buffer
+    test_silence_detector
+    test_clipboard_manager
+    test_text_injector
+    test_sound_feedback
+    test_whisper_compile
+    test_hotkey_manager
+    test_model_manager
+    test_audio_capture
+    test_whisper_engine
+    test_settings_window
+    test_autostart
+    test_system_info
+    test_gpu_detector
+    test_notification
+    test_onboarding
+    test_overlay
+    test_updater
 )
 
-target_include_directories(test_single_instance PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
+foreach(t IN LISTS VOCAWIN_TESTS)
+    add_executable(${t} ${t}.cpp)
+    target_include_directories(${t} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(${t} PRIVATE vocawin_core)
+    if(WIN32)
+        set_target_properties(${t} PROPERTIES
+            WIN32_EXECUTABLE FALSE)
+        if(_vocawin_windres AND EXISTS "${_vocawin_rc}")
+            set(_test_rc_o
+                "${CMAKE_CURRENT_BINARY_DIR}/${t}_manifest_res.o")
+            add_custom_command(
+                OUTPUT "${_test_rc_o}"
+                DEPENDS "${_vocawin_rc}"
+                    "${PROJECT_SOURCE_DIR}/resources/manifest/app.manifest"
+                COMMAND ${_vocawin_windres} -i "${_vocawin_rc}" -O coff
+                    -o "${_test_rc_o}"
+                COMMENT "Compiling manifest for ${t}"
+                VERBATIM)
+            target_sources(${t} PRIVATE "${_test_rc_o}")
+        endif()
+        # The retry wrapper absorbs transient Defender scan locks that
+        # cause ERROR_ACCESS_DENIED on newly-written exes.
+        add_test(NAME ${t}
+            COMMAND ${CMAKE_COMMAND} -E chdir
+                $<TARGET_FILE_DIR:${t}>
+                powershell -NoProfile -ExecutionPolicy Bypass -File
+                "${PROJECT_SOURCE_DIR}/scripts/run_with_retry.ps1"
+                ${t}.exe)
+    else()
+        add_test(NAME ${t} COMMAND ${t})
+    endif()
+endforeach()
 
-target_link_libraries(test_single_instance PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_single_instance COMMAND test_single_instance)
-
-add_executable(test_settings_store
-    test_settings_store.cpp
-)
-
-target_include_directories(test_settings_store PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_settings_store PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_settings_store COMMAND test_settings_store)
-
-add_executable(test_app_controller
-    test_app_controller.cpp
-)
-
-target_include_directories(test_app_controller PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_app_controller PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_app_controller COMMAND test_app_controller)
-
-add_executable(test_logger
-    test_logger.cpp
-)
-
-target_include_directories(test_logger PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_logger PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_logger COMMAND test_logger)
-
-add_executable(test_tray_icon
-    test_tray_icon.cpp
-)
-
-target_include_directories(test_tray_icon PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_tray_icon PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_tray_icon COMMAND test_tray_icon)
-
-add_executable(test_audio_buffer
-    test_audio_buffer.cpp
-)
-
-target_include_directories(test_audio_buffer PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_audio_buffer PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_audio_buffer COMMAND test_audio_buffer)
-
-add_executable(test_silence_detector
-    test_silence_detector.cpp
-)
-
-target_include_directories(test_silence_detector PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_silence_detector PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_silence_detector COMMAND test_silence_detector)
-
-add_executable(test_clipboard_manager
-    test_clipboard_manager.cpp
-)
-
-target_include_directories(test_clipboard_manager PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_clipboard_manager PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_clipboard_manager COMMAND test_clipboard_manager)
-
-add_executable(test_text_injector
-    test_text_injector.cpp
-)
-
-target_include_directories(test_text_injector PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_text_injector PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_text_injector COMMAND test_text_injector)
-
-add_executable(test_sound_feedback
-    test_sound_feedback.cpp
-)
-
-target_include_directories(test_sound_feedback PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_sound_feedback PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_sound_feedback COMMAND test_sound_feedback)
-
-add_executable(test_whisper_compile
-    test_whisper_compile.cpp
-)
-
-target_include_directories(test_whisper_compile PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_whisper_compile PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_whisper_compile COMMAND test_whisper_compile)
-
-add_executable(test_hotkey_manager
-    test_hotkey_manager.cpp
-)
-
-target_include_directories(test_hotkey_manager PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_hotkey_manager PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_hotkey_manager COMMAND test_hotkey_manager)
-
-add_executable(test_model_manager
-    test_model_manager.cpp
-)
-
-target_include_directories(test_model_manager PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_model_manager PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_model_manager COMMAND test_model_manager)
-
-add_executable(test_audio_capture
-    test_audio_capture.cpp
-)
-
-target_include_directories(test_audio_capture PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_audio_capture PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_audio_capture COMMAND test_audio_capture)
-
-add_executable(test_whisper_engine
-    test_whisper_engine.cpp
-)
-
-target_include_directories(test_whisper_engine PRIVATE
-    ${PROJECT_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_whisper_engine PRIVATE
-    vocawin_core
-)
-
-add_test(NAME test_whisper_engine COMMAND test_whisper_engine)
+if(WIN32)
+    # Stage the MinGW runtime DLLs next to every test executable so the
+    # Windows loader finds them without requiring PATH to be set. The
+    # DLLs are searched in: (1) the compiler's directory, (2) a
+    # MINGW_ROOT env var, (3) a CMake cache variable.
+    set(_vocawin_mingw_dll_dir "")
+    if(EXISTS "${CMAKE_CXX_COMPILER_DIRECTORY}/libgcc_s_seh-1.dll")
+        set(_vocawin_mingw_dll_dir "${CMAKE_CXX_COMPILER_DIRECTORY}")
+    elseif(EXISTS "$ENV{MINGW_ROOT}/bin/libgcc_s_seh-1.dll")
+        set(_vocawin_mingw_dll_dir "$ENV{MINGW_ROOT}/bin")
+    elseif(EXISTS "${VOCAWIN_MINGW_BIN}/libgcc_s_seh-1.dll")
+        set(_vocawin_mingw_dll_dir "${VOCAWIN_MINGW_BIN}")
+    endif()
+    if(_vocawin_mingw_dll_dir)
+        file(GLOB _vocawin_dlls
+            "${_vocawin_mingw_dll_dir}/libgcc_s_seh-1.dll"
+            "${_vocawin_mingw_dll_dir}/libstdc++-6.dll"
+            "${_vocawin_mingw_dll_dir}/libwinpthread-1.dll")
+        foreach(_dll ${_vocawin_dlls})
+            foreach(_tgt ${VOCAWIN_TESTS})
+                add_custom_command(TARGET ${_tgt} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${_dll}" "$<TARGET_FILE_DIR:${_tgt}>/")
+            endforeach()
+        endforeach()
+    endif()
+endif()

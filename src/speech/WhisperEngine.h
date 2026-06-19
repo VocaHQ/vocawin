@@ -28,14 +28,27 @@ public:
     WhisperEngine(const WhisperEngine&) = delete;
     WhisperEngine& operator=(const WhisperEngine&) = delete;
 
+    // GPU backend descriptor. Per SPEC §4.2.3, the engine selects the
+    // best available backend at load time. On the MVP MinGW build
+    // (GGML_CUDA=OFF, GGML_VULKAN=OFF) this is always "CPU" at runtime.
+    struct GpuBackend {
+        std::string name;        // "CPU", "CUDA", "Vulkan", "DirectML"
+        std::string deviceName;  // human-readable device, e.g. "RTX 4080"
+    };
+
     // Load a GGML model from disk. Frees any previously-loaded model.
     // Returns true on success.
-    bool loadModel(const std::filesystem::path& modelPath, int nThreads = 4);
+    bool loadModel(const std::filesystem::path& modelPath,
+                   const GpuBackend& gpu = {"CPU", "Generic CPU"},
+                   int nThreads = 4);
 
     // Free the currently-loaded model (if any). Safe to call when not loaded.
     void unloadModel();
 
     bool isModelLoaded() const;
+
+    // Report which backend the engine is using. Set by loadModel.
+    const GpuBackend& gpuBackend() const;
 
     void setLanguage(const std::string& lang);  // "auto", "en", etc.
     void setTranslateMode(bool translate);      // Translate to English

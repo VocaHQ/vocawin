@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  VocaWin MSI installer definition (WiX v4).
+
+  Build with: wix build VocaWin.wxs -arch x64 -out VocaWin.msi
+  This file is the source of truth for the installer. The CMake build
+  invokes it via CPack / cpack_wix_generator; CI (release.yml) calls
+  wix directly on tag pushes.
+
+  Layout (per SPEC §9.5):
+    %LOCALAPPDATA%\VocaWin\models\   (runtime data, written by app)
+    %APPDATA%\VocaWin\config.json    (user settings)
+    %LOCALAPPDATA%\VocaWin\logs\     (diagnostics)
+
+  The MSI only installs the binary and its resources; data directories
+  are created on first run by AppController::initialize().
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="VocaWin"
+           Manufacturer="VocaWin Contributors"
+           Version="0.1.0.0"
+           UpgradeCode="8F3D9A0A-7B1A-4C9E-9A1F-2A0A1F2B0C0A"
+           Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of VocaWin is already installed."/>
+    <MediaTemplate EmbedCab="yes"/>
+
+    <Feature Id="MainProduct"
+             Title="VocaWin"
+             Description="100% offline voice-to-text for Windows."
+             Level="1"
+             Absent="disallow">
+      <ComponentGroupRef Id="VocaWinBinaries"/>
+      <ComponentGroupRef Id="VocaWinStartMenu"/>
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLDIR" Name="VocaWin">
+        <ComponentGroup Id="VocaWinBinaries" Directory="INSTALLDIR">
+          <Component Win64="yes">
+            <File Source="build/release-all-gpu/vocawin.exe" KeyPath="yes"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="build/release-all-gpu/libgcc_s_seh-1.dll"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="build/release-all-gpu/libstdc++-6.dll"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="build/release-all-gpu/libwinpthread-1.dll"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/sounds/start.wav"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/sounds/stop.wav"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/sounds/error.wav"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/icons/tray-idle.ico"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/icons/tray-recording.ico"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/icons/tray-processing.ico"/>
+          </Component>
+          <Component Win64="yes">
+            <File Source="resources/icons/tray-error.ico"/>
+          </Component>
+        </ComponentGroup>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="VocaWin">
+        <Component Id="StartMenuShortcuts" Guid="*">
+          <Shortcut Id="StartMenuShortcut"
+                    Name="VocaWin"
+                    Description="100% offline voice-to-text for Windows."
+                    Target="[INSTALLDIR]vocawin.exe"
+                    WorkingDirectory="INSTALLDIR"/>
+          <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+          <RegistryValue Root="HKCU"
+                         Key="Software\VocaWin"
+                         Name="installed"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes"/>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <ComponentGroup Id="VocaWinStartMenu">
+      <ComponentRef Id="StartMenuShortcuts"/>
+    </ComponentGroup>
+  </Package>
+</Wix>

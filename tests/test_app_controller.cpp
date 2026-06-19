@@ -121,6 +121,40 @@ int main() {
         assert(app.lastError().empty());
     }
 
+    // 10. downloadModel with unknown id returns false (no network call).
+    {
+        writeCustomConfig(root);
+        vocawin::AppController app(root);
+        assert(app.initialize());
+        assert(!app.downloadModel("nonexistent-model-id"));
+        app.shutdown();
+    }
+
+    // 11. downloadModel with valid id but non-existent file:// URL returns
+    //     false; onProgress must not fire.
+    {
+        writeCustomConfig(root);
+        vocawin::AppController app(root);
+        assert(app.initialize());
+        bool progressFired = false;
+        app.setDownloadProgressHandler([&progressFired](float) {
+            progressFired = true;
+        });
+        assert(!app.downloadModel("base.en"));
+        assert(!progressFired);
+        app.shutdown();
+    }
+
+    // 12. settingsWindow() accessor returns a valid reference.
+    {
+        writeCustomConfig(root);
+        vocawin::AppController app(root);
+        app.initialize();
+        auto& sw = app.settingsWindow();
+        (void)sw;  // smoke: accessor compiles + returns non-null ref
+        app.shutdown();
+    }
+
     std::filesystem::remove_all(root);
     return 0;
 }

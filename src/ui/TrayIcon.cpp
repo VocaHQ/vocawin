@@ -1,6 +1,7 @@
 #include "ui/TrayIcon.h"
 
 #include <cstring>
+#include <filesystem>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -90,9 +91,10 @@ void TrayIcon::shutdown() {
         DestroyWindow(static_cast<HWND>(hwnd_));
         hwnd_ = nullptr;
     }
-    if (currentIcon_ != nullptr) {
+    if (currentIcon_ != nullptr && ownsCurrentIcon_) {
         DestroyIcon(static_cast<HICON>(currentIcon_));
         currentIcon_ = nullptr;
+        ownsCurrentIcon_ = false;
     }
 #endif
     initialized_ = false;
@@ -151,21 +153,27 @@ bool TrayIcon::updateNotifyArea() {
     }
     auto* nid = static_cast<NOTIFYICONDATAW*>(nid_);
     nid->uFlags = NIF_TIP | NIF_ICON;
-    LPWSTR iconId = IDI_APPLICATION;
+    const wchar_t* iconName = nullptr;
     switch (state_) {
-        case State::Idle:       iconId = IDI_INFORMATION; break;
-        case State::Recording:  iconId = IDI_EXCLAMATION; break;
-        case State::Processing: iconId = IDI_APPLICATION;  break;
-        case State::Error:      iconId = IDI_WARNING;      break;
-        case State::NoModel:    iconId = IDI_QUESTION;     break;
+        case State::Idle:       iconName = L"tray-idle.ico";       break;
+        case State::Recording:  iconName = L"tray-recording.ico";  break;
+        case State::Processing: iconName = L"tray-processing.ico"; break;
+        case State::Error:      iconName = L"tray-error.ico";      break;
+        case State::NoModel:    iconName = L"tray-idle.ico";       break;
     }
-    HICON hNew = LoadIconW(nullptr, iconId);
-    if (hNew != nullptr) {
-        if (currentIcon_ != nullptr) {
-            DestroyIcon(static_cast<HICON>(currentIcon_));
+    if (!iconPath_.empty() && iconName != nullptr) {
+        std::filesystem::path full = std::filesystem::path(iconPath_) / iconName;
+        HICON hNew = static_cast<HICON>(LoadImageW(
+            nullptr, full.wstring().c_str(), IMAGE_ICON, 16, 16,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE));
+        if (hNew != nullptr) {
+            if (currentIcon_ != nullptr && ownsCurrentIcon_) {
+                DestroyIcon(static_cast<HICON>(currentIcon_));
+            }
+            nid->hIcon = hNew;
+            currentIcon_ = hNew;
+            ownsCurrentIcon_ = true;
         }
-        nid->hIcon = hNew;
-        currentIcon_ = hNew;
     }
     wcsncpy(nid->szTip, tooltip_.c_str(), 63);
     nid->szTip[63] = L'\0';
@@ -206,7 +214,7 @@ void TrayIcon::onTrayMessage(unsigned int msg) {
         case WM_RBUTTONUP:
             showContextMenu();
             break;
-        case WM_LBUTTONDBLCLK:
+        case WM_LBUTTONUP:
             if (onMenuCommand) onMenuCommand(MenuCommand::ToggleRecording);
             break;
         default:

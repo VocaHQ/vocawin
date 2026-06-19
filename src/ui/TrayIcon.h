@@ -38,6 +38,11 @@ public:
     void setPaths(const std::wstring& settingsPath,
                   const std::wstring& logsDir);
 
+    // Set the directory containing tray-*.ico files (resources/icons).
+    // When set, updateNotifyArea loads the matching custom icon via
+    // LoadImageW instead of using stock IDI_* icons.
+    void setIconDirectory(const std::wstring& iconDir) { iconPath_ = iconDir; }
+
     // Fired on the Win32 message-pump thread when the user picks a menu
     // item. The consumer is responsible for marshaling to the main thread.
     std::function<void(MenuCommand)> onMenuCommand;
@@ -59,11 +64,13 @@ private:
     bool initialized_{false};
     std::wstring settingsPath_;
     std::wstring logsDir_;
+    std::wstring iconPath_;
 
 #if defined(_WIN32)
     void* hwnd_{nullptr};        // HWND
     void* nid_{nullptr};         // NOTIFYICONDATAW*
     void* currentIcon_{nullptr}; // HICON
+    bool ownsCurrentIcon_{false};
     static constexpr unsigned int kMenuToggle = 1;
     static constexpr unsigned int kMenuSettings = 2;
     static constexpr unsigned int kMenuLogs = 3;

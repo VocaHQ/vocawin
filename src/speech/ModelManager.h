@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,16 @@ public:
     // Resolves the canonical on-disk path for a model id. The file may or
     // may not exist (callers should check isModelDownloaded first).
     std::filesystem::path getModelPath(const std::string& modelId) const;
+
+    // Download a model into modelsDir. The MVP supports `file://` URLs
+    // and copies the bytes to the canonical path. `onProgress` is
+    // called with a 0..1 fraction. Returns true on success. The
+    // modelId must be in getAvailableModels() (used to validate and
+    // to pick the default URL when `url` is empty).
+    using ProgressCallback = std::function<void(float progress)>;
+    bool downloadModel(const std::string& modelId,
+                       const std::string& url,
+                       ProgressCallback onProgress);
 
     // Recommend the best model id for the given hardware profile. Mirrors
     // the VocaMac algorithm: GPU path prefers CUDA/Vulkan VRAM buckets;

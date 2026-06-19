@@ -110,6 +110,10 @@ Settings SettingsStore::load() const {
     settings.restore_delay_ms = static_cast<std::uint32_t>(extractInt(
         json, "restoreDelayMs", static_cast<long long>(settings.restore_delay_ms)));
     settings.models_dir = extractString(json, "modelsDir", settings.models_dir);
+    settings.show_cursor_indicator = extractBool(
+        json, "showCursorIndicator", settings.show_cursor_indicator);
+    settings.translate_to_english = extractBool(
+        json, "translateToEnglish", settings.translate_to_english);
 
     return settings;
 }
@@ -144,7 +148,11 @@ bool SettingsStore::save(const Settings& settings) const {
     out << "  \"textInjectionMethod\": " << settings.text_injection_method << ",\n";
     out << "  \"pasteDelayMs\": " << settings.paste_delay_ms << ",\n";
     out << "  \"restoreDelayMs\": " << settings.restore_delay_ms << ",\n";
-    out << "  \"modelsDir\": \"" << settings.models_dir << "\"\n";
+    out << "  \"modelsDir\": \"" << settings.models_dir << "\",\n";
+    out << "  \"showCursorIndicator\": "
+        << (settings.show_cursor_indicator ? "true" : "false") << ",\n";
+    out << "  \"translateToEnglish\": "
+        << (settings.translate_to_english ? "true" : "false") << "\n";
     out << "}\n";
 
     return true;
