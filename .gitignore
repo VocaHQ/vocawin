@@ -22,3 +22,8 @@ out/
 *.profdata
 __pycache__/
 .cache/
+
+.ulw/
+.ulw/notepad.md
+vocawin/
+
