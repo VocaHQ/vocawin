@@ -1,8 +1,11 @@
 #include "app/AppController.h"
 
+#include <cstdio>
+
 #if defined(_WIN32)
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #endif
 #include <filesystem>
 #include <utility>
@@ -31,10 +34,21 @@ std::filesystem::path resolveExecutablePath() {
 
 std::filesystem::path defaultDataRoot() {
 #if defined(_WIN32)
-    if (const wchar_t* local = _wgetenv(L"LOCALAPPDATA"); local != nullptr && *local != L'\0') {
+    // SHGetFolderPathW is the legacy-but-reliable API that does NOT
+    // require COM initialization, unlike SHGetKnownFolderPath. We use
+    // it because _wgetenv("LOCALAPPDATA") returns null when the process
+    // is launched via Start-Process in some PowerShell contexts.
+    wchar_t path[MAX_PATH] = {};
+    if (SUCCEEDED(::SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA,
+                                      nullptr, SHGFP_TYPE_CURRENT, path))) {
+        return std::filesystem::path(path) / L"VocaWin";
+    }
+    if (const wchar_t* local = _wgetenv(L"LOCALAPPDATA");
+        local != nullptr && *local != L'\0') {
         return std::filesystem::path(local) / L"VocaWin";
     }
-    if (const char* profile = std::getenv("USERPROFILE"); profile != nullptr && *profile != '\0') {
+    if (const char* profile = std::getenv("USERPROFILE");
+        profile != nullptr && *profile != '\0') {
         return std::filesystem::path(profile) / L"AppData" / L"Local" / L"VocaWin";
     }
 #endif

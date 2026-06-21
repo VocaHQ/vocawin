@@ -52,7 +52,6 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
-    (void)app.settingsWindow();
 #else
     std::cout << "Press Enter to shut down.\n";
     std::cin.get();
