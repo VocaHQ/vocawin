@@ -51,12 +51,15 @@ public:
     // callback was fired. Call from the main message loop.
     bool pumpMessage();
 
+#if defined(_WIN32)
+    void onTrayMessage(unsigned int msg);
+    void onMenuCommandId(unsigned int id);
+#endif
+
 private:
     bool updateNotifyArea();
 #if defined(_WIN32)
     void showContextMenu();
-    void onTrayMessage(unsigned int msg);
-    void onMenuCommandId(unsigned int id);
 #endif
 
     State state_{State::Idle};

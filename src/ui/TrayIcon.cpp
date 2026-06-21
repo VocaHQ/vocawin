@@ -1,7 +1,6 @@
 #include "ui/TrayIcon.h"
 
 #include <cstring>
-#include <filesystem>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -27,6 +26,34 @@ std::wstring TrayIcon::defaultTooltipFor(State state) {
     return L"VocaWin";
 }
 
+#if defined(_WIN32)
+
+static LRESULT CALLBACK trayWndProc(HWND hwnd, UINT msg, WPARAM wParam,
+                                     LPARAM lParam) {
+    if (msg == WM_NCCREATE) {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA,
+                          reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+    auto* self = reinterpret_cast<TrayIcon*>(
+        GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (self == nullptr) {
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+    if (msg == WM_USER + 1) {
+        self->onTrayMessage(static_cast<unsigned int>(lParam));
+        return 0;
+    }
+    if (msg == WM_COMMAND) {
+        self->onMenuCommandId(static_cast<unsigned int>(LOWORD(wParam)));
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+#endif
+
 bool TrayIcon::initialize() {
     if (initialized_) {
         return true;
@@ -37,12 +64,13 @@ bool TrayIcon::initialize() {
     static const wchar_t kClassName[] = L"VocaWinTrayClass";
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
-    wc.lpfnWndProc = DefWindowProcW;
+    wc.lpfnWndProc = trayWndProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = kClassName;
-    RegisterClassExW(&wc);  // ignore ERROR_CLASS_ALREADY_EXISTS
+    RegisterClassExW(&wc);
+
     hwnd_ = CreateWindowExW(0, kClassName, L"VocaWinTray", 0, 0, 0, 0, 0,
-                            HWND_MESSAGE, nullptr, hInstance, nullptr);
+                            HWND_MESSAGE, nullptr, hInstance, this);
     if (hwnd_ == nullptr) {
         return false;
     }
@@ -125,25 +153,7 @@ void TrayIcon::setPaths(const std::wstring& settingsPath,
 }
 
 bool TrayIcon::pumpMessage() {
-#if defined(_WIN32)
-    if (hwnd_ == nullptr) return false;
-    MSG msg;
-    while (PeekMessageW(&msg, static_cast<HWND>(hwnd_), 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_USER + 1) {
-            onTrayMessage(static_cast<unsigned int>(msg.lParam));
-            return true;
-        }
-        if (msg.message == WM_COMMAND) {
-            onMenuCommandId(static_cast<unsigned int>(LOWORD(msg.wParam)));
-            return true;
-        }
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
     return false;
-#else
-    return false;
-#endif
 }
 
 bool TrayIcon::updateNotifyArea() {
@@ -153,27 +163,19 @@ bool TrayIcon::updateNotifyArea() {
     }
     auto* nid = static_cast<NOTIFYICONDATAW*>(nid_);
     nid->uFlags = NIF_TIP | NIF_ICON;
-    const wchar_t* iconName = nullptr;
+    LPWSTR stockIcon = IDI_APPLICATION;
     switch (state_) {
-        case State::Idle:       iconName = L"tray-idle.ico";       break;
-        case State::Recording:  iconName = L"tray-recording.ico";  break;
-        case State::Processing: iconName = L"tray-processing.ico"; break;
-        case State::Error:      iconName = L"tray-error.ico";      break;
-        case State::NoModel:    iconName = L"tray-idle.ico";       break;
+        case State::Idle:       stockIcon = IDI_INFORMATION; break;
+        case State::Recording:  stockIcon = IDI_EXCLAMATION; break;
+        case State::Processing: stockIcon = IDI_APPLICATION;  break;
+        case State::Error:      stockIcon = IDI_WARNING;      break;
+        case State::NoModel:    stockIcon = IDI_QUESTION;     break;
     }
-    if (!iconPath_.empty() && iconName != nullptr) {
-        std::filesystem::path full = std::filesystem::path(iconPath_) / iconName;
-        HICON hNew = static_cast<HICON>(LoadImageW(
-            nullptr, full.wstring().c_str(), IMAGE_ICON, 16, 16,
-            LR_LOADFROMFILE | LR_DEFAULTSIZE));
-        if (hNew != nullptr) {
-            if (currentIcon_ != nullptr && ownsCurrentIcon_) {
-                DestroyIcon(static_cast<HICON>(currentIcon_));
-            }
-            nid->hIcon = hNew;
-            currentIcon_ = hNew;
-            ownsCurrentIcon_ = true;
-        }
+    HICON hNew = LoadIconW(nullptr, stockIcon);
+    if (hNew != nullptr) {
+        nid->hIcon = hNew;
+        currentIcon_ = hNew;
+        ownsCurrentIcon_ = false;
     }
     wcsncpy(nid->szTip, tooltip_.c_str(), 63);
     nid->szTip[63] = L'\0';
@@ -190,11 +192,10 @@ void TrayIcon::showContextMenu() {
     if (hMenu == nullptr) return;
 
     AppendMenuW(hMenu, MF_STRING, kMenuToggle, state_ == State::Recording
-                                                       ? L"Stop Recording"
-                                                       : L"Start Recording");
+                                                   ? L"Stop Recording"
+                                                   : L"Start Recording");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(hMenu, MF_STRING | (settingsPath_.empty() ? MF_GRAYED : 0),
-                kMenuSettings, L"Open Settings File...");
+    AppendMenuW(hMenu, MF_STRING, kMenuSettings, L"Settings...");
     AppendMenuW(hMenu, MF_STRING | (logsDir_.empty() ? MF_GRAYED : 0),
                 kMenuLogs, L"Open Log Folder...");
     AppendMenuW(hMenu, MF_STRING, kMenuAbout, L"About VocaWin");
