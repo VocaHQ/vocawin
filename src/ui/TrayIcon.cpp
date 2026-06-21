@@ -204,7 +204,6 @@ void TrayIcon::showContextMenu() {
 
     POINT pt;
     GetCursorPos(&pt);
-    SetForegroundWindow(static_cast<HWND>(hwnd_));
     TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RIGHTALIGN,
                     pt.x, pt.y, 0, static_cast<HWND>(hwnd_), nullptr);
     DestroyMenu(hMenu);

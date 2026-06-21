@@ -143,6 +143,12 @@ void AudioCapture::stop() {
         return;
     }
     stopRequested_.store(true);
+    // If stop() is called from the capture thread (e.g., via the
+    // silence detector callback), don't try to join ourselves.
+    // The thread will see stopRequested_ and exit on its own.
+    if (thread_.get_id() == std::this_thread::get_id()) {
+        return;
+    }
     if (thread_.joinable()) {
         thread_.join();
     }
@@ -210,11 +216,16 @@ std::vector<std::wstring> AudioCapture::enumerateDevices() {
 
 void AudioCapture::captureThread() {
 #if defined(_WIN32)
+    if (captureClient_ == nullptr) {
+        capturing_.store(false);
+        return;
+    }
     auto* cap = static_cast<IAudioCaptureClient*>(captureClient_);
     while (!stopRequested_.load()) {
-        Sleep(10);  // 10ms poll
+        Sleep(10);
         UINT32 packetLength = 0;
-        if (FAILED(cap->GetNextPacketSize(&packetLength)) || packetLength == 0) {
+        HRESULT hr = cap->GetNextPacketSize(&packetLength);
+        if (FAILED(hr) || packetLength == 0) {
             continue;
         }
         while (packetLength > 0) {
@@ -222,16 +233,33 @@ void AudioCapture::captureThread() {
             UINT32 numFrames = 0;
             DWORD flags = 0;
             UINT64 devPos = 0, qpcPos = 0;
-            HRESULT hr = cap->GetBuffer(&data, &numFrames, &flags, &devPos, &qpcPos);
+            hr = cap->GetBuffer(&data, &numFrames, &flags, &devPos, &qpcPos);
             if (FAILED(hr)) break;
             if (data != nullptr && numFrames > 0) {
                 const float* samples = reinterpret_cast<const float*>(data);
                 accumulate(samples, numFrames);
             }
             cap->ReleaseBuffer(numFrames);
-            if (FAILED(cap->GetNextPacketSize(&packetLength))) break;
+            hr = cap->GetNextPacketSize(&packetLength);
+            if (FAILED(hr)) break;
         }
     }
+    // If stop() was called from this thread, it returned early without
+    // releasing the COM objects. Clean them up here before exiting.
+    if (captureClient_ != nullptr) {
+        static_cast<IAudioCaptureClient*>(captureClient_)->Release();
+        captureClient_ = nullptr;
+    }
+    if (audioClient_ != nullptr) {
+        static_cast<IAudioClient*>(audioClient_)->Stop();
+        static_cast<IAudioClient*>(audioClient_)->Release();
+        audioClient_ = nullptr;
+    }
+    if (device_ != nullptr) {
+        static_cast<IMMDevice*>(device_)->Release();
+        device_ = nullptr;
+    }
+    capturing_.store(false);
 #endif
 }
 

@@ -26,8 +26,8 @@ void OverlayWindow::show() {
     if (hwnd_ != nullptr) {
         paintIcon();
         ShowWindow(static_cast<HWND>(hwnd_), SW_SHOWNOACTIVATE);
-        followLoop();
     }
+    followLoop();
 #endif
     visible_ = true;
 }
