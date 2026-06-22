@@ -107,6 +107,9 @@ void OverlayWindow::paintIcon() {
 }
 
 void OverlayWindow::followLoop() {
+    if (hwnd_ == nullptr) {
+        return;  // no window to follow
+    }
     if (followThread_.joinable()) {
         return;  // already running
     }

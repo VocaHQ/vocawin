@@ -344,10 +344,16 @@ void AppController::wireCallbacks() {
         silence_detector_.feedSample(level);
         if (onAudioLevelChanged) onAudioLevelChanged(level);
     };
+    // Defer the silence-timeout callback to the main thread via the tray
+    // window's message queue. Running stopRecordingAndTranscribe() on the
+    // audio capture thread would invoke Win32 UI APIs (Shell_NotifyIconW,
+    // CreateWindowExW) on the wrong thread, and would race with concurrent
+    // tray/hotkey calls causing double transcription of the same audio.
     silence_detector_.onSilenceTimeout = [this]() {
-        if (state_ == State::Recording) {
-            stopRecordingAndTranscribe();
-        }
+        tray_icon_.postSilenceTimeoutRequest();
+    };
+    tray_icon_.onSilenceTimeoutRequest = [this]() {
+        stopRecordingAndTranscribe();
     };
 }
 

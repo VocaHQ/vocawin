@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -80,6 +81,31 @@ int main() {
             // assert no crash and the call is well-defined.
             (void)buf;
             cap.stop();
+        }
+    }
+#endif
+
+    // 8. Win32: stop() called from the capture thread's onAudioLevel
+    //    callback must not deadlock. Without the self-join guard, this
+    //    raises std::system_error (resource_deadlock_would_occur) from
+    //    thread_.join() on the calling thread, which calls
+    //    std::terminate() and aborts the process. Skipped when no
+    //    capture device is available.
+#if defined(_WIN32)
+    {
+        vocawin::AudioCapture cap;
+        std::atomic<bool> stopCalled{false};
+        cap.onAudioLevel = [&cap, &stopCalled](float) {
+            if (!stopCalled.exchange(true)) {
+                cap.stop();
+            }
+        };
+        vocawin::AudioCapture::Config cfg;
+        if (cap.start(cfg)) {
+            for (int i = 0; i < 50 && cap.isCapturing(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            assert(!cap.isCapturing());
         }
     }
 #endif

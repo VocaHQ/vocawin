@@ -47,6 +47,17 @@ public:
     // item. The consumer is responsible for marshaling to the main thread.
     std::function<void(MenuCommand)> onMenuCommand;
 
+    // Fired on the Win32 message-pump thread when a silence-timeout
+    // request is posted via postSilenceTimeoutRequest(). Used to defer
+    // capture-thread callbacks to the main thread, avoiding running
+    // Win32 UI APIs and inference on the wrong thread.
+    std::function<void()> onSilenceTimeoutRequest;
+
+    // Post a silence-timeout request to the tray window. Safe to call
+    // from any thread; the callback fires on the thread that pumps the
+    // tray window's messages (the main thread).
+    void postSilenceTimeoutRequest();
+
     // Process any pending Win32 message for this tray. Returns true if a
     // callback was fired. Call from the main message loop.
     bool pumpMessage();
@@ -54,6 +65,7 @@ public:
 #if defined(_WIN32)
     void onTrayMessage(unsigned int msg);
     void onMenuCommandId(unsigned int id);
+    void onSilenceTimeoutRequestInternal();
 #endif
 
 private:

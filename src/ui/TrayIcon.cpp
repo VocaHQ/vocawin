@@ -45,6 +45,10 @@ static LRESULT CALLBACK trayWndProc(HWND hwnd, UINT msg, WPARAM wParam,
         self->onTrayMessage(static_cast<unsigned int>(lParam));
         return 0;
     }
+    if (msg == WM_APP + 1) {
+        self->onSilenceTimeoutRequestInternal();
+        return 0;
+    }
     if (msg == WM_COMMAND) {
         self->onMenuCommandId(static_cast<unsigned int>(LOWORD(wParam)));
         return 0;
@@ -156,6 +160,14 @@ bool TrayIcon::pumpMessage() {
     return false;
 }
 
+void TrayIcon::postSilenceTimeoutRequest() {
+#if defined(_WIN32)
+    if (hwnd_ != nullptr) {
+        PostMessageW(static_cast<HWND>(hwnd_), WM_APP + 1, 0, 0);
+    }
+#endif
+}
+
 bool TrayIcon::updateNotifyArea() {
 #if defined(_WIN32)
     if (nid_ == nullptr) {
@@ -231,6 +243,12 @@ void TrayIcon::onMenuCommandId(unsigned int id) {
         case kMenuAbout:    onMenuCommand(MenuCommand::About);         break;
         case kMenuQuit:     onMenuCommand(MenuCommand::Quit);          break;
         default: break;
+    }
+}
+
+void TrayIcon::onSilenceTimeoutRequestInternal() {
+    if (onSilenceTimeoutRequest) {
+        onSilenceTimeoutRequest();
     }
 }
 #endif  // _WIN32
