@@ -1,7 +1,6 @@
 #include "input/HotkeyManager.h"
 
 #include <chrono>
-#include <thread>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -12,28 +11,34 @@ namespace vocawin {
 #if defined(_WIN32)
 namespace {
 HotkeyManager* g_hookOwner = nullptr;
-}
 
 LRESULT CALLBACK HotkeyManagerLLKeyboardProc(int nCode, WPARAM wParam,
                                               LPARAM lParam) {
     if (nCode == HC_ACTION && g_hookOwner != nullptr) {
         const auto* p = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-        const bool isKeyDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
-        const bool isKeyUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
         if (p != nullptr &&
-            p->vkCode == static_cast<UINT>(g_hookOwner->config().virtualKeyCode)) {
+            p->vkCode ==
+                static_cast<DWORD>(g_hookOwner->config().virtualKeyCode)) {
+            const bool isKeyDown =
+                (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+            const bool isKeyUp =
+                (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
+            // Keep the hook callback fast: only debounce + invoke the
+            // already-wired std::function (which should PostMessage to UI).
+            // Heavy work here trips LowLevelHooksTimeout and Windows
+            // silently unhooks us.
             if (isKeyDown) {
                 g_hookOwner->handleKeyEvent(true);
             } else if (isKeyUp) {
                 g_hookOwner->handleKeyEvent(false);
             }
-            // Suppress the key from reaching other apps to avoid sticky
-            // modifiers; in push-to-talk this is the expected behavior.
+            // Swallow the hotkey so it does not type into the focused app.
             return 1;
         }
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
+}  // namespace
 #endif  // _WIN32
 
 HotkeyManager::HotkeyManager() = default;
@@ -43,35 +48,134 @@ HotkeyManager::~HotkeyManager() {
 }
 
 bool HotkeyManager::start(Config config) {
-    if (running_.load()) {
-        return true;  // already running
-    }
-    config_ = config;
+    std::lock_guard<std::mutex> life(lifecycleMutex_);
+    // Always fully stop any prior pump (join) before clearing stopRequested_.
+    // This prevents a detached ghost pump from racing install/uninstall.
+    if (running_.load() || pumpThread_.joinable() || pumpAlive_.load()) {
+        // Nested stop without re-taking lifecycleMutex_ — call internal path.
+        stopRequested_.store(true);
 #if defined(_WIN32)
-    g_hookOwner = this;
-    hook_ = SetWindowsHookExW(WH_KEYBOARD_LL, &HotkeyManagerLLKeyboardProc,
-                              GetModuleHandleW(nullptr), 0);
-    if (hook_ == nullptr) {
-        g_hookOwner = nullptr;
+        if (hook_ != nullptr) {
+            UnhookWindowsHookEx(static_cast<HHOOK>(hook_));
+            hook_ = nullptr;
+        }
+        if (g_hookOwner == this) {
+            g_hookOwner = nullptr;
+        }
+        if (threadId_ != 0) {
+            PostThreadMessageW(threadId_, WM_QUIT, 0, 0);
+        }
+#endif
+        if (pumpThread_.joinable()) {
+            pumpThread_.join();
+        }
+        running_.store(false);
+        pumpAlive_.store(false);
+        threadId_ = 0;
+        keyHeld_.store(false);
+    }
+
+    config_ = config;
+    lastErrorCode_.store(0);
+    keyHeld_.store(false);
+
+#if defined(_WIN32)
+    const std::uint64_t gen = generation_.fetch_add(1) + 1;
+    stopRequested_.store(false);
+    pumpAlive_.store(true);
+
+    std::atomic<bool> installDone{false};
+    std::atomic<bool> installOk{false};
+
+    // Install hook ON the same thread that pumps messages (MSDN requirement
+    // for WH_KEYBOARD_LL). Callbacks must stay non-blocking (PostMessage).
+    pumpThread_ = std::thread([this, gen, &installDone, &installOk]() {
+        installHookOnPumpThread();
+        installOk.store(hook_ != nullptr);
+        installDone.store(true);
+        if (hook_ == nullptr) {
+            pumpAlive_.store(false);
+            return;
+        }
+        runPumpThread(gen);
+        uninstallHookOnPumpThread();
+        if (generation_.load() == gen) {
+            pumpAlive_.store(false);
+        }
+    });
+
+    for (int i = 0; i < 200 && !installDone.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (!installDone.load() || !installOk.load()) {
+        stopRequested_.store(true);
+        if (threadId_ != 0) {
+            PostThreadMessageW(threadId_, WM_QUIT, 0, 0);
+        }
+        if (pumpThread_.joinable()) {
+            pumpThread_.join();
+        }
+        running_.store(false);
+        pumpAlive_.store(false);
         return false;
     }
-    stopRequested_.store(false);
     running_.store(true);
-    std::thread t([this]() { runMessageLoop(); });
-    threadHandle_ = nullptr;  // not used; thread will detach
-    t.detach();
     return true;
 #else
     (void)config;
+    pumpAlive_.store(false);
     return false;
 #endif
 }
 
 void HotkeyManager::stop() {
-    if (!running_.load()) {
+    std::lock_guard<std::mutex> life(lifecycleMutex_);
+    if (!running_.load() && !pumpThread_.joinable() && !pumpAlive_.load()) {
         return;
     }
     stopRequested_.store(true);
+    generation_.fetch_add(1);  // invalidate in-flight pump generation
+#if defined(_WIN32)
+    // Unhook first so no new callbacks enter handleKeyEvent.
+    if (hook_ != nullptr) {
+        UnhookWindowsHookEx(static_cast<HHOOK>(hook_));
+        hook_ = nullptr;
+    }
+    if (g_hookOwner == this) {
+        g_hookOwner = nullptr;
+    }
+    if (threadId_ != 0) {
+        PostThreadMessageW(threadId_, WM_QUIT, 0, 0);
+    }
+#endif
+    // Join is safe: wired callbacks only PostMessage (non-blocking).
+    if (pumpThread_.joinable()) {
+        pumpThread_.join();
+    }
+    hook_ = nullptr;
+    threadId_ = 0;
+    running_.store(false);
+    pumpAlive_.store(false);
+    keyHeld_.store(false);
+}
+
+void HotkeyManager::installHookOnPumpThread() {
+#if defined(_WIN32)
+    threadId_ = GetCurrentThreadId();
+    MSG probe{};
+    PeekMessageW(&probe, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+
+    g_hookOwner = this;
+    hook_ = SetWindowsHookExW(WH_KEYBOARD_LL, &HotkeyManagerLLKeyboardProc,
+                              GetModuleHandleW(nullptr), 0);
+    if (hook_ == nullptr) {
+        lastErrorCode_.store(static_cast<std::uint32_t>(GetLastError()));
+        g_hookOwner = nullptr;
+    }
+#endif
+}
+
+void HotkeyManager::uninstallHookOnPumpThread() {
 #if defined(_WIN32)
     if (hook_ != nullptr) {
         UnhookWindowsHookEx(static_cast<HHOOK>(hook_));
@@ -80,39 +184,70 @@ void HotkeyManager::stop() {
     if (g_hookOwner == this) {
         g_hookOwner = nullptr;
     }
-    // Post a WM_QUIT to wake the message loop.
-    PostThreadMessageW(threadId_, WM_QUIT, 0, 0);
-    // Give the loop a moment to exit (it polls stopRequested_ too).
-    for (int i = 0; i < 20 && running_.load(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
 #endif
-    running_.store(false);
 }
 
-void HotkeyManager::runMessageLoop() {
+void HotkeyManager::runPumpThread(std::uint64_t generation) {
 #if defined(_WIN32)
-    threadId_ = GetCurrentThreadId();
+    // Poll stopRequested_ so stop() can join promptly after unhook+WM_QUIT.
+    // Wired onHotkeyPressed/Released only PostMessage — never block here.
     MSG msg;
-    while (!stopRequested_.load() && GetMessage(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    while (!stopRequested_.load() && generation_.load() == generation) {
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                return;
+            }
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        Sleep(10);
     }
+#else
+    (void)generation;
 #endif
 }
 
 void HotkeyManager::handleKeyEvent(bool isKeyDown) {
     if (config_.mode == ActivationMode::PushToTalk) {
         if (isKeyDown) {
-            if (onHotkeyPressed) onHotkeyPressed();
+            bool expected = false;
+            if (!keyHeld_.compare_exchange_strong(expected, true)) {
+                return;
+            }
+            std::function<void()> cb;
+            {
+                std::lock_guard<std::mutex> lk(callbackMutex_);
+                cb = onHotkeyPressed;
+            }
+            if (cb) {
+                cb();
+            }
         } else {
-            if (onHotkeyReleased) onHotkeyReleased();
+            bool expected = true;
+            if (!keyHeld_.compare_exchange_strong(expected, false)) {
+                return;
+            }
+            std::function<void()> cb;
+            {
+                std::lock_guard<std::mutex> lk(callbackMutex_);
+                cb = onHotkeyReleased;
+            }
+            if (cb) {
+                cb();
+            }
         }
-    } else {
-        // DoubleTapToggle is captured at the message-loop level via raw
-        // event counting. Single-event entry-point keeps the surface
-        // uniform for tests and platforms.
-        (void)isKeyDown;
+        return;
+    }
+
+    if (!isKeyDown) {
+        std::function<void()> cb;
+        {
+            std::lock_guard<std::mutex> lk(callbackMutex_);
+            cb = onHotkeyPressed;
+        }
+        if (cb) {
+            cb();
+        }
     }
 }
 

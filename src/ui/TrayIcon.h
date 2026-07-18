@@ -53,10 +53,19 @@ public:
     // Win32 UI APIs and inference on the wrong thread.
     std::function<void()> onSilenceTimeoutRequest;
 
+    // Hotkey press/release marshaled from the LL-hook thread onto the
+    // main pump (same pattern as silence timeout).
+    std::function<void()> onHotkeyPressRequest;
+    std::function<void()> onHotkeyReleaseRequest;
+
     // Post a silence-timeout request to the tray window. Safe to call
     // from any thread; the callback fires on the thread that pumps the
     // tray window's messages (the main thread).
     void postSilenceTimeoutRequest();
+
+    // Post hotkey press/release to the tray window (main thread).
+    void postHotkeyPressRequest();
+    void postHotkeyReleaseRequest();
 
     // Process any pending Win32 message for this tray. Returns true if a
     // callback was fired. Call from the main message loop.
@@ -66,6 +75,8 @@ public:
     void onTrayMessage(unsigned int msg);
     void onMenuCommandId(unsigned int id);
     void onSilenceTimeoutRequestInternal();
+    void onHotkeyPressRequestInternal();
+    void onHotkeyReleaseRequestInternal();
 #endif
 
 private:

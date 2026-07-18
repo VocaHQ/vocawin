@@ -11,6 +11,7 @@ set(VOCAWIN_TESTS
     test_sound_feedback
     test_whisper_compile
     test_hotkey_manager
+    test_hotkey_transcribe
     test_model_manager
     test_audio_capture
     test_whisper_engine
@@ -53,10 +54,22 @@ foreach(t IN LISTS VOCAWIN_TESTS)
                 powershell -NoProfile -ExecutionPolicy Bypass -File
                 "${PROJECT_SOURCE_DIR}/scripts/run_with_retry.ps1"
                 ${t}.exe)
+        # Headless: skip MessageBox / interactive UI in Onboarding and similar.
+        set_tests_properties(${t} PROPERTIES
+            ENVIRONMENT "VOCAWIN_HEADLESS=1"
+            TIMEOUT 180)
     else()
         add_test(NAME ${t} COMMAND ${t})
+        set_tests_properties(${t} PROPERTIES
+            ENVIRONMENT "VOCAWIN_HEADLESS=1"
+            TIMEOUT 180)
     endif()
 endforeach()
+
+# Integrated hotkey + real tiny.en inference needs a longer budget on CPU/SSE.
+if(TARGET test_hotkey_transcribe)
+    set_tests_properties(test_hotkey_transcribe PROPERTIES TIMEOUT 300)
+endif()
 
 if(WIN32)
     # Stage the MinGW runtime DLLs next to every test executable so the

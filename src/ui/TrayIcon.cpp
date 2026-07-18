@@ -49,6 +49,14 @@ static LRESULT CALLBACK trayWndProc(HWND hwnd, UINT msg, WPARAM wParam,
         self->onSilenceTimeoutRequestInternal();
         return 0;
     }
+    if (msg == WM_APP + 2) {
+        self->onHotkeyPressRequestInternal();
+        return 0;
+    }
+    if (msg == WM_APP + 3) {
+        self->onHotkeyReleaseRequestInternal();
+        return 0;
+    }
     if (msg == WM_COMMAND) {
         self->onMenuCommandId(static_cast<unsigned int>(LOWORD(wParam)));
         return 0;
@@ -157,13 +165,46 @@ void TrayIcon::setPaths(const std::wstring& settingsPath,
 }
 
 bool TrayIcon::pumpMessage() {
+#if defined(_WIN32)
+    if (hwnd_ == nullptr) {
+        return false;
+    }
+    // Drain messages posted to the tray HWND (silence timeout, hotkey
+    // press/release). Used by the main loop and by unit tests that drive
+    // the same marshal path without a full GetMessage app loop.
+    MSG msg{};
+    bool any = false;
+    while (PeekMessageW(&msg, static_cast<HWND>(hwnd_), 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+        any = true;
+    }
+    return any;
+#else
     return false;
+#endif
 }
 
 void TrayIcon::postSilenceTimeoutRequest() {
 #if defined(_WIN32)
     if (hwnd_ != nullptr) {
         PostMessageW(static_cast<HWND>(hwnd_), WM_APP + 1, 0, 0);
+    }
+#endif
+}
+
+void TrayIcon::postHotkeyPressRequest() {
+#if defined(_WIN32)
+    if (hwnd_ != nullptr) {
+        PostMessageW(static_cast<HWND>(hwnd_), WM_APP + 2, 0, 0);
+    }
+#endif
+}
+
+void TrayIcon::postHotkeyReleaseRequest() {
+#if defined(_WIN32)
+    if (hwnd_ != nullptr) {
+        PostMessageW(static_cast<HWND>(hwnd_), WM_APP + 3, 0, 0);
     }
 #endif
 }
@@ -249,6 +290,18 @@ void TrayIcon::onMenuCommandId(unsigned int id) {
 void TrayIcon::onSilenceTimeoutRequestInternal() {
     if (onSilenceTimeoutRequest) {
         onSilenceTimeoutRequest();
+    }
+}
+
+void TrayIcon::onHotkeyPressRequestInternal() {
+    if (onHotkeyPressRequest) {
+        onHotkeyPressRequest();
+    }
+}
+
+void TrayIcon::onHotkeyReleaseRequestInternal() {
+    if (onHotkeyReleaseRequest) {
+        onHotkeyReleaseRequest();
     }
 }
 #endif  // _WIN32

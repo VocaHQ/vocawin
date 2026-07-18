@@ -139,19 +139,28 @@ bool AudioCapture::start(Config config) {
 }
 
 void AudioCapture::stop() {
-    if (!capturing_.load()) {
-        return;
-    }
     stopRequested_.store(true);
-    // If stop() is called from the capture thread (e.g., via the
-    // silence detector callback), don't try to join ourselves.
-    // The thread will see stopRequested_ and exit on its own.
-    if (thread_.get_id() == std::this_thread::get_id()) {
+
+    // Called from the capture thread (e.g. onAudioLevel/silence callback):
+    // must not join ourselves. Detach so ~std::thread does not std::terminate
+    // when captureThread returns. COM cleanup stays in captureThread's
+    // epilogue so we do not free interfaces while still on the stack of
+    // accumulate()/GetBuffer.
+    if (thread_.joinable() &&
+        thread_.get_id() == std::this_thread::get_id()) {
+        thread_.detach();
         return;
     }
+
+    if (!capturing_.load() && !thread_.joinable()) {
+        return;
+    }
+
     if (thread_.joinable()) {
         thread_.join();
     }
+    // captureThread releases COM before exit; only clean up if it did not
+    // (e.g. start failed after thread launch edge cases).
 #if defined(_WIN32)
     if (audioClient_ != nullptr) {
         static_cast<IAudioClient*>(audioClient_)->Stop();
@@ -223,12 +232,15 @@ void AudioCapture::captureThread() {
     auto* cap = static_cast<IAudioCaptureClient*>(captureClient_);
     while (!stopRequested_.load()) {
         Sleep(10);
+        if (stopRequested_.load() || captureClient_ == nullptr) {
+            break;
+        }
         UINT32 packetLength = 0;
         HRESULT hr = cap->GetNextPacketSize(&packetLength);
         if (FAILED(hr) || packetLength == 0) {
             continue;
         }
-        while (packetLength > 0) {
+        while (packetLength > 0 && !stopRequested_.load()) {
             BYTE* data = nullptr;
             UINT32 numFrames = 0;
             DWORD flags = 0;
@@ -238,6 +250,9 @@ void AudioCapture::captureThread() {
             if (data != nullptr && numFrames > 0) {
                 const float* samples = reinterpret_cast<const float*>(data);
                 accumulate(samples, numFrames);
+            }
+            if (captureClient_ == nullptr) {
+                break;  // stop() from callback may have begun teardown
             }
             cap->ReleaseBuffer(numFrames);
             hr = cap->GetNextPacketSize(&packetLength);

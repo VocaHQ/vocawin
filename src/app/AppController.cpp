@@ -5,6 +5,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #endif
+#include <cstdio>
 #include <filesystem>
 #include <utility>
 
@@ -227,7 +228,27 @@ bool AppController::initialize() {
     wireCallbacks();
 
     if (!hotkey_manager_.start(hkCfg)) {
-        logger_.info("hotkey manager not started (no interactive session?)");
+        logger_.error(
+            "hotkey manager failed to start (vk=0x" +
+            ([](std::uint32_t v) {
+                char buf[16];
+                std::snprintf(buf, sizeof(buf), "%02X",
+                              static_cast<unsigned>(v));
+                return std::string(buf);
+            })(hkCfg.virtualKeyCode) +
+            ", GetLastError=" +
+            std::to_string(hotkey_manager_.lastErrorCode()) + ")");
+    } else {
+        logger_.info(
+            "hotkey manager started (vk=0x" +
+            ([](std::uint32_t v) {
+                char buf[16];
+                std::snprintf(buf, sizeof(buf), "%02X",
+                              static_cast<unsigned>(v));
+                return std::string(buf);
+            })(hkCfg.virtualKeyCode) +
+            ", mode=" +
+            std::to_string(static_cast<int>(hkCfg.mode)) + ")");
     }
 
     loadConfiguredModel();
@@ -287,15 +308,21 @@ void AppController::shutdown() {
     if (!initialized_) {
         return;
     }
+    // Stop input first so no new recording/transcribe work is queued.
     hotkey_manager_.stop();
     audio_capture_.stop();
-    whisper_engine_.unloadModel();
+    // The inference lambda captures `this` and touches whisper_engine_,
+    // logger_, setState, and text_injector_. MUST join before any member
+    // teardown — never detach (that is a UAF on ~AppController).
     if (inference_thread_.joinable()) {
+        logger_.info("shutdown: joining inference thread");
         inference_thread_.join();
     }
-    logger_.info("shutdown complete");
+    inference_running_.store(false);
+    whisper_engine_.unloadModel();
     tray_icon_.shutdown();
     initialized_ = false;
+    logger_.info("shutdown complete");
 }
 
 bool AppController::isInitialized() const { return initialized_; }
@@ -372,9 +399,34 @@ void AppController::cancelRecording() {
     setState(State::Idle);
 }
 
+void AppController::simulateHotkeyPress() {
+    tray_icon_.postHotkeyPressRequest();
+    tray_icon_.pumpMessage();
+}
+
+void AppController::simulateHotkeyRelease() {
+    tray_icon_.postHotkeyReleaseRequest();
+    tray_icon_.pumpMessage();
+}
+
 void AppController::wireCallbacks() {
-    hotkey_manager_.onHotkeyPressed = [this]() { startRecording(); };
-    hotkey_manager_.onHotkeyReleased = [this]() { stopRecordingAndTranscribe(); };
+    // LL-hook callbacks run on the hotkey pump thread. Marshal to the main
+    // thread via the tray HWND so WASAPI/tray/overlay never run on the hook
+    // thread (also avoids LowLevelHooksTimeout unhooking us).
+    hotkey_manager_.onHotkeyPressed = [this]() {
+        tray_icon_.postHotkeyPressRequest();
+    };
+    hotkey_manager_.onHotkeyReleased = [this]() {
+        tray_icon_.postHotkeyReleaseRequest();
+    };
+    tray_icon_.onHotkeyPressRequest = [this]() {
+        logger_.info("hotkey pressed -> startRecording");
+        startRecording();
+    };
+    tray_icon_.onHotkeyReleaseRequest = [this]() {
+        logger_.info("hotkey released -> stopRecordingAndTranscribe");
+        stopRecordingAndTranscribe();
+    };
 
     audio_capture_.onAudioLevel = [this](float level) {
         silence_detector_.feedSample(level);
@@ -394,14 +446,31 @@ void AppController::wireCallbacks() {
 }
 
 void AppController::runInference(std::vector<float> audio) {
-    auto result = whisper_engine_.transcribe(audio);
-    if (result.has_value() && !result->text.empty()) {
-        text_injector_.inject(result->text);
-        if (onTranscriptionComplete) {
-            onTranscriptionComplete(result->text);
-        }
-    } else if (!whisper_engine_.isModelLoaded()) {
+    logger_.info("runInference: samples=" + std::to_string(audio.size()) +
+                 " modelLoaded=" +
+                 std::string(whisper_engine_.isModelLoaded() ? "1" : "0"));
+    if (!whisper_engine_.isModelLoaded()) {
         last_error_ = L"No model loaded";
+        logger_.error("runInference: no model loaded");
+        setState(State::Error);
+        setState(model_manager_.isModelDownloaded(settings_.model_id)
+                     ? State::Idle
+                     : State::NotLoaded);
+        inference_running_.store(false);
+        return;
+    }
+    auto result = whisper_engine_.transcribe(audio);
+    if (result.has_value()) {
+        logger_.info("runInference: text_len=" +
+                     std::to_string(result->text.size()));
+        if (!result->text.empty()) {
+            text_injector_.inject(result->text);
+            if (onTranscriptionComplete) {
+                onTranscriptionComplete(result->text);
+            }
+        }
+    } else {
+        logger_.error("runInference: transcribe returned nullopt");
     }
     setState(State::Idle);
     inference_running_.store(false);

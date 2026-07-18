@@ -56,6 +56,14 @@ public:
     // messages even when no tray callback fired).
     SettingsWindow& settingsWindow() { return settings_window_; }
 
+    // Tray icon (tests drive postHotkeyPressRequest + pumpMessage on this).
+    TrayIcon& trayIcon() { return tray_icon_; }
+
+    // Fire the same main-thread hotkey handlers the LL hook uses after
+    // marshal (post to tray HWND + pump). For tests and diagnostics.
+    void simulateHotkeyPress();
+    void simulateHotkeyRelease();
+
     void startRecording();
     void stopRecordingAndTranscribe();
     void cancelRecording();

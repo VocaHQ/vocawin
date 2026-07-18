@@ -1,5 +1,6 @@
 #include "ui/OnboardingWindow.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -12,6 +13,11 @@ namespace vocawin {
 
 namespace {
 constexpr const char* kMarker = R"({"onboarded": true})";
+
+bool headlessMode() {
+    const char* v = std::getenv("VOCAWIN_HEADLESS");
+    return v != nullptr && v[0] != '\0' && v[0] != '0';
+}
 }
 
 OnboardingWindow::OnboardingWindow(std::filesystem::path markerPath)
@@ -50,17 +56,20 @@ bool OnboardingWindow::show() {
         on_model_selected_(chosen);
     }
 #if defined(_WIN32)
-    const std::wstring wchosen(chosen.begin(), chosen.end());
-    const std::wstring body =
-        L"VocaWin is ready!\n\n"
-        L"1. Right-click the tray icon \u2192 Settings \u2192 Models\n"
-        L"2. Click \"Download model\" (recommended: " +
-        wchosen +
-        L")\n"
-        L"3. Hold Right Ctrl to record, release to type at the cursor.\n\n"
-        L"100% offline after the model is downloaded.";
-    MessageBoxW(nullptr, body.c_str(), L"Welcome to VocaWin",
-                MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+    // Automated tests set VOCAWIN_HEADLESS=1 so MessageBox cannot hang ctest.
+    if (!headlessMode()) {
+        const std::wstring wchosen(chosen.begin(), chosen.end());
+        const std::wstring body =
+            L"VocaWin is ready!\n\n"
+            L"1. Right-click the tray icon \u2192 Settings \u2192 Models\n"
+            L"2. Click \"Download model\" (recommended: " +
+            wchosen +
+            L")\n"
+            L"3. Hold Right Ctrl to record, release to type at the cursor.\n\n"
+            L"100% offline after the model is downloaded.";
+        MessageBoxW(nullptr, body.c_str(), L"Welcome to VocaWin",
+                    MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+    }
 #endif
     if (on_finished_) {
         on_finished_();
