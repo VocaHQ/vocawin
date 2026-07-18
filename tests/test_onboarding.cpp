@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 #include "ui/OnboardingWindow.h"
 
@@ -16,7 +18,8 @@ int main() {
     OnboardingWindow win(marker);
     assert(!win.isOnboarded());
 
-    // Bind all the steps the wizard needs.
+    bool modelSelected = false;
+    bool finished = false;
     win.setSystemInfo([]() { return std::wstring(L"Test system"); });
     win.setRecommendModel([]() { return std::string("base.en"); });
     win.setEnumerateDevices([]() {
@@ -24,18 +27,17 @@ int main() {
         v.emplace_back("Default microphone");
         return v;
     });
-    win.setOnModelSelected([](const std::string& id) {
+    win.setOnModelSelected([&](const std::string& id) {
         assert(id == "base.en");
+        modelSelected = true;
     });
-    win.setOnFinished([]() { /* no-op for test */ });
+    win.setOnFinished([&]() { finished = true; });
 
-    // Calling show() on non-Win32 returns false (no actual window).
-#if !defined(_WIN32)
-    assert(!win.show());
-#endif
-
-    // Mark complete.
-    win.markOnboarded();
+    // show() completes the first-run flow on all platforms (MessageBox only
+    // on Win32; headless platforms still mark onboarded and fire callbacks).
+    assert(win.show());
+    assert(modelSelected);
+    assert(finished);
     assert(win.isOnboarded());
 
     // A second instance reads the marker.

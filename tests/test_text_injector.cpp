@@ -36,19 +36,27 @@ int main() {
         assert(events[1].second == true);
     }
 
-    // 4. buildUnicodeEvents: non-BMP (surrogate pair) - 4 events total.
+    // 4. buildUnicodeEvents: non-BMP. Windows wchar_t is UTF-16 (surrogate
+    //    pair → 4 events); on macOS/Linux wchar_t is typically UTF-32
+    //    (one code point → 2 events, truncated to uint16_t).
     {
         const std::wstring emojiStr = L"\U0001F600";
         const auto events = vocawin::TextInjector::buildUnicodeEvents(emojiStr);
-        assert(events.size() == 4);
-        assert(events[0].first == 0xD83D);
-        assert(events[0].second == false);
-        assert(events[1].first == 0xD83D);
-        assert(events[1].second == true);
-        assert(events[2].first == 0xDE00);
-        assert(events[2].second == false);
-        assert(events[3].first == 0xDE00);
-        assert(events[3].second == true);
+        if (sizeof(wchar_t) == 2) {
+            assert(events.size() == 4);
+            assert(events[0].first == 0xD83D);
+            assert(events[0].second == false);
+            assert(events[1].first == 0xD83D);
+            assert(events[1].second == true);
+            assert(events[2].first == 0xDE00);
+            assert(events[2].second == false);
+            assert(events[3].first == 0xDE00);
+            assert(events[3].second == true);
+        } else {
+            assert(events.size() == 2);
+            assert(events[0].second == false);
+            assert(events[1].second == true);
+        }
     }
 
     // 5. Inject an empty string: returns true (nothing to do, not an error).

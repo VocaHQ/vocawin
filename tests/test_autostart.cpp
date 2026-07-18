@@ -10,8 +10,10 @@ int main() {
     const std::filesystem::path dummy =
         std::filesystem::temp_directory_path() / "vocawin_test_dummy.exe";
 
-    // 1. Initial state: not enabled, regardless of registry state from prior runs.
     Autostart a(dummy);
+
+#if defined(_WIN32)
+    // 1. Initial state: not enabled.
     a.disable();
     assert(!a.isEnabled());
 
@@ -32,6 +34,14 @@ int main() {
     assert(a.disable());
     assert(a.disable());
     assert(!a.isEnabled());
+#else
+    // Non-Windows stub: enable is a no-op failure, disable is success.
+    assert(!a.isEnabled());
+    assert(!a.enable());
+    assert(!a.isEnabled());
+    assert(a.disable());
+    assert(a.launchPath().empty());
+#endif
 
     return 0;
 }

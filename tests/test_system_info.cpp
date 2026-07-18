@@ -10,10 +10,14 @@ int main() {
     assert(!summary.empty());
 
     const auto ramBytes = SystemInfo::totalRamBytes();
+#if defined(_WIN32)
     // Any real Windows host has at least 512 MB of physical RAM; a
-    // zero return indicates the GlobalMemoryStatusEx call failed
-    // (which would be a real bug).
+    // zero return indicates the GlobalMemoryStatusEx call failed.
     assert(ramBytes >= 512ULL * 1024 * 1024);
+#else
+    // Stub returns 0 on non-Windows; summary still non-empty.
+    (void)ramBytes;
+#endif
 
     const auto cpuName = SystemInfo::cpuName();
     assert(!cpuName.empty());
