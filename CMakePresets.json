@@ -29,6 +29,16 @@
         "CMAKE_CXX_FLAGS": "--coverage -fprofile-arcs -ftest-coverage",
         "CMAKE_EXE_LINKER_FLAGS": "--coverage"
       }
+    },
+    {
+      "name": "release-vulkan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release-vulkan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VOCAWIN_BUILD_TESTS": "ON",
+        "VOCAWIN_VULKAN": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -43,6 +53,10 @@
     {
       "name": "coverage",
       "configurePreset": "coverage"
+    },
+    {
+      "name": "release-vulkan",
+      "configurePreset": "release-vulkan"
     }
   ],
   "testPresets": [
@@ -63,6 +77,13 @@
     {
       "name": "coverage",
       "configurePreset": "coverage",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-vulkan",
+      "configurePreset": "release-vulkan",
       "output": {
         "outputOnFailure": true
       }

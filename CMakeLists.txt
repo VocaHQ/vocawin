@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(VOCAWIN_BUILD_TESTS "Build unit tests" ON)
 option(VOCAWIN_WITH_WHISPER "Build with whisper.cpp speech recognition" ON)
+option(VOCAWIN_VULKAN "Enable Vulkan GPU acceleration via ggml-vulkan" OFF)
 
 include(FetchContent)
 
@@ -31,11 +32,22 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64|x64|i686|X86")
 endif()
 set(GGML_CUDA OFF CACHE BOOL "" FORCE)
 set(GGML_METAL OFF CACHE BOOL "" FORCE)
-set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
 set(GGML_OPENCL OFF CACHE BOOL "" FORCE)
 set(GGML_RPC OFF CACHE BOOL "" FORCE)
 set(GGML_SYCL OFF CACHE BOOL "" FORCE)
 set(GGML_BLAS OFF CACHE BOOL "" FORCE)
+
+# Vulkan GPU acceleration: requires VULKAN_SDK with glslc + SPIRV-Headers.
+# When VOCAWIN_VULKAN is ON, ggml-vulkan backend is compiled into whisper.
+if(VOCAWIN_VULKAN)
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+    # SPIRV-Headers CMake config lives under <VULKAN_SDK>/Lib/cmake
+    if(DEFINED ENV{VULKAN_SDK})
+        list(APPEND CMAKE_PREFIX_PATH "$ENV{VULKAN_SDK}/Lib/cmake")
+    endif()
+else()
+    set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+endif()
 
 if(VOCAWIN_WITH_WHISPER)
     FetchContent_Declare(

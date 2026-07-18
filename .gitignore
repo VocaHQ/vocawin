@@ -27,6 +27,8 @@ __pycache__/
 .ulw/notepad.md
 vocawin/
 
+# Vulkan SDK is installed from LunarG (VULKAN_SDK env var), not vendored.
+third_party/
 
 onboarded.json
 
