@@ -17,6 +17,18 @@ set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_CPU_ALL_VARIANTS OFF CACHE BOOL "" FORCE)
+# MinGW + AVX2 softmax has been observed to SIGSEGV inside
+# ggml_vec_soft_max_f32 during whisper_full on Windows (debug stack
+# traces land in vec.cpp AVX2 path). Prefer SSE4.2/SSE2 for a stable
+# CPU MVP on x86 only — never force x86 ISA flags on ARM CI (macOS).
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64|x64|i686|X86")
+    set(GGML_AVX OFF CACHE BOOL "" FORCE)
+    set(GGML_AVX2 OFF CACHE BOOL "" FORCE)
+    set(GGML_AVX512 OFF CACHE BOOL "" FORCE)
+    set(GGML_FMA OFF CACHE BOOL "" FORCE)
+    set(GGML_F16C OFF CACHE BOOL "" FORCE)
+    set(GGML_SSE42 ON CACHE BOOL "" FORCE)
+endif()
 set(GGML_CUDA OFF CACHE BOOL "" FORCE)
 set(GGML_METAL OFF CACHE BOOL "" FORCE)
 set(GGML_VULKAN OFF CACHE BOOL "" FORCE)

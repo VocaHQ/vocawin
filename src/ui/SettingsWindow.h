@@ -25,6 +25,11 @@ public:
                                                 bool hasGpu)>;
     using SystemInfoFn = std::function<std::wstring()>;  // human-readable
     using OnAboutFn = std::function<std::wstring()>;       // about text
+    // Download the given model id; progress is 0..1. Returns true on success.
+    using DownloadFn = std::function<bool(const std::string& modelId,
+                                          std::function<void(float)> onProgress)>;
+    // Optional: report whether a model is already on disk (for status text).
+    using IsDownloadedFn = std::function<bool(const std::string& modelId)>;
 
     SettingsWindow();
     ~SettingsWindow();
@@ -38,6 +43,10 @@ public:
     void setRecommendHandler(RecommendFn fn) { recommend_ = std::move(fn); }
     void setSystemInfoHandler(SystemInfoFn fn) { system_info_ = std::move(fn); }
     void setOnAboutHandler(OnAboutFn fn) { about_text_ = std::move(fn); }
+    void setDownloadHandler(DownloadFn fn) { download_ = std::move(fn); }
+    void setIsDownloadedHandler(IsDownloadedFn fn) {
+        is_downloaded_ = std::move(fn);
+    }
 
     // Show the settings window. Returns true if the window was created
     // and entered its message loop; false on error or non-Win32.
@@ -73,6 +82,8 @@ private:
     RecommendFn recommend_;
     SystemInfoFn system_info_;
     OnAboutFn about_text_;
+    DownloadFn download_;
+    IsDownloadedFn is_downloaded_;
 
     bool visible_{false};
     Settings pending_;  // Last loaded settings, used to populate controls
@@ -88,7 +99,11 @@ private:
     void* h_status_{nullptr};       // static label
     void* h_save_{nullptr};
     void* h_cancel_{nullptr};
+    void* h_download_{nullptr};     // "Download model" on main dialog
 #endif
+
+    void setStatus(const std::wstring& text);
+    bool downloadSelectedModel();
 };
 
 }  // namespace vocawin

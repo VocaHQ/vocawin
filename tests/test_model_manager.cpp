@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "speech/ModelManager.h"
 
@@ -13,7 +14,7 @@ int main() {
         assert(!models.empty());
     }
 
-    // 2. Catalog includes the tiny model.
+    // 2. Catalog includes the tiny model with an HTTPS catalog URL.
     {
         const auto models = vocawin::ModelManager::getAvailableModels();
         bool foundTiny = false;
@@ -21,6 +22,7 @@ int main() {
             if (m.id == "tiny.en") {
                 foundTiny = true;
                 assert(!m.url.empty());
+                assert(m.url.compare(0, 8, "https://") == 0);
                 assert(m.fileSizeBytes > 0);
                 assert(m.ramRequiredBytes > 0);
                 assert(!m.displayName.empty());
@@ -109,9 +111,7 @@ int main() {
         assert(rec.id == "small.en");
     }
 
-    // 12. downloadFromUrl: copy a local file to the canonical models
-    //     path. The MVP doesn't ship an HTTP client; the test
-    //     exercises the local-file branch via a file:// URL.
+    // 12. downloadModel via file://: copy local fixture with progress.
     {
         const std::filesystem::path dir = "build/test-model-manager";
         std::filesystem::remove_all(dir);
@@ -120,18 +120,28 @@ int main() {
         const std::filesystem::path srcDir = "build/test-model-manager-src";
         std::filesystem::create_directories(srcDir);
         const std::filesystem::path src = srcDir / "ggml-tiny.en.bin";
-        std::ofstream(src).write("fake model bytes", 16);
+        // >= 1 KiB so content is non-trivial for size checks downstream.
+        std::string payload(2048, 'A');
+        std::ofstream(src, std::ios::binary).write(payload.data(),
+            static_cast<std::streamsize>(payload.size()));
 
         const std::string fileUrl = "file:///" +
             std::filesystem::absolute(src).generic_string();
         bool progressed = false;
+        float lastP = -1.0f;
         const bool ok = mm.downloadModel("tiny.en", fileUrl,
-            [&progressed](float p) {
+            [&](float p) {
                 if (p > 0.0f && p <= 1.0f) progressed = true;
+                lastP = p;
             });
         assert(ok);
         assert(progressed);
+        assert(lastP >= 0.99f);
         assert(mm.isModelDownloaded("tiny.en"));
+        // Atomic write leaves no .part residue on success.
+        assert(!std::filesystem::exists(mm.getModelPath("tiny.en").string() + ".part"));
+        const auto sz = std::filesystem::file_size(mm.getModelPath("tiny.en"));
+        assert(sz == payload.size());
 
         std::filesystem::remove_all(srcDir);
         std::filesystem::remove_all(dir);
@@ -143,6 +153,48 @@ int main() {
         std::filesystem::create_directories(dir);
         vocawin::ModelManager mm(dir);
         assert(!mm.downloadModel("nope", "file:///nope", nullptr));
+        std::filesystem::remove_all(dir);
+    }
+
+    // 14. HTTPS download of an unreachable host fails cleanly (not success).
+    {
+        const std::filesystem::path dir = "build/test-model-manager-https-fail";
+        std::filesystem::remove_all(dir);
+        vocawin::ModelManager mm(dir);
+        bool progressOnFail = false;
+        const bool ok = mm.downloadModel(
+            "tiny.en",
+            "https://127.0.0.1:1/this-port-is-closed/ggml-tiny.en.bin",
+            [&](float) { progressOnFail = true; });
+        assert(!ok);
+        assert(!mm.isModelDownloaded("tiny.en"));
+        // May or may not fire progress before connection fails; either is fine
+        // as long as we did not claim success or leave a final model file.
+        (void)progressOnFail;
+        assert(!std::filesystem::exists(mm.getModelPath("tiny.en")));
+        std::filesystem::remove_all(dir);
+    }
+
+    // 15. Unsupported scheme fails (never silent success).
+    {
+        const std::filesystem::path dir = "build/test-model-manager-scheme";
+        std::filesystem::remove_all(dir);
+        vocawin::ModelManager mm(dir);
+        assert(!mm.downloadModel("tiny.en", "ftp://example.com/x.bin", nullptr));
+        assert(!mm.isModelDownloaded("tiny.en"));
+        std::filesystem::remove_all(dir);
+    }
+
+    // 16. Empty catalog URL override with missing file:// source fails.
+    {
+        const std::filesystem::path dir = "build/test-model-manager-missing-src";
+        std::filesystem::remove_all(dir);
+        vocawin::ModelManager mm(dir);
+        assert(!mm.downloadModel(
+            "tiny.en",
+            "file:///Z:/definitely-does-not-exist-vocawin-fixture.bin",
+            nullptr));
+        assert(!mm.isModelDownloaded("tiny.en"));
         std::filesystem::remove_all(dir);
     }
 

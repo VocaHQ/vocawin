@@ -14,6 +14,7 @@ set(VOCAWIN_TESTS
     test_model_manager
     test_audio_capture
     test_whisper_engine
+    test_mvp_pipeline
     test_settings_window
     test_autostart
     test_system_info

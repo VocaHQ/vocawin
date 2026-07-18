@@ -44,7 +44,7 @@ void SettingsWindow::hide() {
         hwnd_ = nullptr;
     }
     h_tab_ = h_general_ = h_models_ = h_audio_ = h_hotkeys_ = h_about_ = nullptr;
-    h_status_ = h_save_ = h_cancel_ = nullptr;
+    h_status_ = h_save_ = h_cancel_ = h_download_ = nullptr;
 #endif
     visible_ = false;
 }
@@ -110,6 +110,11 @@ bool SettingsWindow::createDialog() {
                                 8, 376, 528, 24,
                                 static_cast<HWND>(hwnd_), nullptr, hInstance, nullptr);
 
+    h_download_ = CreateWindowExW(0, L"BUTTON", L"Download model",
+                                  WS_CHILD | WS_VISIBLE,
+                                  8, 410, 140, 28,
+                                  static_cast<HWND>(hwnd_),
+                                  reinterpret_cast<HMENU>(3), hInstance, nullptr);
     h_save_ = CreateWindowExW(0, L"BUTTON", L"Save",
                               WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
                               360, 410, 80, 28,
@@ -128,6 +133,13 @@ bool SettingsWindow::createDialog() {
     populateAboutTab();
     ShowWindow(static_cast<HWND>(h_tab_), SW_SHOW);
     showTabPage(0);
+
+    if (is_downloaded_ && is_downloaded_(pending_.model_id)) {
+        setStatus(L"Selected model is already on disk. Ready to use.");
+    } else {
+        setStatus(L"Select a model, then click Download model (~75MB for tiny.en).");
+    }
+
     ShowWindow(static_cast<HWND>(hwnd_), SW_SHOW);
     UpdateWindow(static_cast<HWND>(hwnd_));
     return true;
@@ -160,6 +172,8 @@ long long __stdcall SettingsWindow::wndProc(void* hwnd, unsigned int msg,
                 }
             } else if (LOWORD(wparam) == 2) {
                 self->hide();
+            } else if (LOWORD(wparam) == 3) {
+                self->downloadSelectedModel();
             }
             return 0;
         case WM_NOTIFY: {
@@ -330,8 +344,12 @@ void SettingsWindow::populateModelsTab() {
     if (recommend_) {
         addLabel(h, 8, 92, 480, L"(Recommendation based on your hardware is shown in About)");
     }
-    addLabel(h, 8, 116, 480, L"Models download from HuggingFace on first use.");
-    addLabel(h, 8, 140, 480, L"See docs/SPEC.md \u00a74.2.4 for the model catalog.");
+    addLabel(h, 8, 116, 480,
+             L"Click \"Download model\" below to fetch the selected model");
+    addLabel(h, 8, 140, 480,
+             L"from HuggingFace (HTTPS). tiny.en is ~75MB and good for MVP.");
+    addLabel(h, 8, 164, 480,
+             L"After download, Save and use Right Ctrl (hold) to record.");
 #endif
 }
 
@@ -510,6 +528,73 @@ bool SettingsWindow::applyChanges() {
         return ok;
     }
     return false;
+}
+
+void SettingsWindow::setStatus(const std::wstring& text) {
+#if defined(_WIN32)
+    if (h_status_ != nullptr) {
+        SetWindowTextW(static_cast<HWND>(h_status_), text.c_str());
+    }
+#else
+    (void)text;
+#endif
+}
+
+bool SettingsWindow::downloadSelectedModel() {
+    if (!download_) {
+        setStatus(L"Download is not available.");
+        return false;
+    }
+    Settings s = pending_;
+    readControlsInto(s);
+    pending_ = s;
+
+    // Persist selection first so AppController uses the same model id.
+    if (save_) {
+        (void)save_(s);
+    }
+
+    setStatus(L"Downloading model (this may take a few minutes)...");
+#if defined(_WIN32)
+    if (h_download_ != nullptr) {
+        EnableWindow(static_cast<HWND>(h_download_), FALSE);
+    }
+    // Keep the dialog responsive during a long blocking download.
+    MSG msg;
+    auto pump = [&]() {
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    };
+    pump();
+#endif
+
+    float lastShown = -1.0f;
+    const bool ok = download_(s.model_id, [&](float p) {
+        if (p - lastShown < 0.05f && p < 0.99f) {
+            return;
+        }
+        lastShown = p;
+        const int pct = static_cast<int>(p * 100.0f + 0.5f);
+        setStatus(L"Downloading model... " + std::to_wstring(pct) + L"%");
+#if defined(_WIN32)
+        pump();
+#endif
+    });
+
+#if defined(_WIN32)
+    if (h_download_ != nullptr) {
+        EnableWindow(static_cast<HWND>(h_download_), TRUE);
+    }
+#endif
+
+    if (ok) {
+        setStatus(L"Model downloaded and loaded. Hold Right Ctrl to record.");
+    } else {
+        setStatus(L"Download failed. Check network / logs and try again.");
+    }
+    return ok;
 }
 
 }  // namespace vocawin

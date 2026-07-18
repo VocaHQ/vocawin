@@ -40,7 +40,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "VocaWin initialized. State=" << static_cast<int>(app.state()) << "\n";
+    std::cout << "VocaWin initialized. State=" << static_cast<int>(app.state())
+              << std::endl;
 
 #if defined(_WIN32)
     app.onQuitRequested = []() { PostQuitMessage(0); };

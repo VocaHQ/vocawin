@@ -39,20 +39,32 @@ void OnboardingWindow::markOnboarded() {
 }
 
 bool OnboardingWindow::show() {
-    if (recommend_ && on_model_selected_) {
-        on_model_selected_(recommend_());
+    std::string chosen = "tiny.en";
+    if (recommend_) {
+        const std::string rec = recommend_();
+        if (!rec.empty()) {
+            chosen = rec;
+        }
+    }
+    if (on_model_selected_) {
+        on_model_selected_(chosen);
     }
 #if defined(_WIN32)
-    MessageBoxW(nullptr,
+    const std::wstring wchosen(chosen.begin(), chosen.end());
+    const std::wstring body =
         L"VocaWin is ready!\n\n"
-        L"Hold Right Ctrl to record.\n"
-        L"Release to transcribe and type at your cursor.\n\n"
-        L"Right-click the tray icon for Settings.\n"
-        L"Models download automatically on first use.",
-        L"Welcome to VocaWin",
-        MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        L"1. Right-click the tray icon \u2192 Settings \u2192 Models\n"
+        L"2. Click \"Download model\" (recommended: " +
+        wchosen +
+        L")\n"
+        L"3. Hold Right Ctrl to record, release to type at the cursor.\n\n"
+        L"100% offline after the model is downloaded.";
+    MessageBoxW(nullptr, body.c_str(), L"Welcome to VocaWin",
+                MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
 #endif
-    if (on_finished_) on_finished_();
+    if (on_finished_) {
+        on_finished_();
+    }
     markOnboarded();
     return true;
 }

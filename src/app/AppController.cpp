@@ -96,7 +96,39 @@ AppController::AppController(std::filesystem::path data_root)
     settings_window_.setOnAboutHandler([]() {
         return std::wstring(L"VocaWin MVP - 100% offline voice-to-text");
     });
+    settings_window_.setDownloadHandler(
+        [this](const std::string& id, std::function<void(float)> progress) {
+            setDownloadProgressHandler(std::move(progress));
+            return downloadModel(id);
+        });
+    settings_window_.setIsDownloadedHandler(
+        [this](const std::string& id) {
+            return model_manager_.isModelDownloaded(id);
+        });
+    settings_window_.setRecommendHandler(
+        [](std::size_t ram, std::size_t vram, bool hasGpu) {
+            return ModelManager::recommendModel(ram, vram, hasGpu).id;
+        });
 
+    onboarding_window_.setRecommendModel([]() {
+        const auto caps = GpuDetector::detect();
+        // Conservative 8GB RAM default when we cannot query; prefers tiny.en.
+        const std::size_t ram = 8ULL * 1024 * 1024 * 1024;
+        const auto rec = ModelManager::recommendModel(
+            ram, caps.vramBytes,
+            caps.cudaAvailable || caps.vulkanAvailable);
+        return rec.id.empty() ? std::string("tiny.en") : rec.id;
+    });
+    onboarding_window_.setOnModelSelected([this](const std::string& id) {
+        if (id.empty()) {
+            return;
+        }
+        settings_.model_id = id;
+        if (!settings_store_.save(settings_)) {
+            logger_.error("failed to save model selection from onboarding");
+        }
+        logger_.info("onboarding selected model: " + id);
+    });
     onboarding_window_.setOnFinished([this]() {
         logger_.info("onboarding completed");
     });
@@ -119,8 +151,12 @@ AppController::AppController(std::filesystem::path data_root)
                 const auto dir = data_root_ / "logs";
                 std::error_code ec;
                 std::filesystem::create_directories(dir, ec);
+#if defined(_WIN32)
                 ShellExecuteW(nullptr, L"open", dir.wstring().c_str(),
                               nullptr, nullptr, SW_SHOWNORMAL);
+#else
+                (void)dir;
+#endif
                 break;
             }
             case TrayIcon::MenuCommand::About:
@@ -449,11 +485,49 @@ void AppController::syncAutostartFromSettings() {
 bool AppController::downloadModel(const std::string& modelId) {
     const std::string id = modelId.empty() ? settings_.model_id : modelId;
     logger_.info("downloading model: " + id);
-    return model_manager_.downloadModel(
+    tray_icon_.setState(TrayIcon::State::Processing);
+
+    const bool ok = model_manager_.downloadModel(
         id, "",
         [this](float p) {
-            if (download_progress_) download_progress_(p);
+            if (download_progress_) {
+                download_progress_(p);
+            }
         });
+
+    if (!ok) {
+        last_error_ = L"Model download failed: " +
+                      std::wstring(id.begin(), id.end());
+        logger_.error("download failed: " + id);
+        setState(State::Error);
+        // Recover to a stable idle-or-not-loaded state after a brief Error.
+        setState(model_manager_.isModelDownloaded(settings_.model_id) &&
+                         whisper_engine_.isModelLoaded()
+                     ? State::Idle
+                     : State::NotLoaded);
+        return false;
+    }
+
+    settings_.model_id = id;
+    if (!settings_store_.save(settings_)) {
+        logger_.error("failed to persist model id after download");
+    }
+    loadConfiguredModel();
+    if (whisper_engine_.isModelLoaded()) {
+        logger_.info("download complete and model loaded: " + id);
+        setState(State::Idle);
+        if (notifier_.isEnabled()) {
+            notifier_.show(L"VocaWin",
+                           L"Model ready. Hold Right Ctrl to dictate.");
+        }
+        return true;
+    }
+
+    last_error_ = L"Downloaded model but failed to load it";
+    logger_.error("downloaded but load failed: " + id);
+    setState(State::Error);
+    setState(State::NotLoaded);
+    return false;
 }
 
 }  // namespace vocawin

@@ -17,6 +17,7 @@ struct WhisperEngine::Impl {
     whisper_context* ctx{nullptr};
     std::string language{"auto"};
     bool translate{false};
+    int nThreads{4};
     GpuBackend backend{"CPU", "Generic CPU"};
 };
 
@@ -80,7 +81,7 @@ bool WhisperEngine::loadModel(const std::filesystem::path& modelPath,
     if (impl_->ctx == nullptr) {
         return false;
     }
-    (void)nThreads;  // used in transcribe() per-call
+    impl_->nThreads = nThreads > 0 ? nThreads : 1;
     return true;
 }
 
@@ -111,11 +112,14 @@ WhisperEngine::transcribe(const std::vector<float>& audioData) {
 
     whisper_full_params wparams =
         whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    wparams.n_threads = 4;
+    wparams.n_threads = impl_->nThreads > 0 ? impl_->nThreads : 1;
     wparams.print_progress = false;
     wparams.print_realtime = false;
     wparams.print_timestamps = false;
+    wparams.print_special = false;
     wparams.translate = impl_->translate;
+    wparams.no_context = true;
+    wparams.single_segment = false;
     if (impl_->language == "auto" || impl_->language.empty()) {
         wparams.language = nullptr;  // auto-detect
     } else {
@@ -130,23 +134,18 @@ WhisperEngine::transcribe(const std::vector<float>& audioData) {
 
     const int nSegments = whisper_full_n_segments(impl_->ctx);
     std::string fullText;
-    float totalProb = 0.0f;
-    int countedProbs = 0;
+    float nsp = 0.0f;
     for (int i = 0; i < nSegments; ++i) {
         const char* seg = whisper_full_get_segment_text(impl_->ctx, i);
         if (seg != nullptr) {
             fullText += seg;
         }
-        const float p = whisper_full_get_segment_t0(impl_->ctx, i);  // t0 (s); use as proxy
-        (void)p;
-        // whisper_full_get_segment_no_speech_prob / get_segment_t* are
-        // available; using t0 as a stable per-segment value keeps the
-        // average meaningful without pulling additional state.
-        // (Average segment-prob is not exposed; we use no_speech_prob
-        // inverted for the overall confidence.)
     }
-    const float nsp = whisper_full_get_segment_no_speech_prob(impl_->ctx, 0);
-    (void)nsp; (void)totalProb; (void)countedProbs;  // not used directly here
+    // whisper_full_get_segment_no_speech_prob requires a valid segment
+    // index; pure noise can yield zero segments — never touch index 0 then.
+    if (nSegments > 0) {
+        nsp = whisper_full_get_segment_no_speech_prob(impl_->ctx, 0);
+    }
 
     Result r;
     r.text = filterText(utf8ToWstring(fullText));

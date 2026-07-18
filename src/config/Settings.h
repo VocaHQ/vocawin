@@ -6,7 +6,8 @@
 namespace vocawin {
 
 struct Settings {
-    std::string model_id{"base.en"};
+    // Default to the smallest English model so first-run download is ~75MB.
+    std::string model_id{"tiny.en"};
     std::string language{"auto"};
     bool launch_at_startup{true};
     bool sound_effects{true};

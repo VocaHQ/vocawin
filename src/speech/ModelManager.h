@@ -36,11 +36,12 @@ public:
     // may not exist (callers should check isModelDownloaded first).
     std::filesystem::path getModelPath(const std::string& modelId) const;
 
-    // Download a model into modelsDir. The MVP supports `file://` URLs
-    // and copies the bytes to the canonical path. `onProgress` is
-    // called with a 0..1 fraction. Returns true on success. The
-    // modelId must be in getAvailableModels() (used to validate and
-    // to pick the default URL when `url` is empty).
+    // Download a model into modelsDir. Supports `file://` (local copy)
+    // and `https://` / `http://` (WinHTTP). Writes via a temp `.part`
+    // file then renames. `onProgress` receives a 0..1 fraction.
+    // Returns true only when the final bytes land at getModelPath.
+    // modelId must be in getAvailableModels(); empty `url` uses the
+    // catalog default.
     using ProgressCallback = std::function<void(float progress)>;
     bool downloadModel(const std::string& modelId,
                        const std::string& url,

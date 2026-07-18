@@ -13,7 +13,7 @@ int main() {
     {
         vocawin::SettingsStore store(path);
         const vocawin::Settings defaults = store.load();
-        assert(defaults.model_id == "base.en");
+        assert(defaults.model_id == "tiny.en");
         assert(defaults.language == "auto");
         assert(defaults.launch_at_startup);
         assert(defaults.hotkey_vk_code == 0xA3);  // VK_RCONTROL
