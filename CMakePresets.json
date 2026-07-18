@@ -27,7 +27,8 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "VOCAWIN_BUILD_TESTS": "ON",
         "CMAKE_CXX_FLAGS": "--coverage -fprofile-arcs -ftest-coverage",
-        "CMAKE_EXE_LINKER_FLAGS": "--coverage"
+        "CMAKE_EXE_LINKER_FLAGS": "--coverage",
+        "VOCAWIN_COVERAGE": "ON"
       }
     },
     {

@@ -98,11 +98,18 @@ int main() {
 #endif
 
     // Model for integrated controller path (inference is the only engine use).
+#if defined(VOCAWIN_COVERAGE)
+    // Coverage instrumentation makes whisper ~10x slower; skip real inference
+    // to avoid timeout. The hotkey marshal path is still exercised below.
+    const std::filesystem::path modelPath{};
+    std::cout << "coverage build: skip model-backed inference" << std::endl;
+#else
     const auto modelPath = findTinyModel();
     if (modelPath.empty()) {
         std::cout << "no tiny.en cache; skip model-backed integrated path"
                   << std::endl;
     }
+#endif
 
     // --- AppController INTEGRATED hotkey path (tray marshal) ---
     const std::filesystem::path root = "build/test-hotkey-integrated";
