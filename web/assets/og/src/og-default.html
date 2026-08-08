@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&family=Inter:wght@500;600;700&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1200px; height: 630px; overflow: hidden; }
+body {
+  font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
+  background: #ffffff;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+}
+.frame {
+  width: 1200px; height: 630px;
+  padding: 52px 56px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 48px;
+  background:
+    radial-gradient(ellipse 70% 60% at 20% 0%, rgba(0, 120, 212, 0.08), transparent 60%),
+    #ffffff;
+}
+.left {
+  flex: 1.15;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 4px 0;
+}
+.right {
+  flex: 0.85;
+  border-radius: 24px;
+  background: linear-gradient(160deg, rgba(0, 120, 212, 0.10), rgba(0, 120, 212, 0.03));
+  border: 1px solid rgba(0, 120, 212, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  gap: 36px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.brand-mark {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  background: #0078D4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 120, 212, 0.25);
+}
+.brand-mark svg {
+  width: 32px;
+  height: 32px;
+  color: #fff;
+}
+.brand-name {
+  font-weight: 700;
+  font-size: 36px;
+  letter-spacing: -0.03em;
+  color: #1a1a1a;
+}
+.copy { margin-top: 8px; }
+h1 {
+  font-weight: 700;
+  font-size: 58px;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  max-width: 12ch;
+  color: #1a1a1a;
+}
+h1 .accent {
+  color: #0078D4;
+}
+.sub {
+  font-size: 24px;
+  line-height: 1.4;
+  color: #616161;
+  max-width: 26ch;
+  margin-top: 22px;
+  font-weight: 400;
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 120, 212, 0.08);
+  border: 1px solid rgba(0, 120, 212, 0.18);
+  color: #0078D4;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+}
+.badge .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FFB900;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f5;
+  border: 1px solid rgba(0,0,0,0.06);
+  color: #616161;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+}
+.pill svg { width: 16px; height: 16px; color: #0078D4; }
+
+/* Clean equalizer — same language as VocaHQ OG */
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 200px;
+}
+.bars i {
+  display: block;
+  width: 14px;
+  border-radius: 999px;
+  background: #0078D4;
+  opacity: 0.9;
+}
+/* Symmetric-ish natural speech waveform, single color */
+.bars i:nth-child(1)  { height: 28%; opacity: 0.55; }
+.bars i:nth-child(2)  { height: 48%; opacity: 0.7; }
+.bars i:nth-child(3)  { height: 72%; opacity: 0.85; }
+.bars i:nth-child(4)  { height: 44%; opacity: 0.7; }
+.bars i:nth-child(5)  { height: 92%; opacity: 1; }
+.bars i:nth-child(6)  { height: 60%; opacity: 0.85; }
+.bars i:nth-child(7)  { height: 80%; opacity: 0.95; }
+.bars i:nth-child(8)  { height: 52%; opacity: 0.75; }
+.bars i:nth-child(9)  { height: 88%; opacity: 1; }
+.bars i:nth-child(10) { height: 40%; opacity: 0.65; }
+.bars i:nth-child(11) { height: 64%; opacity: 0.8; }
+.bars i:nth-child(12) { height: 34%; opacity: 0.55; }
+
+.right-note {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0078D4;
+  letter-spacing: -0.01em;
+}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="left">
+    <div class="brand">
+      <!-- Mic mark: same identity as site nav / sister products, Windows blue -->
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </div>
+      <span class="brand-name">VocaWin</span>
+    </div>
+
+    <div class="copy">
+      <h1>Your voice.<br>Your PC.<br><span class="accent">Your privacy.</span></h1>
+      <p class="sub">100% offline voice-to-text for Windows. Hold a hotkey, speak, and text appears. Open source.</p>
+    </div>
+
+    <div class="meta-row">
+      <span class="badge"><span class="dot"></span> Coming soon</span>
+      <span class="pill">
+        <!-- Correct Windows logo: four solid panes -->
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M0,0H11.377V11.372H0ZM12.623,0H24V11.372H12.623ZM0,12.623H11.377V24H0Zm12.623,0H24V24H12.623"/></svg>
+        Windows
+      </span>
+      <span class="pill">Open source</span>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="bars" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="right-note">100% offline</div>
+  </div>
+</div>
+</body>
+</html>
