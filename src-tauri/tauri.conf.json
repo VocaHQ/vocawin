@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VocaWin",
+  "version": "0.1.0",
+  "identifier": "com.vocahq.vocawin",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{"label":"main","title":"VocaWin","width":1060,"height":700,"minWidth":840,"minHeight":580}],
+    "security": {"csp": "default-src 'self'; style-src 'self' 'unsafe-inline';"}
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "windows": {"nsis": {"installMode": "currentUser", "displayLanguageSelector": true}, "wix": {"language": ["en-US"]}}
+  }
+}
