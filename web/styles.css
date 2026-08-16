@@ -837,9 +837,8 @@ code {
 .family-banner-inner {
   display: grid;
   gap: 8px;
-  max-width: 920px;
+  max-width: 1080px;
   padding: 22px 24px;
-  margin: 0 auto;
   background: var(--mint-soft);
   border: 1px solid #9bb9ab;
   border-radius: 8px;
@@ -879,16 +878,6 @@ code {
 .story-copy > p {
   max-width: 56ch;
   color: #4b5550;
-}
-
-.section-heading-centered {
-  max-width: 780px;
-  margin-inline: auto;
-  text-align: center;
-}
-
-.section-heading-centered p {
-  margin-inline: auto;
 }
 
 .section-tag {
@@ -1107,7 +1096,6 @@ code {
   grid-template-columns: repeat(3, 1fr);
   gap: 22px;
   max-width: 1180px;
-  margin: 0 auto;
 }
 
 .step-card {
@@ -1322,7 +1310,7 @@ code {
 .platform-honesty {
   max-width: 760px;
   padding: 17px 20px;
-  margin: 76px auto 0;
+  margin: 76px 0 0;
   color: #56635c;
   background: #f0e3b8;
   border: 1px solid #bea96a;
@@ -1340,7 +1328,6 @@ code {
 .privacy-window,
 .manifesto-window {
   max-width: 1180px;
-  margin: 0 auto;
 }
 
 .privacy-grid,
