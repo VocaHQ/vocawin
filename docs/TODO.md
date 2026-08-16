@@ -25,7 +25,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 ## Windows product quality
 
 - [x] Settings persistence and NSIS/MSI Tauri configuration
-- [x] Windows CI compilation job
+- [ ] Windows CI compilation job (blocked on AppState/cpal::Stream Send until fixed)
 - [ ] System tray, launch at login, single-instance behavior
 - [ ] Onboarding, microphone diagnostics, accessible error states
 - [ ] Signed release workflow, updater, crash-free upgrade migration

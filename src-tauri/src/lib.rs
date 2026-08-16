@@ -12,6 +12,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
+#[cfg(windows)]
+use std::sync::mpsc;
 use tauri::{Manager, State};
 use transcribe_rs::SpeechModel;
 
@@ -195,134 +197,177 @@ impl Default for Settings {
     }
 }
 
+/// WASAPI `cpal::Stream` is intentionally `!Send`/`!Sync` across platforms.
+/// Keep the live stream on one dedicated thread and expose only channel handles
+/// to Tauri `State`, which requires `Send + Sync`.
 #[cfg(windows)]
-struct AudioRecorder {
-    stream: Mutex<Option<cpal::Stream>>,
-    samples: Arc<Mutex<Vec<f32>>>,
-    sample_rate: Mutex<Option<u32>>,
+enum AudioCommand {
+    Start {
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    Stop {
+        reply: mpsc::Sender<Result<(Vec<f32>, u32), String>>,
+    },
 }
 
 #[cfg(windows)]
-impl AudioRecorder {
-    fn start(&self) -> Result<(), String> {
-        if self
-            .stream
-            .lock()
-            .map_err(|_| "Audio lock was poisoned")?
-            .is_some()
-        {
-            return Err("A recording is already in progress".into());
-        }
-        let device = cpal::default_host()
-            .default_input_device()
-            .ok_or("No microphone was found. Connect or enable an input device and try again.")?;
-        let supported = device
-            .default_input_config()
-            .map_err(|error| format!("Could not read microphone format: {error}"))?;
-        let sample_rate = supported.sample_rate().0;
-        let channels = supported.channels() as usize;
-        let samples = Arc::clone(&self.samples);
-        samples
-            .lock()
-            .map_err(|_| "Audio lock was poisoned")?
-            .clear();
-        let error_callback = |error| eprintln!("VocaWin audio input error: {error}");
-        let config: cpal::StreamConfig = supported.clone().into();
-        let stream = match supported.sample_format() {
-            cpal::SampleFormat::F32 => device.build_input_stream(
-                &config,
-                move |data: &[f32], _| {
-                    samples.lock().unwrap().extend(
-                        data.chunks(channels)
-                            .map(|frame| frame.iter().sum::<f32>() / frame.len() as f32),
-                    )
-                },
-                error_callback,
-                None,
-            ),
-            cpal::SampleFormat::I16 => device.build_input_stream(
-                &config,
-                move |data: &[i16], _| {
-                    samples
-                        .lock()
-                        .unwrap()
-                        .extend(data.chunks(channels).map(|frame| {
-                            frame
-                                .iter()
-                                .map(|sample| *sample as f32 / i16::MAX as f32)
-                                .sum::<f32>()
-                                / frame.len() as f32
-                        }))
-                },
-                error_callback,
-                None,
-            ),
-            cpal::SampleFormat::U16 => device.build_input_stream(
-                &config,
-                move |data: &[u16], _| {
-                    samples
-                        .lock()
-                        .unwrap()
-                        .extend(data.chunks(channels).map(|frame| {
-                            frame
-                                .iter()
-                                .map(|sample| (*sample as f32 / u16::MAX as f32) * 2.0 - 1.0)
-                                .sum::<f32>()
-                                / frame.len() as f32
-                        }))
-                },
-                error_callback,
-                None,
-            ),
-            format => return Err(format!("Unsupported microphone sample format: {format:?}")),
-        }
-        .map_err(|error| format!("Could not open microphone: {error}"))?;
-        stream
-            .play()
-            .map_err(|error| format!("Could not start microphone: {error}"))?;
-        *self
-            .sample_rate
-            .lock()
-            .map_err(|_| "Audio lock was poisoned")? = Some(sample_rate);
-        *self.stream.lock().map_err(|_| "Audio lock was poisoned")? = Some(stream);
-        Ok(())
-    }
+struct AudioRecorder {
+    commands: mpsc::Sender<AudioCommand>,
+}
 
-    fn stop(&self) -> Result<(Vec<f32>, u32), String> {
-        self.stream
-            .lock()
-            .map_err(|_| "Audio lock was poisoned")?
-            .take()
-            .ok_or("No recording is in progress")?;
-        let rate = self
-            .sample_rate
-            .lock()
-            .map_err(|_| "Audio lock was poisoned")?
-            .take()
-            .unwrap_or(16_000);
-        let samples =
-            std::mem::take(&mut *self.samples.lock().map_err(|_| "Audio lock was poisoned")?);
-        if samples.is_empty() {
-            return Err("No microphone audio was captured".into());
+#[cfg(windows)]
+fn open_input_stream(
+    samples: Arc<Mutex<Vec<f32>>>,
+) -> Result<(cpal::Stream, u32), String> {
+    let device = cpal::default_host()
+        .default_input_device()
+        .ok_or("No microphone was found. Connect or enable an input device and try again.")?;
+    let supported = device
+        .default_input_config()
+        .map_err(|error| format!("Could not read microphone format: {error}"))?;
+    let sample_rate = supported.sample_rate().0;
+    let channels = supported.channels() as usize;
+    samples
+        .lock()
+        .map_err(|_| "Audio lock was poisoned")?
+        .clear();
+    let error_callback = |error| eprintln!("VocaWin audio input error: {error}");
+    let config: cpal::StreamConfig = supported.clone().into();
+    let stream = match supported.sample_format() {
+        cpal::SampleFormat::F32 => device.build_input_stream(
+            &config,
+            move |data: &[f32], _| {
+                samples.lock().unwrap().extend(
+                    data.chunks(channels)
+                        .map(|frame| frame.iter().sum::<f32>() / frame.len() as f32),
+                )
+            },
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::I16 => device.build_input_stream(
+            &config,
+            move |data: &[i16], _| {
+                samples
+                    .lock()
+                    .unwrap()
+                    .extend(data.chunks(channels).map(|frame| {
+                        frame
+                            .iter()
+                            .map(|sample| *sample as f32 / i16::MAX as f32)
+                            .sum::<f32>()
+                            / frame.len() as f32
+                    }))
+            },
+            error_callback,
+            None,
+        ),
+        cpal::SampleFormat::U16 => device.build_input_stream(
+            &config,
+            move |data: &[u16], _| {
+                samples
+                    .lock()
+                    .unwrap()
+                    .extend(data.chunks(channels).map(|frame| {
+                        frame
+                            .iter()
+                            .map(|sample| (*sample as f32 / u16::MAX as f32) * 2.0 - 1.0)
+                            .sum::<f32>()
+                            / frame.len() as f32
+                    }))
+            },
+            error_callback,
+            None,
+        ),
+        format => return Err(format!("Unsupported microphone sample format: {format:?}")),
+    }
+    .map_err(|error| format!("Could not open microphone: {error}"))?;
+    stream
+        .play()
+        .map_err(|error| format!("Could not start microphone: {error}"))?;
+    Ok((stream, sample_rate))
+}
+
+#[cfg(windows)]
+fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>) {
+    let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
+    let mut stream: Option<cpal::Stream> = None;
+    let mut sample_rate: Option<u32> = None;
+
+    while let Ok(command) = commands.recv() {
+        match command {
+            AudioCommand::Start { reply } => {
+                let result = if stream.is_some() {
+                    Err("A recording is already in progress".into())
+                } else {
+                    match open_input_stream(Arc::clone(&samples)) {
+                        Ok((next_stream, rate)) => {
+                            sample_rate = Some(rate);
+                            stream = Some(next_stream);
+                            Ok(())
+                        }
+                        Err(error) => Err(error),
+                    }
+                };
+                let _ = reply.send(result);
+            }
+            AudioCommand::Stop { reply } => {
+                let result = if stream.take().is_none() {
+                    Err("No recording is in progress".into())
+                } else {
+                    let rate = sample_rate.take().unwrap_or(16_000);
+                    match samples.lock() {
+                        Ok(mut buffer) => {
+                            let captured = std::mem::take(&mut *buffer);
+                            if captured.is_empty() {
+                                Err("No microphone audio was captured".into())
+                            } else {
+                                Ok((captured, rate))
+                            }
+                        }
+                        Err(_) => Err("Audio lock was poisoned".into()),
+                    }
+                };
+                let _ = reply.send(result);
+            }
         }
-        Ok((samples, rate))
     }
 }
 
 #[cfg(windows)]
 impl AudioRecorder {
     fn new() -> Self {
-        Self {
-            stream: Mutex::new(None),
-            samples: Arc::new(Mutex::new(Vec::new())),
-            sample_rate: Mutex::new(None),
-        }
+        let (commands, receiver) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("vocawin-audio".into())
+            .spawn(move || audio_thread_main(receiver))
+            .expect("Could not start VocaWin audio thread");
+        Self { commands }
+    }
+
+    fn start(&self) -> Result<(), String> {
+        let (reply, response) = mpsc::channel();
+        self.commands
+            .send(AudioCommand::Start { reply })
+            .map_err(|_| "Audio thread is not running")?;
+        response
+            .recv()
+            .map_err(|_| "Audio thread did not respond".into())?
+    }
+
+    fn stop(&self) -> Result<(Vec<f32>, u32), String> {
+        let (reply, response) = mpsc::channel();
+        self.commands
+            .send(AudioCommand::Stop { reply })
+            .map_err(|_| "Audio thread is not running")?;
+        response
+            .recv()
+            .map_err(|_| "Audio thread did not respond".into())?
     }
 }
 
-/// cpal streams are tied to the macOS event loop and are not Send. VocaWin is
-/// Windows-only, so non-Windows builds intentionally keep an unavailable stub
-/// solely to allow CI to validate the shared UI and command layer.
+/// Non-Windows builds keep an unavailable mic stub so Linux/macOS CI can validate
+/// the shared UI and command layer. Real capture lives behind `cfg(windows)`.
 #[cfg(not(windows))]
 struct AudioRecorder;
 #[cfg(not(windows))]
@@ -1027,5 +1072,11 @@ mod tests {
         };
         persist_settings(&path, &settings).unwrap();
         assert_eq!(load_settings(&path).hotkey, "Ctrl+Shift+V");
+    }
+
+    #[test]
+    fn app_state_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<AppState>();
     }
 }
