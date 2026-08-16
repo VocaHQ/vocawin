@@ -1,11 +1,11 @@
 # VocaWin
 
-**100% Offline Voice-to-Text for Windows** | Coming Soon 🚀
+**Voice-to-text for Windows** | Coming soon
 
-> Your voice. Your PC. Your privacy. No data leaves your system.
+VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC after you download a model. There is no public installer yet.
 
-[![Website](https://img.shields.io/badge/Website-vocawin.com-0078D4?style=flat-square)](https://vocawin.com)
-[![License](https://img.shields.io/badge/License-Coming%20Soon-blue?style=flat-square)](#)
+[![Website](https://img.shields.io/badge/Website-vocawin.com-0F6B57?style=flat-square)](https://vocawin.com)
+[![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-0F6B57?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/discord/1538633755877580810?style=flat-square&logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e?style=flat-square)](https://vocahq.com)
 
@@ -13,77 +13,78 @@
 
 ## What is VocaWin?
 
-VocaWin brings **100% offline, privacy-first voice-to-text** to Windows. Hold a hotkey, speak, and text appears at your cursor. In any app. No cloud, no accounts, no subscriptions.
+VocaWin is being built as native Windows voice typing. After a Whisper model is on disk, recording and speech-to-text are meant to stay on this PC. No Voca account, no hosted speech API.
 
-VocaWin is the Windows counterpart to [VocaMac](https://vocamac.com) and [VocaLinux](https://vocalinux.com), completing the Voca ecosystem across all major desktop platforms.
+It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.com), and [VocaPhone](https://vocaphone.vocahq.com). The family directory is [vocahq.com](https://vocahq.com).
 
 ## Key Principles
 
-- **100% Offline** - All speech recognition happens locally on your PC
-- **Privacy First** - Your voice data never leaves your computer
-- **No Data Leaves Your System** - Zero network calls for transcription
-- **Open Source** - Every line of code is public and auditable
-- **No Telemetry** - No analytics, no tracking, no crash reporting
-- **Free Forever** - No subscriptions, no accounts, no premium tiers
-- **Windows Native** - Built for Windows with GPU acceleration support
-- **Zero Cloud Dependencies** - Works without an internet connection
+- **On this PC** - After the model download, transcription is designed to run locally
+- **No Voca cloud** - There is no hosted speech service to sign up for
+- **Open source** - The repository is public
+- **No telemetry in the product** - The planned app does not phone home
+- **Windows native** - Tray app, hotkey, WASAPI, text at the caret
+- **Honest status** - Coming soon means there is no shipping installer
 
 ## Planned Features
 
-- **System-Wide Text Injection** - Transcribed text appears wherever your cursor is. Browsers, Slack, VS Code, Word, Excel, terminals. Everywhere.
-- **Push-to-Talk & Toggle Mode** - Hold a hotkey to record or double-tap to toggle. Simple, predictable control.
-- **GPU Accelerated** - NVIDIA CUDA, AMD, and Intel GPU acceleration for blazing fast transcription.
-- **99+ Languages** - Auto-detect or specify your language with Whisper model support.
-- **Smart Model Selection** - Auto-detects your hardware and recommends the optimal model.
-- **Silence Detection** - Auto-stops recording after you stop speaking with adjustable sensitivity.
-- **Fully Configurable** - Choose hotkeys, models, languages, and silence detection thresholds.
-- **Visual Feedback** - System tray icon changes and audio level indicators show recording state.
-- **Clipboard Preservation** - Your clipboard is saved and restored after text injection.
+- **System-wide text injection** - Transcribed text appears wherever your cursor is
+- **Push-to-talk and toggle** - Hold a hotkey (planned default: Right Ctrl) or double-tap to toggle
+- **GPU acceleration** - NVIDIA CUDA, AMD, and Intel paths via whisper.cpp
+- **Language support** - Follows the selected Whisper model
+- **Configurable settings** - Hotkeys, models, languages, silence detection
+- **Visual feedback** - Tray icon states for idle, recording, and processing
+- **Clipboard preservation** - Save and restore the clipboard after injection
 
-## The Voca Ecosystem
+## The Voca ecosystem
 
-VocaWin is part of a family of privacy-first, offline voice dictation tools. Same mission, every operating system.
+Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) for the map.
 
 | Platform | Project | Website | GitHub | Status |
 |----------|---------|---------|--------|--------|
-| 🍎 macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [jatinkrmalik/vocamac](https://github.com/jatinkrmalik/vocamac) | Beta v0.3.0 |
-| 🐧 Linux | **VocaLinux** | [vocalinux.com](https://vocalinux.com) | [jatinkrmalik/vocalinux](https://github.com/jatinkrmalik/vocalinux) | Beta v0.8.0 |
-| 🖥️ Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [jatinkrmalik/vocawin](https://github.com/jatinkrmalik/vocawin) | Coming Soon |
+| Family | **VocaHQ** | [vocahq.com](https://vocahq.com) | [VocaHQ](https://github.com/VocaHQ) | Directory |
+| Linux | **VocaLinux** | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available |
+| macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
+| iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Beta / source build |
+| Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Coming soon |
+| Infrastructure | **VocaGateway** | | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
+
+VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
 
 ## Tech Stack (Planned)
 
 - **Speech Engine**: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) with GPU acceleration
 - **Platform**: Windows 10/11
 - **GPU Support**: NVIDIA CUDA, AMD, Intel
-- **Languages**: 99+ via Whisper models
+- **Languages**: determined by the downloaded Whisper model
 
 ## System Requirements (Expected)
 
-- Windows 10 or later
+- Windows 10 version 1809 or later, or Windows 11
 - 4 GB RAM (8 GB+ recommended for larger models)
 - Microphone
 - GPU recommended for faster transcription (NVIDIA, AMD, or Intel)
 
 ## Website
 
-The landing page at [vocawin.com](https://vocawin.com) is hosted via GitHub Pages.
+The landing page at [vocawin.com](https://vocawin.com) lives in `web/` and deploys through GitHub Pages.
 
-### Deploying to GitHub Pages
+```bash
+cd web
+python3 -m http.server 4173
+node --test tests/site.test.mjs
+```
 
-1. Push this repo to GitHub
-2. Go to **Settings > Pages**
-3. Set source to `main` branch, root `/`
-4. The `CNAME` file maps the custom domain `vocawin.com`
-5. Configure your DNS to point `vocawin.com` to GitHub Pages
+GitHub Actions publishes `web/` on pushes to `main`. The `web/CNAME` file maps `vocawin.com`.
 
 ## Contributing
 
-VocaWin is in early development. Stay tuned for contribution guidelines. In the meantime, star the repo to follow progress!
+VocaWin is in early development. Star the repo to follow progress, or browse the family at [vocahq.com](https://vocahq.com).
 
 ## Author
 
-Made with ❤️ by [Jatin K Malik](https://x.com/intent/user?screen_name=jatinkrmalik)
+[VocaHQ](https://github.com/VocaHQ) · [hello@vocahq.com](mailto:hello@vocahq.com)
 
 ## License
 
-Coming soon. See [VocaMac (AGPL-3.0)](https://github.com/jatinkrmalik/vocamac/blob/main/LICENSE) and [VocaLinux (GPL-3.0)](https://github.com/jatinkrmalik/vocalinux/blob/main/LICENSE) for reference.
+[AGPL-3.0-or-later](LICENSE). Copyright (C) 2026 Jatin Kumar Malik.
