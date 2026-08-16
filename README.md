@@ -6,6 +6,8 @@
 
 [![Website](https://img.shields.io/badge/Website-vocawin.com-0078D4?style=flat-square)](https://vocawin.com)
 [![License](https://img.shields.io/badge/License-Coming%20Soon-blue?style=flat-square)](#)
+[![Discord](https://img.shields.io/discord/1538633755877580810?style=flat-square&logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
+[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e?style=flat-square)](https://vocahq.com)
 
 ---
 
