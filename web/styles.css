@@ -155,6 +155,10 @@ code {
   color: #4f5752;
 }
 
+.nav-cta {
+  display: none;
+}
+
 .site-nav a,
 .header-cta,
 .brand-link {
@@ -1515,8 +1519,17 @@ code {
   list-style: none;
 }
 
+.faq-list summary span {
+  display: inline-block;
+  transition: transform 160ms ease;
+}
+
 .faq-list summary::-webkit-details-marker {
   display: none;
+}
+
+.faq-list details[open] summary span {
+  transform: rotate(45deg);
 }
 
 .faq-list p {
@@ -1626,12 +1639,17 @@ code {
   transform: none;
 }
 
-@media (max-width: 1320px) {
-  .hero-decor .face-one,
-  .hero-decor .face-two,
-  .hero-decor .wave-one,
-  .hero-decor .folder-one {
+@media (max-width: 1360px) {
+  .hero-decor {
     display: none;
+  }
+
+  .hero-copy {
+    padding-top: 56px;
+  }
+
+  .hero h1 {
+    font-size: clamp(4.4rem, 9vw, 8.2rem);
   }
 }
 
@@ -1644,7 +1662,7 @@ code {
 
 @media (max-width: 920px) {
   .menu-bar {
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto;
   }
 
   .site-nav {
@@ -1656,9 +1674,10 @@ code {
     flex-direction: column;
     gap: 0;
     align-items: stretch;
-    padding: 8px 20px 18px;
-    background: rgb(250 249 245 / 98%);
-    border-bottom: 1px solid var(--line);
+    padding: 10px 20px 16px;
+    background: var(--paper-bright);
+    border-bottom: 1px solid var(--line-dark);
+    box-shadow: 0 12px 24px rgb(25 38 31 / 8%);
   }
 
   .site-nav.is-open {
@@ -1668,10 +1687,20 @@ code {
   .site-nav a {
     display: flex;
     align-items: center;
-    min-height: 44px;
+    min-height: 48px;
+    border-bottom: 1px solid var(--line);
   }
 
-  .system-strip {
+  .site-nav .nav-cta {
+    display: flex;
+    margin-top: 6px;
+    color: var(--brand-dark);
+    font-weight: 700;
+    border-bottom: 0;
+  }
+
+  .system-strip,
+  .header-cta {
     display: none;
   }
 
@@ -1683,7 +1712,7 @@ code {
     justify-content: center;
     width: 44px;
     height: 44px;
-    margin-right: 96px;
+    margin-right: 0;
     background: transparent;
     border: 1px solid var(--line-dark);
     border-radius: 8px;
@@ -1695,6 +1724,14 @@ code {
     width: 16px;
     height: 1.5px;
     background: var(--ink);
+  }
+
+  .menu-toggle[aria-expanded="true"] span:nth-child(2) {
+    transform: translateY(3.25px) rotate(45deg);
+  }
+
+  .menu-toggle[aria-expanded="true"] span:nth-child(3) {
+    transform: translateY(-3.25px) rotate(-45deg);
   }
 
   .hero {
@@ -1715,10 +1752,6 @@ code {
     width: 100%;
     margin-top: 28px;
     transform: none;
-  }
-
-  .header-cta {
-    font-size: 12px;
   }
 
   .story-row,
@@ -1817,8 +1850,12 @@ code {
 
   .word-ribbon > div {
     animation: none;
-    flex-wrap: wrap;
-    width: auto;
+    flex-wrap: nowrap;
     justify-content: center;
+    width: 100%;
+  }
+
+  .word-ribbon [aria-hidden="true"] {
+    display: none;
   }
 }

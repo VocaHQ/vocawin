@@ -105,10 +105,11 @@ if (demoCopy && !reduceMotion.matches) {
   }, 4_600);
 }
 
-document.querySelectorAll(".faq-list details").forEach((detail) => {
+const faqItems = document.querySelectorAll(".faq-list details");
+faqItems.forEach((detail) => {
   detail.addEventListener("toggle", () => {
     if (!detail.open) return;
-    document.querySelectorAll(".faq-list details").forEach((other) => {
+    faqItems.forEach((other) => {
       if (other !== detail) other.open = false;
     });
   });
