@@ -40,6 +40,13 @@ test("coming soon status is explicit and not oversold", () => {
   assert.doesNotMatch(html, /googletagmanager|gtag\(|G-SHWKRJMCEN/i);
 });
 
+test("license matches PRODUCT.md AGPL-3.0-or-later", () => {
+  assert.match(html, /AGPL-3\.0-or-later/);
+  assert.doesNotMatch(html, /not set yet/i);
+  assert.doesNotMatch(html, /License<\/b><span>Not set/i);
+  assert.ok(existsSync(join(siteRoot, "..", "LICENSE")), "Missing root LICENSE");
+});
+
 test("privacy language states where processing happens", () => {
   assert.match(html, /on this Windows machine/i);
   assert.match(html, /on-device/i);

@@ -310,7 +310,7 @@
             </p>
             <ul class="clean-list">
               <li><span>✓</span> microphone captures audio on this PC</li>
-              <li><span>✓</span> whisper.cpp is the planned local engine</li>
+              <li><span>✓</span> speech-to-text model is planned to run locally</li>
               <li><span>✓</span> no Voca account is required</li>
             </ul>
           </div>
@@ -324,7 +324,7 @@
             <div class="route-card">
               <span class="route-icon">ggml</span>
               <strong>local model</strong>
-              <small>whisper.cpp on Windows</small>
+              <small>speech-to-text on Windows</small>
             </div>
             <div class="route-line route-line-short"><span>transcript</span></div>
             <div class="route-card">
@@ -461,7 +461,7 @@
               <h2 id="privacy-title">on this Windows PC.<br />not a Voca cloud.</h2>
               <p>
                 The product being built records with WASAPI on this machine and
-                runs whisper.cpp locally. That is on-device. It is not
+                runs a local speech-to-text model. That is on-device. It is not
                 self-hosted gateway mode, and it is not a hosted speech API.
               </p>
               <div class="gateway-paths">
@@ -520,7 +520,7 @@
             <ul class="install-facts">
               <li><b>Status</b><span>Coming soon, no shipping build</span></li>
               <li><b>Requires</b><span>Windows 10 version 1809+ or Windows 11, when it ships</span></li>
-              <li><b>License</b><span>Not set on the public site yet</span></li>
+              <li><b>License</b><span>AGPL-3.0-or-later</span></li>
               <li><b>Code</b><span>github.com/VocaHQ/vocawin</span></li>
             </ul>
             <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
@@ -571,8 +571,8 @@
             </div>
             <h3>VocaLinux</h3>
             <p>
-              System-wide voice typing for real Linux desktops. whisper.cpp,
-              Whisper, or VOSK on X11 and Wayland.
+              System-wide voice typing for real Linux desktops. On-device
+              speech-to-text on X11 and Wayland.
             </p>
             <div class="eco-links">
               <a href="https://vocalinux.com/">vocalinux.com <span aria-hidden="true">↗</span></a>
@@ -589,7 +589,8 @@
             <h3>VocaMac</h3>
             <p>
               A native menu bar app for Apple Silicon. Hold a hotkey, speak,
-              and text appears at the cursor through WhisperKit.
+              and text appears at the cursor through an on-device
+              speech-to-text model.
             </p>
             <div class="eco-links">
               <a href="https://vocamac.com/">vocamac.com <span aria-hidden="true">↗</span></a>
@@ -659,7 +660,7 @@
               </a>
             </div>
             <div class="manifesto-aside" aria-hidden="true">
-              <div class="license-stamp">LICENSE<br /><small>not set yet</small></div>
+              <div class="license-stamp">LICENSE<br /><small>AGPL-3.0-or-later</small></div>
               <div class="ascii-terminal">
                 <span>$ where does the voice go?</span>
                 <strong>this PC.</strong>
@@ -732,9 +733,9 @@
           <details>
             <summary>Is it free and open source?<span aria-hidden="true">＋</span></summary>
             <p>
-              The project is public on GitHub and is intended to stay free,
-              with no Voca account. The license file is not settled on the
-              current site. Sibling Voca apps use AGPL-3.0.
+              Yes. The repository is licensed under AGPL-3.0-or-later, stays
+              free, and does not require a Voca account. Sibling Voca apps
+              also use AGPL-3.0.
             </p>
           </details>
         </div>

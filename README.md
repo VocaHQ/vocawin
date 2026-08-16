@@ -5,8 +5,7 @@
 VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC after you download a model. There is no public installer yet.
 
 [![Website](https://img.shields.io/badge/Website-vocawin.com-0F6B57?style=flat-square)](https://vocawin.com)
-[![VocaHQ](https://img.shields.io/badge/Family-vocahq.com-0F6B57?style=flat-square)](https://vocahq.com)
-[![License](https://img.shields.io/badge/License-Coming%20Soon-blue?style=flat-square)](#)
+[![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-0F6B57?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/discord/1538633755877580810?style=flat-square&logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e?style=flat-square)](https://vocahq.com)
 
@@ -88,4 +87,4 @@ VocaWin is in early development. Star the repo to follow progress, or browse the
 
 ## License
 
-Coming soon. See [VocaMac (AGPL-3.0)](https://github.com/VocaHQ/vocamac/blob/main/LICENSE) and [VocaLinux](https://github.com/VocaHQ/vocalinux/blob/main/LICENSE) for reference.
+[AGPL-3.0-or-later](LICENSE). Copyright (C) 2026 Jatin Kumar Malik.
