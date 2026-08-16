@@ -324,6 +324,38 @@ code {
   letter-spacing: 0.02em;
 }
 
+.hero-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  max-width: 520px;
+  padding: 0;
+  margin: 18px 0 0;
+  list-style: none;
+}
+
+.hero-proof li {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  color: #3f4742;
+  background: var(--paper-bright);
+  border: 1px solid var(--line-dark);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.hero-proof img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .hero-note a {
   color: var(--brand-dark);
   text-decoration: underline;
@@ -483,9 +515,84 @@ code {
   border-radius: 4px 4px 0 0;
 }
 
-.folder-one {
+.os-tile {
+  top: 268px;
+  left: clamp(22px, 4vw, 70px);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: auto;
+  padding: 10px 14px 10px 10px;
+  border-radius: 8px;
+  transform: rotate(3deg);
+}
+
+.os-tile img {
+  width: 36px;
+  height: 36px;
+}
+
+.os-tile strong,
+.os-tile small {
+  display: block;
+}
+
+.os-tile strong {
+  font-size: 13px;
+}
+
+.os-tile small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.pc-art {
+  position: absolute;
+  top: 400px;
+  left: clamp(36px, 8vw, 128px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #6f7f77;
+  font-size: 10px;
+  transform: rotate(-4deg);
+}
+
+.pc-art img {
+  width: 88px;
+  height: 78px;
+}
+
+.key-art {
+  position: absolute;
   top: 520px;
-  left: 6%;
+  right: clamp(18px, 3vw, 48px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  transform: rotate(3deg);
+}
+
+.key-art img {
+  width: 140px;
+  height: 58px;
+}
+
+.key-art span {
+  padding: 3px 8px;
+  color: var(--brand-dark);
+  background: var(--mint);
+  border: 1px solid #8fb5a4;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.folder-one {
+  top: 528px;
+  left: 4%;
   transform: rotate(-6deg);
 }
 
@@ -501,10 +608,7 @@ code {
 }
 
 .face-two {
-  top: 520px;
-  right: 8%;
-  font-size: 13px;
-  transform: rotate(-5deg);
+  display: none;
 }
 
 .wave-doodle {
