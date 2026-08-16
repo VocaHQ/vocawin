@@ -1,0 +1,16 @@
+{
+  "name": "VocaWin",
+  "short_name": "VocaWin",
+  "description": "Windows voice typing that stays on this PC. Coming soon.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f1e8",
+  "theme_color": "#0f6b57",
+  "icons": [
+    {
+      "src": "assets/brand/voca-logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

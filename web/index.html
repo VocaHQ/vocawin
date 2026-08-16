@@ -1,498 +1,768 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SHWKRJMCEN"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-SHWKRJMCEN');
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="VocaWin is Windows voice typing that is being built to run speech-to-text on this PC. There is no public installer yet. It is part of the Voca family at vocahq.com."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="light" />
+    <link rel="canonical" href="https://vocawin.com/" />
+    <meta property="og:title" content="VocaWin — voice typing that stays on this PC" />
+    <meta
+      property="og:description"
+      content="A Windows project in the Voca family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC. No public installer yet."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="VocaWin" />
+    <meta property="og:url" content="https://vocawin.com/" />
+    <meta property="og:image" content="https://vocawin.com/assets/og-image.png" />
+    <meta property="og:image:secure_url" content="https://vocawin.com/assets/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="VocaWin: Windows voice typing that stays on this PC. Coming soon. Part of VocaHQ."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VocaWin — voice typing that stays on this PC" />
+    <meta
+      name="twitter:description"
+      content="Windows voice typing for the Voca family. Designed to run on this PC. No public installer yet."
+    />
+    <meta name="twitter:image" content="https://vocawin.com/assets/og-image.png" />
+    <meta
+      name="twitter:image:alt"
+      content="VocaWin: Windows voice typing that stays on this PC. Coming soon. Part of VocaHQ."
+    />
+    <title>VocaWin — voice typing that stays on this PC</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="assets/brand/voca-logo-512.png" type="image/png" sizes="512x512" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="site.webmanifest" />
+    <link rel="sitemap" type="application/xml" href="https://vocawin.com/sitemap.xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "VocaWin",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Windows 10, Windows 11",
+        "url": "https://vocawin.com/",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/PreOrder"
+        },
+        "description": "Windows voice typing being built so speech-to-text can run on this PC. No public installer yet.",
+        "isPartOf": {
+          "@type": "Organization",
+          "name": "VocaHQ",
+          "url": "https://vocahq.com/"
+        }
+      }
     </script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VocaWin | 100% Offline Voice-to-Text for Windows | Coming Soon</title>
-    <meta name="description" content="VocaWin: 100% offline, private voice-to-text for Windows. No data leaves your system. Open source, free forever. Coming soon.">
-    <meta name="keywords" content="voice to text, speech to text, Windows, offline, private, open source, dictation, whisper, transcription, no cloud, no telemetry">
-    <meta property="og:title" content="VocaWin | 100% Offline Voice-to-Text for Windows">
-    <meta property="og:description" content="Your voice. Your PC. Your privacy. 100% offline voice-to-text for Windows. Open source, private by design, free forever.">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://vocawin.com">
-    <meta property="og:image" content="https://vocawin.com/og-image.png">
-    <meta property="og:image:secure_url" content="https://vocawin.com/og-image.png">
-    <meta property="og:image:type" content="image/png">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="VocaWin: Your voice. Your PC. Your privacy. Offline voice-to-text for Windows.">
-    <meta property="og:site_name" content="VocaWin">
-    <meta property="og:locale" content="en_US">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="VocaWin | 100% Offline Voice-to-Text for Windows">
-    <meta name="twitter:description" content="Your voice. Your PC. Your privacy. Coming soon.">
-    <meta name="twitter:image" content="https://vocawin.com/og-image.png">
-    <meta name="twitter:image:alt" content="VocaWin: Your voice. Your PC. Your privacy. Offline voice-to-text for Windows.">
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <link rel="canonical" href="https://vocawin.com">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --win-blue: #0078D4;
-            --win-blue-dark: #005A9E;
-            --win-blue-light: #0078D4;
-            --win-accent: #0067C0;
-            --win-bg: #FFFFFF;
-            --win-surface: #F5F5F5;
-            --win-surface-light: #E8E8E8;
-            --win-text: #1A1A1A;
-            --win-text-secondary: #616161;
-            --win-border: rgba(0,0,0,0.08);
-            --win-glow: rgba(0, 120, 212, 0.2);
-            --radius: 8px;
-            --radius-lg: 12px;
-        }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { scroll-behavior: smooth; }
-        body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--win-bg);
-            color: var(--win-text);
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-        /* --- NAV --- */
-        nav {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-            background: rgba(255,255,255,0.55);
-            backdrop-filter: saturate(180%) blur(30px); -webkit-backdrop-filter: saturate(180%) blur(30px);
-            border-bottom: 1px solid rgba(0,0,0,0.06);
-            padding: 0 24px; height: 56px;
-            display: flex; align-items: center; justify-content: space-between;
-            max-width: 1100px; margin: 0 auto;
-        }
-        nav::before {
-            content: ''; position: fixed; top: 0; left: 0; right: 0; height: 56px;
-            background: rgba(255,255,255,0.55);
-            backdrop-filter: saturate(180%) blur(30px); -webkit-backdrop-filter: saturate(180%) blur(30px);
-            border-bottom: 1px solid rgba(0,0,0,0.06);
-            z-index: -1;
-        }
-        .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--win-blue-dark); }
-        .nav-brand svg { width: 30px; height: 30px; }
-        .nav-brand span { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
-        .nav-links { display: flex; gap: 28px; align-items: center; }
-        .nav-links a { color: var(--win-text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s; }
-        .nav-links a:hover { color: var(--win-text); }
-        .nav-badge { background: var(--win-blue); color: white; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
-        /* --- HERO --- */
-        .hero {
-            min-height: 100vh; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; text-align: center;
-            padding: 120px 24px 80px; position: relative;
-        }
-        .hero::before {
-            content: ''; position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
-            width: 800px; height: 800px;
-            background: radial-gradient(circle, rgba(0,120,212,0.08) 0%, transparent 70%);
-            pointer-events: none;
-        }
-        /* --- WAVEFORM BACKGROUND --- */
-        .waveform-bg {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            overflow: hidden; z-index: 0;
-        }
-        .waveform-bg svg {
-            position: absolute; width: 400%; height: 140%;
-            top: -20%; left: -100%;
-            opacity: 0.1;
-            filter: blur(2px);
-        }
-        .waveform-bg .wave1 { animation: waveMove1 40s linear infinite; }
-        @keyframes waveMove1 { 0% { transform: translateX(0); } 100% { transform: translateX(25%); } }
-        .hero-content {
-            position: relative; z-index: 1;
-            display: flex; flex-direction: column; align-items: center;
-        }
-        .hero-badge {
-            display: inline-flex; align-items: center; gap: 8px;
-            background: rgba(0,120,212,0.08); border: 1px solid rgba(0,120,212,0.2);
-            padding: 8px 20px; border-radius: 24px; font-size: 14px;
-            color: var(--win-blue); margin-bottom: 32px;
-            animation: fadeInUp 0.8s ease-out;
-        }
-        .hero-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #FFB900; animation: pulse 2s infinite; }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .hero h1 {
-            font-size: clamp(42px, 6vw, 72px); font-weight: 700;
-            line-height: 1.08; letter-spacing: -2px; margin-bottom: 24px;
-            animation: fadeInUp 0.8s ease-out 0.1s both;
-        }
-        .hero h1 .gradient {
-            background: linear-gradient(135deg, #0078D4, #0053A6);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .hero p.subtitle {
-            font-size: clamp(18px, 2.2vw, 22px); color: var(--win-text-secondary);
-            max-width: 640px; margin-bottom: 48px; font-weight: 300;
-            animation: fadeInUp 0.8s ease-out 0.2s both;
-        }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-        /* --- BUTTONS --- */
-        .btn-group { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; animation: fadeInUp 0.8s ease-out 0.3s both; }
-        .btn {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 14px 32px; border-radius: var(--radius);
-            font-size: 15px; font-weight: 600; text-decoration: none;
-            transition: all 0.2s ease; cursor: pointer; border: none;
-        }
-        .btn-primary { background: var(--win-blue); color: white; }
-        .btn-primary:hover { background: var(--win-blue-dark); transform: translateY(-1px); box-shadow: 0 4px 20px var(--win-glow); }
-        .btn-secondary { background: transparent; color: var(--win-text); border: 1px solid rgba(0,0,0,0.15); }
-        .btn-secondary:hover { border-color: rgba(0,0,0,0.3); background: rgba(0,0,0,0.03); }
-        .btn svg { width: 18px; height: 18px; }
-        /* --- PILL FEATURES --- */
-        .pills { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 48px; animation: fadeInUp 0.8s ease-out 0.4s both; }
-        .pill {
-            display: flex; align-items: center; gap: 6px;
-            background: var(--win-surface); border: 1px solid var(--win-border);
-            padding: 10px 20px; border-radius: 24px; font-size: 14px;
-            color: var(--win-text-secondary); transition: all 0.25s;
-            cursor: pointer; user-select: none;
-        }
-        .pill:hover { border-color: var(--win-blue); color: var(--win-blue); background: rgba(0,120,212,0.05); box-shadow: 0 0 0 3px rgba(0,120,212,0.12); }
-        .pill .icon { font-size: 16px; }
-        /* --- SCROLL INDICATOR --- */
-        .scroll-indicator {
-            position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
-            display: flex; flex-direction: column; align-items: center; gap: 6px;
-            color: var(--win-text-secondary); font-size: 12px; font-weight: 500;
-            letter-spacing: 1px; text-transform: uppercase;
-            animation: fadeInUp 0.8s ease-out 0.6s both;
-            cursor: pointer; text-decoration: none;
-        }
-        .scroll-indicator:hover { color: var(--win-blue); }
-        .scroll-chevron {
-            width: 28px; height: 28px;
-            animation: bounceDown 2s ease-in-out infinite;
-        }
-        @keyframes bounceDown {
-            0%, 100% { transform: translateY(0); opacity: 0.5; }
-            50% { transform: translateY(6px); opacity: 1; }
-        }
-        /* --- SECTION SHARED --- */
-        section { padding: 100px 24px; }
-        .container { max-width: 1100px; margin: 0 auto; }
-        .section-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: var(--win-blue-light); margin-bottom: 12px; }
-        .section-title { font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -1px; margin-bottom: 16px; }
-        .section-subtitle { font-size: 17px; color: var(--win-text-secondary); max-width: 560px; }
-        /* --- FEATURES GRID --- */
-        .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 56px; }
-        .feature-card {
-            background: var(--win-surface); border: 1px solid var(--win-border);
-            border-radius: var(--radius-lg); padding: 32px;
-            transition: all 0.3s ease; position: relative; overflow: hidden;
-        }
-        .feature-card::before {
-            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-            background: linear-gradient(90deg, transparent, var(--win-blue), transparent);
-            opacity: 0; transition: opacity 0.3s;
-        }
-        .feature-card:hover { border-color: rgba(0,120,212,0.3); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-        .feature-card:hover::before { opacity: 1; }
-        .feature-icon { font-size: 28px; margin-bottom: 16px; display: block; }
-        .feature-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .feature-card p { font-size: 14px; color: var(--win-text-secondary); line-height: 1.6; }
-        /* --- HOW IT WORKS --- */
-        .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 56px; }
-        .step { text-align: center; position: relative; }
-        .step-num {
-            width: 56px; height: 56px; border-radius: 50%;
-            background: rgba(0,120,212,0.08); border: 2px solid var(--win-blue);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 22px; font-weight: 700; color: var(--win-blue-light);
-            margin: 0 auto 20px;
-        }
-        .step h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .step p { font-size: 14px; color: var(--win-text-secondary); max-width: 280px; margin: 0 auto; }
-        /* --- ECOSYSTEM / SIBLING PROJECTS --- */
-        .eco-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-top: 56px; }
-        .eco-card {
-            background: var(--win-surface); border: 1px solid var(--win-border);
-            border-radius: var(--radius-lg); padding: 36px;
-            transition: all 0.3s; position: relative;
-        }
-        .eco-card:hover { border-color: rgba(0,120,212,0.2); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-        .eco-card .eco-platform { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
-        .eco-card.mac .eco-platform { color: #555; }
-        .eco-card.linux .eco-platform { color: #333; }
-        .eco-card h3 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-        .eco-card .eco-desc { font-size: 14px; color: var(--win-text-secondary); margin-bottom: 20px; line-height: 1.6; }
-        .eco-card .eco-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
-        .eco-tag { font-size: 12px; padding: 4px 12px; border-radius: 16px; background: rgba(0,0,0,0.04); color: var(--win-text-secondary); }
-        .eco-links { display: flex; gap: 12px; }
-        .eco-link {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 14px; font-weight: 600; color: var(--win-blue-light);
-            text-decoration: none; transition: color 0.2s;
-        }
-        .eco-link:hover { color: var(--win-blue-dark); }
-        .eco-link svg { width: 16px; height: 16px; }
-        /* --- NOTIFY FORM --- */
-        .notify-section { text-align: center; }
-        .notify-form {
-            display: flex; gap: 12px; max-width: 480px; margin: 32px auto 0;
-            flex-wrap: wrap; justify-content: center;
-        }
-        .notify-form input {
-            flex: 1; min-width: 240px; padding: 14px 20px;
-            background: var(--win-surface); border: 1px solid var(--win-border);
-            border-radius: var(--radius); color: var(--win-text);
-            font-size: 15px; font-family: inherit; outline: none;
-            transition: border-color 0.2s;
-        }
-        .notify-form input::placeholder { color: #666; }
-        .notify-form input:focus { border-color: var(--win-blue); }
-        /* --- FOOTER --- */
-        footer {
-            border-top: 1px solid var(--win-border);
-            padding: 40px 24px; text-align: center;
-            color: var(--win-text-secondary); font-size: 13px;
-        }
-        footer a { color: var(--win-text-secondary); text-decoration: none; transition: color 0.2s; }
-        footer a:hover { color: var(--win-text); }
-        .footer-links { display: flex; gap: 24px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
-        /* --- RESPONSIVE --- */
-        @media (max-width: 768px) {
-            nav { padding: 0 20px; }
-            .nav-links { display: none; }
-            .steps { grid-template-columns: 1fr; gap: 40px; }
-            section { padding: 60px 20px; }
-        }
-    </style>
-</head>
-<body>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
 
-<!-- NAV -->
-<nav>
-    <a href="/" class="nav-brand">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    <header class="menu-bar" data-menu-bar>
+      <a class="brand-link" href="#top" aria-label="VocaWin home">
+        <img src="assets/brand/voca-logo.svg" alt="" width="32" height="32" />
         <span>VocaWin</span>
-    </a>
-    <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How It Works</a>
-        <a href="#ecosystem">Ecosystem</a>
-        <a href="#notify">Get Notified</a>
-        <span class="nav-badge">Coming Soon</span>
-    </div>
-</nav>
+      </a>
 
-<!-- HERO -->
-<section class="hero">
-    <div class="waveform-bg">
-        <svg class="wave1" viewBox="0 0 4800 600" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0 300 Q50 200 100 300 Q150 400 200 300 Q250 150 300 300 Q350 450 400 300 Q450 100 500 300 Q550 500 600 300 Q650 180 700 300 Q750 420 800 300 Q850 120 900 300 Q950 480 1000 300 Q1050 160 1100 300 Q1150 440 1200 300 Q1250 200 1300 300 Q1350 400 1400 300 Q1450 150 1500 300 Q1550 450 1600 300 Q1650 100 1700 300 Q1750 500 1800 300 Q1850 180 1900 300 Q1950 420 2000 300 Q2050 120 2100 300 Q2150 480 2200 300 Q2250 160 2300 300 Q2350 440 2400 300 Q2450 200 2500 300 Q2550 400 2600 300 Q2650 150 2700 300 Q2750 450 2800 300 Q2850 100 2900 300 Q2950 500 3000 300 Q3050 180 3100 300 Q3150 420 3200 300 Q3250 120 3300 300 Q3350 480 3400 300 Q3450 160 3500 300 Q3550 440 3600 300 Q3650 200 3700 300 Q3750 400 3800 300 Q3850 150 3900 300 Q3950 450 4000 300 Q4050 100 4100 300 Q4150 500 4200 300 Q4250 180 4300 300 Q4350 420 4400 300 Q4450 120 4500 300 Q4550 480 4600 300 Q4650 160 4700 300 Q4750 440 4800 300" fill="none" stroke="#0078D4" stroke-width="3"/>
-        </svg>
-    </div>
-    <div class="hero-content">
-    <div class="hero-badge">
-        <span class="dot"></span>
-        Coming Soon - In Active Development
-    </div>
-    <h1>Your Voice.<br>Your PC.<br><span class="gradient">Your Privacy.</span></h1>
-    <p class="subtitle">100% offline voice-to-text for Windows. Hold a hotkey, speak, and text appears at your cursor. Open source, private by design, and completely free.</p>
-    <div class="btn-group">
-        <a href="#notify" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            Get Notified
-        </a>
-        <a href="#ecosystem" class="btn btn-secondary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Use Mac or Linux?
-        </a>
-    </div>
-    <div class="pills">
-        <div class="pill"><span class="icon">🔒</span> 100% Offline</div>
-        <div class="pill"><span class="icon">🛡️</span> Privacy First</div>
-        <div class="pill"><span class="icon">📖</span> Open Source</div>
-        <div class="pill"><span class="icon">🚫</span> No Data Leaves Your System</div>
-        <div class="pill"><span class="icon">🆓</span> Free Forever</div>
-        <div class="pill"><span class="icon">🖥️</span> Windows Native</div>
-        <div class="pill"><span class="icon">📡</span> Zero Telemetry</div>
-    </div>
-    </div>
-    <a href="#features" class="scroll-indicator">
-        <span>Scroll</span>
-        <svg class="scroll-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </a>
-</section>
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="site-navigation"
+        data-menu-toggle
+      >
+        <span class="sr-only">Open navigation</span>
+        <span></span>
+        <span></span>
+      </button>
 
-<!-- FEATURES -->
-<section id="features">
-    <div class="container">
-        <p class="section-label">Privacy-First Features</p>
-        <h2 class="section-title">Everything runs on your machine.</h2>
-        <p class="section-subtitle">No cloud. No accounts. No subscriptions. Just you, your voice, and your Windows PC.</p>
-        <div class="features-grid">
-            <div class="feature-card">
-                <span class="feature-icon">🔒</span>
-                <h3>Zero Network Calls</h3>
-                <p>Audio is processed 100% on-device. Nothing is ever transmitted to any server. Your voice data stays on your PC. Always.</p>
+      <nav id="site-navigation" class="site-nav" aria-label="Main navigation" data-navigation>
+        <a href="#how">how it works</a>
+        <a href="#privacy">privacy</a>
+        <a href="#family">family</a>
+        <a href="#questions">questions</a>
+      </nav>
+
+      <div class="system-strip" aria-hidden="true">
+        <span class="signal">▣</span>
+        <span>coming soon</span>
+        <span data-local-time>10:09</span>
+      </div>
+
+      <a class="header-cta" href="https://github.com/VocaHQ/vocawin">
+        follow the repo
+        <span aria-hidden="true">↗</span>
+      </a>
+    </header>
+
+    <main id="main-content">
+      <section class="hero dot-field" id="top" aria-labelledby="hero-title">
+        <div class="hero-decor" aria-hidden="true">
+          <div class="floating-card privacy-note">
+            <span class="paperclip">⌇</span>
+            <p>audio stays<br />on this PC.</p>
+            <span class="scribble">after the model download</span>
+          </div>
+
+          <div class="floating-card tray-card">
+            <div class="win-bar compact">
+              <span>system tray</span>
+              <div class="win-captions">
+                <i class="win-min"></i>
+                <i class="win-max"></i>
+                <i class="win-close"></i>
+              </div>
             </div>
-            <div class="feature-card">
-                <span class="feature-icon">🗑️</span>
-                <h3>No Audio Storage</h3>
-                <p>Audio buffers are discarded immediately after transcription. Nothing is saved to disk. Ever. Your conversations stay yours.</p>
+            <div class="tray-body">
+              <span class="status-dot"></span>
+              <div>
+                <strong>VocaWin</strong>
+                <small>idle · planned default Right Ctrl</small>
+              </div>
             </div>
-            <div class="feature-card">
-                <span class="feature-icon">📖</span>
-                <h3>Fully Open Source</h3>
-                <p>Every line of code is public on GitHub. Audit it yourself. No hidden anything. Transparent by default.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">📡</span>
-                <h3>No Telemetry</h3>
-                <p>No analytics. No crash reporting. No usage tracking. We literally cannot see what you do. Your privacy is absolute.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">⌨️</span>
-                <h3>System-Wide Text Injection</h3>
-                <p>Transcribed text appears wherever your cursor is. Browsers, Slack, VS Code, Word, Excel, terminals. Everywhere.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">🎯</span>
-                <h3>Push-to-Talk &amp; Toggle</h3>
-                <p>Hold a hotkey to record or double-tap to toggle. Simple, predictable, works exactly the way you expect.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">🌍</span>
-                <h3>99+ Languages</h3>
-                <p>Auto-detect or specify your language. English, Spanish, French, German, Chinese, Japanese, and many more supported.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">⚡</span>
-                <h3>GPU Accelerated</h3>
-                <p>Leverages NVIDIA CUDA, AMD, and Intel GPU acceleration for blazing fast transcription on Windows hardware.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">⚙️</span>
-                <h3>Fully Configurable</h3>
-                <p>Choose hotkeys, models, languages, silence detection thresholds. A settings panel that puts you in full control.</p>
-            </div>
+          </div>
+
+          <div class="floating-card status-note">
+            <span>release status</span>
+            <b>coming soon</b>
+            <b>no installer</b>
+            <b>source public</b>
+          </div>
+
+          <div class="floating-folder folder-one"><span></span><b>models</b></div>
+          <div class="ascii-face face-two">win32 / local</div>
+          <div class="wave-doodle wave-one">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
         </div>
-    </div>
-</section>
 
-<!-- HOW IT WORKS -->
-<section id="how-it-works" style="background: var(--win-surface);">
-    <div class="container" style="text-align:center;">
-        <p class="section-label">How It Works</p>
-        <h2 class="section-title">Three steps. That's it.</h2>
-        <p class="section-subtitle" style="margin: 0 auto 0;">No accounts. No sign-ups. No cloud. Just install and speak.</p>
-        <div class="steps">
-            <div class="step">
-                <div class="step-num">1</div>
-                <h3>Press Your Hotkey</h3>
-                <p>Press and hold your chosen hotkey. The system tray icon lights up. You're recording.</p>
-            </div>
-            <div class="step">
-                <div class="step-num">2</div>
-                <h3>Speak</h3>
-                <p>Say whatever you want. Your audio is processed entirely on your PC. Nothing leaves your machine.</p>
-            </div>
-            <div class="step">
-                <div class="step-num">3</div>
-                <h3>Release</h3>
-                <p>Text appears at your cursor. In any app. Browser, Slack, VS Code, Word. Anywhere on Windows.</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ECOSYSTEM -->
-<section id="ecosystem">
-    <div class="container">
-        <p class="section-label">The Voca Ecosystem</p>
-        <h2 class="section-title">Voice-to-text on every platform.</h2>
-        <p class="section-subtitle">VocaWin joins a family of privacy-first, offline voice dictation tools. Same mission, every operating system.</p>
-        <div class="eco-grid">
-            <div class="eco-card mac">
-                <p class="eco-platform"><img src="https://cdn.simpleicons.org/apple/000000" alt="Apple" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;"> macOS</p>
-                <h3>VocaMac <span class="nav-badge" style="font-size:11px;vertical-align:middle;">Beta</span></h3>
-                <p class="eco-desc">100% offline voice-to-text for macOS. Apple Silicon native with CoreML &amp; Neural Engine acceleration via WhisperKit.</p>
-                <div class="eco-tags">
-                    <span class="eco-tag">Apple Silicon</span>
-                    <span class="eco-tag">CoreML</span>
-                    <span class="eco-tag">WhisperKit</span>
-                    <span class="eco-tag">AGPL-3.0</span>
-                </div>
-                <div class="eco-links">
-                    <a href="https://vocamac.com" target="_blank" class="eco-link">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        vocamac.com
-                    </a>
-                    <a href="https://github.com/jatinkrmalik/vocamac" target="_blank" class="eco-link">
-                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                        GitHub
-                    </a>
-                </div>
-            </div>
-            <div class="eco-card linux">
-                <p class="eco-platform"><img src="https://cdn.simpleicons.org/linux/000000" alt="Linux" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px;"> Linux</p>
-                <h3>VocaLinux <span class="nav-badge" style="font-size:11px;vertical-align:middle;">Beta</span></h3>
-                <p class="eco-desc">100% offline voice dictation for Linux. Powered by whisper.cpp with Vulkan GPU support. Works on X11 &amp; Wayland across all major distros. The original.</p>
-                <div class="eco-tags">
-                    <span class="eco-tag">whisper.cpp</span>
-                    <span class="eco-tag">Vulkan GPU</span>
-                    <span class="eco-tag">X11 &amp; Wayland</span>
-                    <span class="eco-tag">GPL-3.0</span>
-                </div>
-                <div class="eco-links">
-                    <a href="https://vocalinux.com" target="_blank" class="eco-link">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        vocalinux.com
-                    </a>
-                    <a href="https://github.com/jatinkrmalik/vocalinux" target="_blank" class="eco-link">
-                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                        GitHub
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- NOTIFY -->
-<section id="notify" class="notify-section" style="background: var(--win-surface);">
-    <div class="container">
-        <p class="section-label">Stay in the Loop</p>
-        <h2 class="section-title">Be the first to know when VocaWin launches.</h2>
-        <p class="section-subtitle" style="margin: 0 auto;">We're building voice-to-text for Windows the right way: private, offline, and open source. Star us on GitHub to follow progress.</p>
-        <div class="notify-form">
-            <a href="https://github.com/jatinkrmalik/vocawin" target="_blank" class="btn btn-primary" style="width:100%;justify-content:center;">
-                <svg viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                ⭐ Star on GitHub to Follow Progress
+        <div class="hero-copy">
+          <img class="hero-mark" src="assets/brand/voca-mark.svg" alt="" width="66" height="78" />
+          <p class="eyebrow">private speech-to-text, for a Windows PC you own</p>
+          <h1 id="hero-title">vocawin</h1>
+          <p class="hero-lede">voice typing that stays on this PC.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.36 1.08 2.94.83.09-.66.35-1.08.64-1.33-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.66 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.8c.85 0 1.71.11 2.51.33 1.9-1.29 2.74-1.02 2.74-1.02.55 1.38.2 2.41.1 2.66.64.7 1.03 1.6 1.03 2.69 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"
+                />
+              </svg>
+              follow the repo
             </a>
+            <a class="button button-secondary" href="https://vocahq.com/">
+              visit vocahq.com
+              <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <p class="hero-note">
+            coming soon · Windows 10/11 · no public installer · part of
+            <a href="https://vocahq.com/">vocahq.com</a>
+          </p>
         </div>
-    </div>
-</section>
 
-<!-- FOOTER -->
-<footer>
-    <div class="footer-links">
-        <a href="https://github.com/jatinkrmalik/vocawin" target="_blank">GitHub</a>
-        <a href="https://vocamac.com" target="_blank">VocaMac</a>
-        <a href="https://vocalinux.com" target="_blank">VocaLinux</a>
-        <a href="#features">Features</a>
-        <a href="#ecosystem">Ecosystem</a>
-    </div>
-    <p>&copy; 2025 VocaWin. Open source, private by design, free forever.</p>
-    <p style="margin-top: 12px; font-size: 13px;">
-        Made with ❤️ by <a href="https://x.com/intent/user?screen_name=jatinkrmalik" target="_blank" rel="noopener">Jatin K Malik</a>
-    </p>
-</footer>
+        <div class="hero-demo win-window reveal" aria-hidden="true">
+          <div class="win-bar">
+            <span>notes.txt - Notepad</span>
+            <div class="win-captions">
+              <i class="win-min"></i>
+              <i class="win-max"></i>
+              <i class="win-close"></i>
+            </div>
+          </div>
+          <div class="notepad-stage">
+            <div class="notepad-menu">File&nbsp;&nbsp;Edit&nbsp;&nbsp;View</div>
+            <p>
+              <span class="typed-copy" data-demo-copy
+                >Ship the notes after lunch and move the review to Thursday.</span
+              ><span class="text-caret"></span>
+            </p>
+          </div>
+          <div class="window-caption">hold Right Ctrl. text appears at the cursor.</div>
+          <div class="local-sticker">transcribed on<br /><strong>this PC</strong></div>
+        </div>
+      </section>
 
-</body>
+      <div class="word-ribbon">
+        <div>
+          <span>speak</span><b>✦</b><span>transcribe</span><b>✦</b><span>insert</span><b>✦</b
+          ><span>this PC</span><b>✦</b>
+          <span aria-hidden="true">speak</span><b aria-hidden="true">✦</b
+          ><span aria-hidden="true">transcribe</span><b aria-hidden="true">✦</b
+          ><span aria-hidden="true">insert</span><b aria-hidden="true">✦</b
+          ><span aria-hidden="true">this PC</span><b aria-hidden="true">✦</b>
+        </div>
+      </div>
+
+      <section class="family-banner" aria-labelledby="family-banner-title">
+        <div class="family-banner-inner reveal">
+          <p class="tiny-label" id="family-banner-title">part of vocahq.com</p>
+          <p>
+            VocaWin is the Windows project in the Voca family: free, open-source
+            speech-to-text for machines you already own.
+            <a href="https://vocahq.com/">See the full ecosystem on vocahq.com</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="story-shell" id="why" aria-labelledby="why-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">what it is for</span>
+          <h2 id="why-title">speak into the window<br />you already have open.</h2>
+          <p>
+            The point is ordinary Windows work. Hold a hotkey, talk, and the
+            transcript is meant to land where the caret already is.
+          </p>
+        </div>
+
+        <article class="story-row reveal">
+          <div class="story-copy">
+            <div class="story-number">01</div>
+            <p class="tiny-label">the intended gesture</p>
+            <h3>text lands at the cursor.</h3>
+            <p>
+              VocaWin is being built as a tray app for Windows 10 and 11. Hold
+              the hotkey (planned default: Right Ctrl), speak, and the app is
+              meant to inject text through SendInput. Browser, editor, chat,
+              terminal: wherever Windows will accept keystrokes.
+            </p>
+          </div>
+          <div class="story-visual" aria-hidden="true">
+            <div class="win-window insert-window">
+              <div class="win-bar compact">
+                <span>draft.md - Editor</span>
+                <div class="win-captions">
+                  <i class="win-min"></i>
+                  <i class="win-max"></i>
+                  <i class="win-close"></i>
+                </div>
+              </div>
+              <div class="note-page">
+                <span class="note-date">LOCAL · UNSAVED</span>
+                <h4>Standup notes</h4>
+                <p>
+                  Ship the notes after lunch and move the review to
+                  <mark>Thursday.</mark><span class="text-caret"></span>
+                </p>
+              </div>
+            </div>
+            <div class="speech-chip">“move the review to Thursday”</div>
+          </div>
+        </article>
+
+        <article class="story-row story-row-reverse reveal">
+          <div class="story-copy">
+            <div class="story-number">02</div>
+            <p class="tiny-label">on this PC</p>
+            <h3>the model is meant to run here.</h3>
+            <p>
+              After you download a Whisper model, recording and speech-to-text
+              are designed to stay on this Windows machine. That is on-device
+              processing, not a Voca cloud. A network is needed for the first
+              model download, then dictation can work offline.
+            </p>
+            <ul class="clean-list">
+              <li><span>✓</span> microphone captures audio on this PC</li>
+              <li><span>✓</span> whisper.cpp is the planned local engine</li>
+              <li><span>✓</span> no Voca account is required</li>
+            </ul>
+          </div>
+          <div class="story-visual route-visual" aria-hidden="true">
+            <div class="route-card">
+              <span class="route-icon">mic</span>
+              <strong>this PC</strong>
+              <small>WASAPI microphone</small>
+            </div>
+            <div class="route-line"><span>stays on this machine</span></div>
+            <div class="route-card">
+              <span class="route-icon">ggml</span>
+              <strong>local model</strong>
+              <small>whisper.cpp on Windows</small>
+            </div>
+            <div class="route-line route-line-short"><span>transcript</span></div>
+            <div class="route-card">
+              <span class="route-icon">Aa</span>
+              <strong>your cursor</strong>
+              <small>SendInput into the focused field</small>
+            </div>
+            <div class="privacy-stamp">on-device<br />after download</div>
+          </div>
+        </article>
+
+        <article class="story-row reveal">
+          <div class="story-copy">
+            <div class="story-number">03</div>
+            <p class="tiny-label">the family</p>
+            <h3>Windows is one desk in a larger room.</h3>
+            <p>
+              VocaLinux, VocaMac, and VocaPhone already exist for other
+              machines. VocaGateway is optional self-hosted compute for those
+              clients. VocaWin does not offer a gateway mode today. The shared
+              home is
+              <a href="https://vocahq.com/">vocahq.com</a>.
+            </p>
+          </div>
+          <div class="story-visual" aria-hidden="true">
+            <div class="win-window family-mini">
+              <div class="win-bar compact">
+                <span>vocahq.com</span>
+                <div class="win-captions">
+                  <i class="win-min"></i>
+                  <i class="win-max"></i>
+                  <i class="win-close"></i>
+                </div>
+              </div>
+              <div class="family-mini-list">
+                <span>Linux · available</span>
+                <span>macOS · beta</span>
+                <span>phone · beta / source</span>
+                <span class="current">Windows · coming soon</span>
+                <span>gateway · early</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="how-section dot-field" id="how" aria-labelledby="how-title">
+        <div class="section-heading section-heading-centered reveal">
+          <span class="section-tag">how it works</span>
+          <h2 id="how-title">the planned path<br />on Windows.</h2>
+          <p>
+            This is the intended flow from the in-progress app. It is not a
+            shipping installer, and none of these steps are available as a
+            public download yet.
+          </p>
+        </div>
+
+        <div class="steps-grid">
+          <article class="step-card reveal">
+            <div class="step-topline"><span>1</span><b>once</b></div>
+            <div class="step-art" aria-hidden="true">
+              <div class="model-download-card">
+                <div class="model-file-icon">W</div>
+                <div>
+                  <strong>tiny.en</strong>
+                  <small>planned first model · ~75 MB</small>
+                </div>
+                <div class="model-progress"><i></i></div>
+                <span>needs a network this once</span>
+              </div>
+            </div>
+            <h3>download a model</h3>
+            <p>
+              A Whisper model is meant to live in a local VocaWin folder on
+              this PC. After that file is on disk, transcription does not
+              need the internet.
+            </p>
+          </article>
+
+          <article class="step-card featured-step reveal">
+            <div class="step-topline"><span>2</span><b>speak</b></div>
+            <div class="step-art" aria-hidden="true">
+              <div class="hotkey-chip">
+                <kbd>Right Ctrl</kbd>
+                <small>planned default · push to talk</small>
+              </div>
+            </div>
+            <h3>hold and talk</h3>
+            <p>
+              Hold Right Ctrl to record, or use the planned double-tap toggle.
+              The tray icon is meant to show idle, recording, and processing.
+            </p>
+          </article>
+
+          <article class="step-card reveal">
+            <div class="step-topline"><span>3</span><b>keep typing</b></div>
+            <div class="step-art" aria-hidden="true">
+              <div class="text-page">
+                <i></i><i></i><i></i><i></i>
+                <span>Aa</span>
+              </div>
+              <div class="check-sticker">at the caret</div>
+            </div>
+            <h3>text is injected</h3>
+            <p>
+              The transcript is meant to appear in the focused field. Elevated
+              admin windows may refuse SendInput. That limitation will be
+              documented if it ships that way.
+            </p>
+          </article>
+        </div>
+
+        <p class="platform-honesty reveal">
+          <span>honest status:</span> there is no MSI, Microsoft Store listing,
+          or public binary on this site. Follow
+          <a href="https://github.com/VocaHQ/vocawin">the VocaWin repository</a>
+          for the Windows foundation as it lands.
+        </p>
+      </section>
+
+      <section class="privacy-section" id="privacy" aria-labelledby="privacy-title">
+        <div class="privacy-window win-window reveal">
+          <div class="win-bar">
+            <span>where speech-to-text runs</span>
+            <div class="win-captions">
+              <i class="win-min"></i>
+              <i class="win-max"></i>
+              <i class="win-close"></i>
+            </div>
+          </div>
+          <div class="privacy-grid">
+            <div class="privacy-copy">
+              <span class="section-tag">privacy is a route</span>
+              <h2 id="privacy-title">on this Windows PC.<br />not a Voca cloud.</h2>
+              <p>
+                The product being built records with WASAPI on this machine and
+                runs whisper.cpp locally. That is on-device. It is not
+                self-hosted gateway mode, and it is not a hosted speech API.
+              </p>
+              <div class="gateway-paths">
+                <article class="gateway-path">
+                  <span>01</span>
+                  <div>
+                    <strong>this PC</strong>
+                    <p>
+                      Audio and the speech-to-text model stay on the Windows
+                      computer after the model download. Dictation can then
+                      work offline.
+                    </p>
+                  </div>
+                </article>
+                <article class="gateway-path">
+                  <span>02</span>
+                  <div>
+                    <strong>VocaGateway is family infrastructure</strong>
+                    <p>
+                      Other Voca apps can send audio to a gateway you run
+                      yourself. VocaWin does not expose that path today. A
+                      gateway is still not a Voca cloud.
+                    </p>
+                  </div>
+                </article>
+              </div>
+            </div>
+            <aside class="privacy-facts">
+              <p><b>Recorded</b> on this PC’s microphone</p>
+              <p><b>Processed</b> by a local Whisper model</p>
+              <p><b>Network</b> for the first model download</p>
+              <p><b>Retained</b> the design is not to keep audio on disk</p>
+              <p><b>Account</b> none required</p>
+              <p>
+                <b>Website</b> this marketing page has no analytics tag or
+                tracker
+              </p>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="status-section" id="status" aria-labelledby="status-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">availability</span>
+          <h2 id="status-title">coming soon means<br />no download button.</h2>
+          <p>
+            VocaHQ lists VocaWin as in progress. Treat that literally. You
+            cannot install it from this page.
+          </p>
+        </div>
+        <div class="status-grid">
+          <article class="status-card reveal">
+            <p class="tiny-label">today</p>
+            <h3>Follow the source</h3>
+            <ul class="install-facts">
+              <li><b>Status</b><span>Coming soon, no shipping build</span></li>
+              <li><b>Requires</b><span>Windows 10 version 1809+ or Windows 11, when it ships</span></li>
+              <li><b>License</b><span>Not set on the public site yet</span></li>
+              <li><b>Code</b><span>github.com/VocaHQ/vocawin</span></li>
+            </ul>
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
+              open the repository <span aria-hidden="true">↗</span>
+            </a>
+          </article>
+          <article class="status-card reveal">
+            <p class="tiny-label">known limits</p>
+            <h3>What we will not hide</h3>
+            <ul class="clean-list">
+              <li><span>✓</span> first model download needs a network</li>
+              <li><span>✓</span> elevated windows may block text injection</li>
+              <li><span>✓</span> GPU backends are planned, not a download you can try</li>
+              <li><span>✓</span> language coverage will follow the selected Whisper model</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="family-section" id="family" aria-labelledby="family-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">the Voca ecosystem</span>
+          <h2 id="family-title">same privacy bar.<br />different machines.</h2>
+          <p>
+            Start at
+            <a href="https://vocahq.com/">vocahq.com</a>
+            if you want the whole map. Each product keeps its own install path
+            and honest status.
+          </p>
+        </div>
+
+        <a class="hq-callout reveal" href="https://vocahq.com/">
+          <img src="assets/brand/voca-logo.svg" alt="" width="48" height="48" />
+          <div>
+            <p class="tiny-label">family home</p>
+            <strong>vocahq.com</strong>
+            <span>Private speech-to-text across the machines you own.</span>
+          </div>
+          <span class="hq-arrow" aria-hidden="true">↗</span>
+        </a>
+
+        <div class="eco-grid">
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/linux.svg" alt="" width="20" height="20" />
+              <span>Linux</span>
+              <small>available now</small>
+            </div>
+            <h3>VocaLinux</h3>
+            <p>
+              System-wide voice typing for real Linux desktops. whisper.cpp,
+              Whisper, or VOSK on X11 and Wayland.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocalinux.com/">vocalinux.com <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/VocaHQ/vocalinux">source</a>
+            </div>
+          </article>
+
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/apple.svg" alt="" width="20" height="20" />
+              <span>macOS</span>
+              <small>beta</small>
+            </div>
+            <h3>VocaMac</h3>
+            <p>
+              A native menu bar app for Apple Silicon. Hold a hotkey, speak,
+              and text appears at the cursor through WhisperKit.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocamac.com/">vocamac.com <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/VocaHQ/vocamac">source</a>
+            </div>
+          </article>
+
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/android.svg" alt="" width="20" height="20" />
+              <span>iPhone + Android</span>
+              <small>beta / source build</small>
+            </div>
+            <h3>VocaPhone</h3>
+            <p>
+              A private voice keyboard. Android has public beta releases.
+              iPhone currently needs an iOS 17+ source build.
+            </p>
+            <div class="eco-links">
+              <a href="https://vocaphone.vocahq.com/">vocaphone.vocahq.com <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/VocaHQ/vocaphone">source</a>
+            </div>
+          </article>
+
+          <article class="eco-card reveal">
+            <div class="eco-head">
+              <img src="assets/icons/server.svg" alt="" width="20" height="20" />
+              <span>infrastructure</span>
+              <small>early</small>
+            </div>
+            <h3>VocaGateway</h3>
+            <p>
+              Self-hosted shared compute for Voca clients. Pair with a QR
+              code. Use a trusted LAN, a private encrypted network, or HTTPS.
+            </p>
+            <div class="eco-links">
+              <a href="https://github.com/VocaHQ/vocagateway">
+                github.com/VocaHQ/vocagateway <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="open-source-section" aria-labelledby="open-title">
+        <div class="manifesto-window win-window reveal">
+          <div class="win-bar">
+            <span>the whole point.txt</span>
+            <div class="win-captions">
+              <i class="win-min"></i>
+              <i class="win-max"></i>
+              <i class="win-close"></i>
+            </div>
+          </div>
+          <div class="manifesto-copy">
+            <span class="section-tag">the whole point</span>
+            <h2 id="open-title">Windows should get the same honest deal.</h2>
+            <p>
+              VocaWin is being built in the open as a native Windows app: tray
+              icon, hotkey, local Whisper model, text at the caret. No Voca
+              account. No hosted speech service. When a release exists, this
+              page will say so in plain language.
+            </p>
+            <a class="text-link" href="https://github.com/VocaHQ/vocawin">
+              read the repository on GitHub <span>↗</span>
+            </a>
+          </div>
+          <div class="manifesto-aside" aria-hidden="true">
+            <div class="license-stamp">LICENSE<br /><small>not set yet</small></div>
+            <div class="ascii-terminal">
+              <span>$ where does the voice go?</span>
+              <strong>this PC.</strong>
+              <i>█</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="faq-section" id="questions" aria-labelledby="questions-title">
+        <div class="faq-heading reveal">
+          <span class="section-tag">questions, answered</span>
+          <h2 id="questions-title">the useful bits.</h2>
+        </div>
+        <div class="faq-list reveal">
+          <details open>
+            <summary>Can I install VocaWin today?<span aria-hidden="true">＋</span></summary>
+            <p>
+              No. There is no public installer, Microsoft Store listing, or
+              shipping release. Star or watch
+              <a href="https://github.com/VocaHQ/vocawin">the repository</a>
+              if you want to see a build land.
+            </p>
+          </details>
+          <details>
+            <summary>Does my voice stay on this PC?<span aria-hidden="true">＋</span></summary>
+            <p>
+              That is the design. After a Whisper model is downloaded, recording
+              and speech-to-text are meant to run on this Windows machine with
+              no Voca cloud. The first model download does need a network.
+              Do not treat “coming soon” as a guarantee of the shipping build.
+            </p>
+          </details>
+          <details>
+            <summary>Do I need VocaGateway?<span aria-hidden="true">＋</span></summary>
+            <p>
+              Not for VocaWin. VocaWin is being built as an on-device Windows
+              app. VocaGateway is optional self-hosted infrastructure for other
+              Voca clients. Gateway mode is not on-device: configured audio
+              travels to the host you chose.
+            </p>
+          </details>
+          <details>
+            <summary>What is VocaHQ?<span aria-hidden="true">＋</span></summary>
+            <p>
+              VocaHQ is the family home for VocaLinux, VocaMac, VocaWin,
+              VocaPhone, and VocaGateway. The directory, privacy paths, and
+              project status live on
+              <a href="https://vocahq.com/">vocahq.com</a>.
+            </p>
+          </details>
+          <details>
+            <summary>What hotkey will it use?<span aria-hidden="true">＋</span></summary>
+            <p>
+              The in-progress settings default to Right Ctrl for push-to-talk,
+              with an optional double-tap toggle. That can still change before
+              a public release.
+            </p>
+          </details>
+          <details>
+            <summary>Which languages will it support?<span aria-hidden="true">＋</span></summary>
+            <p>
+              Support will follow the Whisper model you download. The planned
+              first-run default is the small English <code>tiny.en</code> model,
+              with language set to automatic. We will list only what the
+              selected model can actually transcribe.
+            </p>
+          </details>
+          <details>
+            <summary>Is it free and open source?<span aria-hidden="true">＋</span></summary>
+            <p>
+              The project is public on GitHub and is intended to stay free,
+              with no Voca account. The license file is not settled on the
+              current site. Sibling Voca apps use AGPL-3.0.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="close-section dot-field" id="follow" aria-labelledby="follow-title">
+        <div class="close-copy reveal">
+          <img src="assets/brand/voca-logo.svg" alt="" width="88" height="88" />
+          <p class="eyebrow">when there is a build, it will be obvious</p>
+          <h2 id="follow-title">watch the repo.<br />use the family today.</h2>
+          <p>
+            Follow VocaWin for the Windows app. If you need dictation now,
+            start at vocahq.com and pick a machine that already ships.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
+              follow VocaWin <span>↗</span>
+            </a>
+            <a class="button button-secondary" href="https://vocahq.com/">
+              open vocahq.com <span>↗</span>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="assets/brand/voca-logo.svg" alt="" width="52" height="52" />
+        <div>
+          <strong>VocaWin</strong>
+          <span>Windows voice typing in the Voca family.</span>
+        </div>
+      </div>
+      <nav aria-label="Footer navigation">
+        <div>
+          <p>product</p>
+          <a href="#how">how it works</a>
+          <a href="#privacy">privacy</a>
+          <a href="#status">availability</a>
+          <a href="https://github.com/VocaHQ/vocawin">GitHub</a>
+        </div>
+        <div>
+          <p>family</p>
+          <a href="https://vocahq.com/">vocahq.com</a>
+          <a href="https://vocalinux.com/">VocaLinux</a>
+          <a href="https://vocamac.com/">VocaMac</a>
+          <a href="https://vocaphone.vocahq.com/">VocaPhone</a>
+          <a href="https://github.com/VocaHQ/vocagateway">VocaGateway</a>
+        </div>
+        <div>
+          <p>say hello</p>
+          <a href="https://github.com/VocaHQ">VocaHQ on GitHub</a>
+          <a href="mailto:hello@vocahq.com">hello@vocahq.com</a>
+        </div>
+      </nav>
+      <div class="footer-bottom">
+        <span>© <span data-current-year>2026</span> VocaHQ</span>
+        <span>coming soon on Windows. the rest of the family lives at vocahq.com.</span>
+      </div>
+    </footer>
+  </body>
 </html>
