@@ -65,6 +65,12 @@ test("Windows chrome is used instead of macOS traffic lights", () => {
   assert.doesNotMatch(html, /traffic-lights/);
 });
 
+test("manifesto window keeps the title bar full width", () => {
+  assert.match(html, /class="manifesto-grid"/);
+  assert.match(css, /\.privacy-grid,\s*\n\s*\.manifesto-grid\s*\{/);
+  assert.doesNotMatch(css, /\.privacy-grid,\s*\n\s*\.manifesto-window\s*\{/);
+});
+
 test("all local image assets exist", () => {
   const localImages = [...html.matchAll(/(?:src|href)="((?:assets|favicon)[^"]+)"/g)].map(
     (match) => match[1],
