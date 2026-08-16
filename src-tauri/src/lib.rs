@@ -349,20 +349,20 @@ impl AudioRecorder {
         let (reply, response) = mpsc::channel();
         self.commands
             .send(AudioCommand::Start { reply })
-            .map_err(|_| "Audio thread is not running")?;
+            .map_err(|_| "Audio thread is not running".to_string())?;
         response
             .recv()
-            .map_err(|_| "Audio thread did not respond".into())?
+            .map_err(|_| "Audio thread did not respond".to_string())?
     }
 
     fn stop(&self) -> Result<(Vec<f32>, u32), String> {
         let (reply, response) = mpsc::channel();
         self.commands
             .send(AudioCommand::Stop { reply })
-            .map_err(|_| "Audio thread is not running")?;
+            .map_err(|_| "Audio thread is not running".to_string())?;
         response
             .recv()
-            .map_err(|_| "Audio thread did not respond".into())?
+            .map_err(|_| "Audio thread did not respond".to_string())?
     }
 }
 
