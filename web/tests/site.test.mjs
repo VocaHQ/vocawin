@@ -72,6 +72,12 @@ test("Windows chrome is used instead of macOS traffic lights", () => {
   assert.doesNotMatch(html, /traffic-lights/);
 });
 
+test("reading sections share a centered measure", () => {
+  assert.match(css, /--measure:\s*1180px/);
+  assert.match(css, /width:\s*min\(100%,\s*var\(--measure\)\)/);
+  assert.match(css, /\.story-shell > \*,/);
+});
+
 test("manifesto window keeps the title bar full width", () => {
   assert.match(html, /class="manifesto-grid"/);
   assert.match(css, /\.privacy-grid,\s*\n\s*\.manifesto-grid\s*\{/);
