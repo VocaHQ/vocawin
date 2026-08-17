@@ -23,6 +23,7 @@
     sans-serif;
   --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
     monospace;
+  --measure: 1180px;
 }
 
 * {
@@ -837,7 +838,6 @@ code {
 .family-banner-inner {
   display: grid;
   gap: 8px;
-  max-width: 1080px;
   padding: 22px 24px;
   background: var(--mint-soft);
   border: 1px solid #9bb9ab;
@@ -869,8 +869,20 @@ code {
   padding: 140px 28px;
 }
 
+.family-banner > *,
+.story-shell > *,
+.how-section > *,
+.privacy-section > *,
+.status-section > *,
+.family-section > *,
+.open-source-section > *,
+.faq-section > *,
+.site-footer > * {
+  width: min(100%, var(--measure));
+  margin-inline: auto;
+}
+
 .section-heading {
-  max-width: 760px;
   margin-bottom: 72px;
 }
 
@@ -914,8 +926,7 @@ code {
   grid-template-columns: 1fr 1fr;
   gap: 48px;
   align-items: center;
-  max-width: 1180px;
-  margin: 0 auto 88px;
+  margin-bottom: 88px;
 }
 
 .story-row-reverse {
@@ -1095,7 +1106,6 @@ code {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 22px;
-  max-width: 1180px;
 }
 
 .step-card {
@@ -1308,9 +1318,8 @@ code {
 }
 
 .platform-honesty {
-  max-width: 760px;
   padding: 17px 20px;
-  margin: 76px 0 0;
+  margin-top: 76px;
   color: #56635c;
   background: #f0e3b8;
   border: 1px solid #bea96a;
@@ -1327,7 +1336,7 @@ code {
 
 .privacy-window,
 .manifesto-window {
-  max-width: 1180px;
+  width: min(100%, var(--measure));
 }
 
 .privacy-grid,
@@ -1399,7 +1408,6 @@ code {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
-  max-width: 1080px;
 }
 
 .status-card {
@@ -1449,7 +1457,6 @@ code {
   grid-template-columns: auto 1fr auto;
   gap: 18px;
   align-items: center;
-  max-width: 1080px;
   padding: 22px 24px;
   margin-bottom: 28px;
   background: #17392d;
@@ -1489,7 +1496,6 @@ code {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
-  max-width: 1080px;
 }
 
 .eco-card {
@@ -1586,12 +1592,7 @@ code {
 }
 
 .faq-heading {
-  max-width: 720px;
   margin-bottom: 36px;
-}
-
-.faq-list {
-  max-width: 820px;
 }
 
 .faq-list details {
@@ -1685,7 +1686,6 @@ code {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
-  max-width: 920px;
 }
 
 .site-footer nav p {
