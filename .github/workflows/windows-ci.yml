@@ -88,8 +88,10 @@ jobs:
           CARGO_TARGET_DIR: C:\t
           CMAKE_GENERATOR: Ninja
         with:
-          # Build only. Artifact upload is explicit below so we never create a Release.
+          # Build only. Do not set tagName. Tag Releases live in
+          # windows-alpha-release.yml so PR and main stay artifact-only.
           args: --bundles nsis,msi
+          includeUpdaterJson: false
       - name: Upload unsigned alpha installers
         uses: actions/upload-artifact@v4
         with:
