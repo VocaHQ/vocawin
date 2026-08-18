@@ -287,6 +287,21 @@ enum AudioCommand {
     },
 }
 
+const AUDIO_REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+
+fn recv_audio_reply<T>(
+    response: std::sync::mpsc::Receiver<T>,
+    timeout: std::time::Duration,
+    what: &str,
+) -> Result<T, String> {
+    response.recv_timeout(timeout).map_err(|err| match err {
+        std::sync::mpsc::RecvTimeoutError::Timeout => {
+            format!("Microphone {what} timed out. The audio thread did not reply in time.")
+        }
+        std::sync::mpsc::RecvTimeoutError::Disconnected => "Audio thread did not respond".into(),
+    })
+}
+
 #[cfg(windows)]
 struct AudioRecorder {
     commands: mpsc::Sender<AudioCommand>,
@@ -501,19 +516,18 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                                     started_ms = Some(now_ms());
                                     *last_voice_ms.lock().unwrap() = now_ms();
                                     *heard_speech.lock().unwrap() = false;
-                                    if !meter {
-                                        let _ = app.emit("recording-changed", true);
-                                        set_tray_recording(&app, true);
-                                    }
+                                    logbuf::push("Microphone opened.");
                                     Ok(())
                                 }
                                 Err(error) => Err(error),
                             }
                         };
+                        // Reply before any UI work. Tray/emit stay on the
+                        // command side so a blocked start_recording cannot
+                        // deadlock the event loop.
                         let _ = reply.send(result);
                     }
                     AudioCommand::Stop { reply } => {
-                        let was_meter = meter_only;
                         meter_only = false;
                         let result = take_recording(
                             &mut stream,
@@ -521,10 +535,6 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                             &mut started_ms,
                             &samples,
                         );
-                        if result.is_ok() && !was_meter {
-                            let _ = app.emit("recording-changed", false);
-                            set_tray_recording(&app, false);
-                        }
                         if let Ok(mut peak) = peak_level.lock() {
                             *peak = 0.0;
                         }
@@ -554,8 +564,6 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                 if let Ok((pcm, rate)) =
                     take_recording(&mut stream, &mut sample_rate, &mut started_ms, &samples)
                 {
-                    let _ = app.emit("recording-changed", false);
-                    set_tray_recording(&app, false);
                     let app_for_finish = app.clone();
                     std::thread::spawn(move || {
                         finish_captured_audio(&app_for_finish, pcm, rate);
@@ -620,9 +628,16 @@ impl AudioRecorder {
                 reply,
             })
             .map_err(|_| "Audio thread is not running".to_string())?;
-        response
-            .recv()
-            .map_err(|_| "Audio thread did not respond".to_string())?
+        match recv_audio_reply(response, AUDIO_REPLY_TIMEOUT, "start") {
+            Ok(result) => result,
+            Err(error) => {
+                logbuf::push(error.clone());
+                let (stop_reply, stop_rx) = mpsc::channel();
+                let _ = self.commands.send(AudioCommand::Stop { reply: stop_reply });
+                let _ = stop_rx.recv_timeout(std::time::Duration::from_millis(400));
+                Err(error)
+            }
+        }
     }
 
     fn start_meter(&self, device_name: String) -> Result<(), String> {
@@ -637,9 +652,16 @@ impl AudioRecorder {
                 reply,
             })
             .map_err(|_| "Audio thread is not running".to_string())?;
-        response
-            .recv()
-            .map_err(|_| "Audio thread did not respond".to_string())?
+        match recv_audio_reply(response, AUDIO_REPLY_TIMEOUT, "start") {
+            Ok(result) => result,
+            Err(error) => {
+                logbuf::push(error.clone());
+                let (stop_reply, stop_rx) = mpsc::channel();
+                let _ = self.commands.send(AudioCommand::Stop { reply: stop_reply });
+                let _ = stop_rx.recv_timeout(std::time::Duration::from_millis(400));
+                Err(error)
+            }
+        }
     }
 
     fn stop(&self) -> Result<(Vec<f32>, u32), String> {
@@ -647,9 +669,7 @@ impl AudioRecorder {
         self.commands
             .send(AudioCommand::Stop { reply })
             .map_err(|_| "Audio thread is not running".to_string())?;
-        response
-            .recv()
-            .map_err(|_| "Audio thread did not respond".to_string())?
+        recv_audio_reply(response, AUDIO_REPLY_TIMEOUT, "stop")?
     }
 
     fn level(&self) -> f32 {
@@ -657,7 +677,9 @@ impl AudioRecorder {
         if self.commands.send(AudioCommand::Level { reply }).is_err() {
             return 0.0;
         }
-        response.recv().unwrap_or(0.0)
+        response
+            .recv_timeout(std::time::Duration::from_millis(200))
+            .unwrap_or(0.0)
     }
 }
 
@@ -712,17 +734,6 @@ fn set_tray_phase(app: &AppHandle, phase: TrayPhase) {
     let _ = refresh_tray_menu(app);
 }
 
-fn set_tray_recording(app: &AppHandle, recording: bool) {
-    set_tray_phase(
-        app,
-        if recording {
-            TrayPhase::Listening
-        } else {
-            TrayPhase::Idle
-        },
-    );
-}
-
 #[cfg(windows)]
 fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
     let state = app.state::<AppState>();
@@ -730,6 +741,7 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
         let mut flag = state.recording.lock().unwrap_or_else(|e| e.into_inner());
         *flag = false;
     }
+    let _ = app.emit("recording-changed", false);
     set_tray_phase(app, TrayPhase::Processing);
     let sound = state
         .settings
@@ -906,6 +918,13 @@ fn save_settings(
     }
     settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
     persist_settings(&state.settings_path, &settings)?;
+    // Disk is the source of truth after persist. Refresh AppState before
+    // autostart/hotkey so a later side-effect error cannot leave start_recording
+    // and the UI on different selected models.
+    *state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")? = settings.clone();
     apply_launch_at_login(&app, settings.launch_at_login)?;
     state
         .whisper_cache
@@ -924,12 +943,19 @@ fn save_settings(
         .registered_hotkey
         .lock()
         .map_err(|_| "Hotkey lock was poisoned")? = settings.hotkey.clone();
-    *state
-        .settings
-        .lock()
-        .map_err(|_| "Settings lock was poisoned")? = settings;
     let _ = refresh_tray_menu(&app);
     Ok(())
+}
+
+/// auto-launch's Windows disable() always calls RegDeleteValue. A machine that
+/// never enabled launch-at-login has no Run value, and Windows returns
+/// ERROR_FILE_NOT_FOUND ("The system cannot find the file specified. (os error 2)").
+/// That is already-disabled, not a failed settings save.
+fn autostart_disable_error_is_missing(error: impl std::fmt::Display) -> bool {
+    let text = error.to_string().to_ascii_lowercase();
+    text.contains("os error 2")
+        || text.contains("cannot find the file specified")
+        || text.contains("no such file or directory")
 }
 
 fn apply_launch_at_login(app: &AppHandle, enabled: bool) -> Result<(), String> {
@@ -940,10 +966,29 @@ fn apply_launch_at_login(app: &AppHandle, enabled: bool) -> Result<(), String> {
             .enable()
             .map_err(|error| format!("Could not enable launch at login: {error}"))
     } else {
-        autolaunch
-            .disable()
-            .map_err(|error| format!("Could not disable launch at login: {error}"))
+        match autolaunch.disable() {
+            Ok(()) => Ok(()),
+            Err(error) if autostart_disable_error_is_missing(&error) => Ok(()),
+            Err(error) => Err(format!("Could not disable launch at login: {error}")),
+        }
     }
+}
+
+/// When the saved selection is unknown or not on disk, and whisper-tiny is
+/// installed, use whisper-tiny. Returns true if selected_model changed.
+fn fallback_selected_model_if_needed(settings: &mut Settings, models_path: &Path) -> bool {
+    let selected_ok = model_catalog()
+        .iter()
+        .any(|model| model.id == settings.selected_model)
+        && model_is_installed(models_path, &settings.selected_model);
+    if selected_ok {
+        return false;
+    }
+    if !model_is_installed(models_path, "whisper-tiny") {
+        return false;
+    }
+    settings.selected_model = "whisper-tiny".into();
+    true
 }
 
 #[tauri::command]
@@ -1572,15 +1617,21 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
+    logbuf::push_and_emit(
+        app,
+        format!("Start dictation ({})", settings.selected_model),
+    );
     if !model_is_installed(&state.models_path, &settings.selected_model) {
         *state
             .recording
             .lock()
             .map_err(|_| "Recording lock was poisoned")? = false;
-        return Err(format!(
+        let error = format!(
             "No speech model is installed. Open Models and download {} first.",
             settings.selected_model
-        ));
+        );
+        logbuf::push_and_emit(app, error.clone());
+        return Err(error);
     }
     if let Err(error) = state.recorder.start(
         settings.silence_seconds,
@@ -1592,6 +1643,7 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
             .recording
             .lock()
             .map_err(|_| "Recording lock was poisoned")? = false;
+        logbuf::push_and_emit(app, format!("Start dictation failed: {error}"));
         return Err(error);
     }
     sounds::play_if_enabled(settings.sound_effects, true);
@@ -1601,13 +1653,14 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
 }
 
 /// Begins microphone capture. The UI should call `stop_and_transcribe` after
-/// push-to-talk is released (or when toggle mode is stopped).
+/// push-to-talk is released (or when toggle mode is stopped). Runs off the
+/// WebView IPC thread so WASAPI open cannot freeze the window.
 #[tauri::command]
-fn start_recording(
-    app: AppHandle,
-    no_inject: Option<bool>,
-) -> Result<(), String> {
-    begin_voice_session(&app, !no_inject.unwrap_or(false))
+async fn start_recording(app: AppHandle, no_inject: Option<bool>) -> Result<(), String> {
+    let inject = !no_inject.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || begin_voice_session(&app, inject))
+        .await
+        .map_err(|error| format!("Start dictation was cancelled: {error}"))?
 }
 
 fn transcribe_samples(
@@ -1712,25 +1765,30 @@ fn transcribe_recording(state: &AppState) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn stop_and_transcribe(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    let sound = state
-        .settings
-        .lock()
-        .map(|settings| settings.sound_effects)
-        .unwrap_or(true);
-    set_tray_phase(&app, TrayPhase::Processing);
-    let text = match transcribe_recording(&state) {
-        Ok(text) => text,
-        Err(error) => {
-            set_tray_phase(&app, TrayPhase::Idle);
-            sounds::play_error_if_enabled(sound);
-            return Err(error);
-        }
-    };
-    sounds::play_if_enabled(sound, false);
-    let _ = app.emit("recording-changed", false);
-    set_tray_phase(&app, TrayPhase::Idle);
-    Ok(text)
+async fn stop_and_transcribe(app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let sound = state
+            .settings
+            .lock()
+            .map(|settings| settings.sound_effects)
+            .unwrap_or(true);
+        set_tray_phase(&app, TrayPhase::Processing);
+        let text = match transcribe_recording(&state) {
+            Ok(text) => text,
+            Err(error) => {
+                set_tray_phase(&app, TrayPhase::Idle);
+                sounds::play_error_if_enabled(sound);
+                return Err(error);
+            }
+        };
+        sounds::play_if_enabled(sound, false);
+        let _ = app.emit("recording-changed", false);
+        set_tray_phase(&app, TrayPhase::Idle);
+        Ok(text)
+    })
+    .await
+    .map_err(|error| format!("Stop dictation was cancelled: {error}"))?
 }
 
 #[tauri::command]
@@ -1788,26 +1846,36 @@ fn selected_model_installed(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
-fn start_mic_test(state: State<'_, AppState>) -> Result<(), String> {
-    if *state
-        .recording
-        .lock()
-        .map_err(|_| "Recording lock was poisoned")?
-    {
-        return Err("Stop dictation before running Mic Test.".into());
-    }
-    let device = state
-        .settings
-        .lock()
-        .map(|settings| settings.input_device.clone())
-        .unwrap_or_default();
-    state.recorder.start_meter(device)
+async fn start_mic_test(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        if *state
+            .recording
+            .lock()
+            .map_err(|_| "Recording lock was poisoned")?
+        {
+            return Err("Stop dictation before running Mic Test.".into());
+        }
+        let device = state
+            .settings
+            .lock()
+            .map(|settings| settings.input_device.clone())
+            .unwrap_or_default();
+        state.recorder.start_meter(device)
+    })
+    .await
+    .map_err(|error| format!("Mic Test was cancelled: {error}"))?
 }
 
 #[tauri::command]
-fn stop_mic_test(state: State<'_, AppState>) -> Result<(), String> {
-    let _ = state.recorder.stop()?;
-    Ok(())
+async fn stop_mic_test(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _ = state.recorder.stop()?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| format!("Mic Test stop was cancelled: {error}"))?
 }
 
 #[tauri::command]
@@ -1899,7 +1967,12 @@ pub fn run() {
             let history_path = app_data.join("history.json");
             let models_path = app_data.join("models");
             fs::create_dir_all(&models_path)?;
-            let settings = load_settings(&settings_path);
+            let mut settings = load_settings(&settings_path);
+            if fallback_selected_model_if_needed(&mut settings, &models_path) {
+                if let Err(error) = persist_settings(&settings_path, &settings) {
+                    eprintln!("VocaWin could not persist selected model fallback: {error}");
+                }
+            }
             let handle = app.handle().clone();
             let whisper_cache = whisper_cache::WhisperCache::new();
             whisper_cache.configure_idle(
@@ -2343,11 +2416,11 @@ fn tray_toggle_login(app: &AppHandle) -> Result<(), String> {
         .clone();
     settings.launch_at_login = !settings.launch_at_login;
     persist_settings(&state.settings_path, &settings)?;
-    apply_launch_at_login(app, settings.launch_at_login)?;
     *state
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")? = settings.clone();
+    apply_launch_at_login(app, settings.launch_at_login)?;
     let _ = app.emit("settings-changed", settings);
     refresh_tray_menu(app)?;
     Ok(())
@@ -2423,6 +2496,78 @@ mod tests {
         };
         persist_settings(&path, &settings).unwrap();
         assert_eq!(load_settings(&path).hotkey, "Ctrl+Shift+V");
+    }
+
+    #[test]
+    fn default_selected_model_is_whisper_tiny() {
+        assert_eq!(Settings::default().selected_model, "whisper-tiny");
+    }
+
+    #[test]
+    fn audio_reply_timeout_returns_a_clear_error() {
+        assert!(AUDIO_REPLY_TIMEOUT >= std::time::Duration::from_secs(2));
+        let (_tx, rx) = std::sync::mpsc::channel::<()>();
+        let error = recv_audio_reply(rx, std::time::Duration::from_millis(15), "start").unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
+        assert!(error.contains("start"), "{error}");
+    }
+
+    #[test]
+    fn disable_autostart_when_shortcut_is_missing_is_ok() {
+        assert!(autostart_disable_error_is_missing(
+            "The system cannot find the file specified. (os error 2)"
+        ));
+        assert!(autostart_disable_error_is_missing(std::io::Error::from_raw_os_error(2)));
+        assert!(!autostart_disable_error_is_missing(
+            "Access is denied. (os error 5)"
+        ));
+    }
+
+    #[test]
+    fn load_falls_back_to_whisper_tiny_when_selected_is_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let models = directory.path().join("models");
+        fs::create_dir_all(&models).unwrap();
+        fs::write(models.join("whisper-tiny.bin"), b"tiny").unwrap();
+
+        let mut settings = Settings {
+            selected_model: "gigaam-v3".into(),
+            ..Settings::default()
+        };
+        assert!(fallback_selected_model_if_needed(&mut settings, &models));
+        assert_eq!(settings.selected_model, "whisper-tiny");
+
+        let path = directory.path().join("settings.json");
+        persist_settings(&path, &settings).unwrap();
+        assert_eq!(load_settings(&path).selected_model, "whisper-tiny");
+    }
+
+    #[test]
+    fn fallback_keeps_installed_whisper_base() {
+        let directory = tempfile::tempdir().unwrap();
+        let models = directory.path().join("models");
+        fs::create_dir_all(&models).unwrap();
+        fs::write(models.join("whisper-tiny.bin"), b"tiny").unwrap();
+        fs::write(models.join("whisper-base.bin"), b"base").unwrap();
+        let mut settings = Settings {
+            selected_model: "whisper-base".into(),
+            ..Settings::default()
+        };
+        assert!(!fallback_selected_model_if_needed(&mut settings, &models));
+        assert_eq!(settings.selected_model, "whisper-base");
+    }
+
+    #[test]
+    fn fallback_skips_when_tiny_is_not_installed() {
+        let directory = tempfile::tempdir().unwrap();
+        let models = directory.path().join("models");
+        fs::create_dir_all(&models).unwrap();
+        let mut settings = Settings {
+            selected_model: "gigaam-v3".into(),
+            ..Settings::default()
+        };
+        assert!(!fallback_selected_model_if_needed(&mut settings, &models));
+        assert_eq!(settings.selected_model, "gigaam-v3");
     }
 
     #[test]
