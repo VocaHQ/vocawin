@@ -18,4 +18,18 @@
 .settings-status strong,.settings-status span{display:block}
 .settings-status span{margin-top:4px;color:#5a615d;font-size:11px}
 .hw-tip{margin:0 0 14px;padding:12px 14px;border-radius:10px;background:#d5e9e1;color:#093e32;font-size:12px;line-height:1.45}
-@media(prefers-color-scheme:dark){.settings-group,.recording-hint{color:#77d0b2}.gpu-readout span,.settings-status span{color:#c2c8c3}.settings-search input,.stacked-control textarea,.stacked-control input[type=number]{background:#292c29;border-color:#3c403d;color:#e3e4e1}.settings-status{border-color:#3c403d}.hw-tip{background:#34463d;color:#c3f3e0}}
+.language-picker{display:grid;gap:8px;justify-items:end;min-width:205px}
+.language-picker input,.language-picker select{width:205px}
+.mic-test{display:grid;gap:8px;justify-items:end;min-width:205px}
+.level-meter{width:205px;height:8px;border-radius:999px;background:#e3e9e5;overflow:hidden}
+.level-meter span{display:block;height:100%;width:0;background:#0f6b57;transition:width .08s linear}
+.status-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.model-meta .install-state.failed{color:#8a2f2f}
+.welcome-overlay{position:fixed;inset:0;background:#1b1c1b73;display:grid;place-items:center;z-index:40;padding:24px}
+.welcome-card{width:min(440px,100%);background:#fff;border:1px solid #e3e9e5;border-radius:16px;padding:28px 26px;box-shadow:0 18px 48px #173a3022}
+.welcome-card h2{margin:0 0 10px;font-size:24px;letter-spacing:-.8px}
+.welcome-card p{margin:0 0 18px;color:#5a615d;line-height:1.55;font-size:14px}
+.logs-main{width:100%;padding:36px 42px}
+.log-panel{background:#fff;border:1px solid #e3e9e5;border-radius:12px;padding:14px 16px;max-height:calc(100vh - 180px);overflow:auto;font-family:Consolas,"Segoe UI Mono",monospace;font-size:12px;line-height:1.45}
+.log-line{padding:4px 0;border-bottom:1px solid #f1f4f1;color:#28332e;white-space:pre-wrap}
+@media(prefers-color-scheme:dark){.settings-group,.recording-hint{color:#77d0b2}.gpu-readout span,.settings-status span{color:#c2c8c3}.settings-search input,.stacked-control textarea,.stacked-control input[type=number],.language-picker input,.language-picker select{background:#292c29;border-color:#3c403d;color:#e3e4e1}.settings-status{border-color:#3c403d}.hw-tip{background:#34463d;color:#c3f3e0}.level-meter{background:#3c403d}.level-meter span{background:#77d0b2}.welcome-card,.log-panel{background:#1f211f;border-color:#3c403d}.welcome-card p,.log-line{color:#c2c8c3}.log-line{border-color:#30332f}.model-meta .install-state.failed{color:#f0a0a0}}

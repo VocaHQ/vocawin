@@ -9,6 +9,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] ONNX adapters: Parakeet TDT, Moonshine, SenseVoice, GigaAM, Canary
 - [x] In-app Download for every catalog model (Whisper GGML + ONNX archives/files), progress, install check, and Remove
 - [x] Hardware recommendation for a starting model size
+- [x] Failed downloads stay Failed (never Complete/Installed)
 - [ ] Model disk-use display
 - [ ] Parakeet CTC and Vosk adapters (kept out of the catalog until they work)
 - [ ] Model cache migration, resumable downloads, and checksums
@@ -19,13 +20,16 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Microphone device picker (WASAPI / cpal list)
 - [x] Push-to-talk and toggle activation, with hotkey re-registration after save
 - [x] Hotkey presets + Record capture (Escape cancels); WH_KEYBOARD_LL for lone Right Ctrl/Alt/Shift; listener pauses while Record
+- [x] New-install default hotkey Right Ctrl (existing TROOPER Ctrl+Alt+Space settings kept until changed)
 - [x] Silence energy auto-stop and max recording duration
 - [x] Trailing space and auto-capitalize output polish
 - [x] Clipboard + paste inject with restore (SendInput fallback)
 - [x] Start/stop sound cues when enabled
 - [x] Local transcription history with clear-history control
-- [x] Recording tray tooltip state
-- [x] Settings search + footer status + Test Dictation (no inject)
+- [x] Tray idle / listening / processing icons and full tray menu
+- [x] Settings search + Mic Test (level) + Test Dictation (recognize, no inject)
+- [x] Searchable language list + Auto-detect
+- [x] No-model honesty (never “no speech was recognized” when none installed)
 
 ## Windows product quality
 
@@ -33,13 +37,14 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Windows CI compilation job (Vulkan SDK + Ninja generator for whisper-rs)
 - [x] Unsigned NSIS/MSI installer artifact job (alpha/dev, no signing or Release)
 - [x] Official Voca mic app/tray icons (brand book §9 / §10)
-- [x] System tray icon with Show/Quit and close-to-tray
-- [x] Launch at login and single-instance focus
-- [x] Whisper Vulkan GPU path + Settings GPU readout (DirectML kept for ONNX)
+- [x] System tray menu: Start/Stop Voice Typing, Start on Login, Settings, View Logs, About, Quit
+- [x] Launch at login and single-instance focus (`--start-minimized` for login / CLI)
+- [x] Whisper Vulkan GPU path (prefer discrete, skip WARP) + Settings GPU readout
 - [x] Auto-pause while listed apps run (opt-in)
 - [x] Idle Whisper unload keep-alive (opt-in, default 300s)
 - [x] Sleep/wake hotkey recovery (WM_POWERBROADCAST)
-- [ ] Onboarding, microphone diagnostics, accessible error states
+- [x] Short first-run welcome (tray + hold hotkey + optional login)
+- [x] Reusable Logs window (single instance)
 - [ ] Signed release workflow, updater, crash-free upgrade migration
 
 ## Verification

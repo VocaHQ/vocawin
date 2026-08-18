@@ -14,6 +14,7 @@ enum CacheCommand {
         pcm: Vec<f32>,
         language: Option<String>,
         use_gpu: bool,
+        gpu_device: i32,
         keep_alive: bool,
         reply: mpsc::Sender<Result<String, String>>,
     },
@@ -40,6 +41,7 @@ impl WhisperCache {
         pcm: Vec<f32>,
         language: Option<String>,
         use_gpu: bool,
+        gpu_device: i32,
         keep_alive: bool,
     ) -> Result<String, String> {
         let (reply, response) = mpsc::channel();
@@ -49,6 +51,7 @@ impl WhisperCache {
                 pcm,
                 language,
                 use_gpu,
+                gpu_device,
                 keep_alive,
                 reply,
             })
@@ -83,6 +86,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
                 pcm,
                 language,
                 use_gpu,
+                gpu_device,
                 keep_alive,
                 reply,
             }) => {
@@ -93,6 +97,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
                     &pcm,
                     language.as_deref(),
                     use_gpu,
+                    gpu_device,
                     keep_alive,
                 );
                 if result.is_ok() {
@@ -133,6 +138,7 @@ fn run_transcribe(
     pcm: &[f32],
     language: Option<&str>,
     use_gpu: bool,
+    gpu_device: i32,
     keep_alive: bool,
 ) -> Result<String, String> {
     let needs_reload = context.is_none()
@@ -143,7 +149,7 @@ fn run_transcribe(
     if needs_reload {
         let mut context_params = whisper_rs::WhisperContextParameters::default();
         context_params.use_gpu(use_gpu);
-        context_params.gpu_device(0);
+        context_params.gpu_device(if gpu_device >= 0 { gpu_device } else { 0 });
         let next = whisper_rs::WhisperContext::new_with_params(
             model_path.to_string_lossy().as_ref(),
             context_params,

@@ -19,15 +19,33 @@ type Settings = {
   autoPauseApps: string;
   idleUnloadEnabled: boolean;
   idleUnloadSeconds: number;
+  welcomeDismissed: boolean;
 };
 type View = "dictation" | "models" | "history" | "settings";
 type HistoryEntry = { id: number; text: string; modelId: string; createdAtMs: number };
 type ModelStatus = { installed: boolean; downloadable: boolean; downloading: boolean; progress: number; message?: string };
 type HotkeyPreset = { id: string; label: string };
-type GpuStatus = { available: boolean; name: string; backend: string; detail: string };
+type GpuStatus = {
+  available: boolean;
+  name: string;
+  backend: string;
+  detail: string;
+  deviceIndex: number;
+  discrete: boolean;
+  vramMb: number;
+};
 type InputDevice = { name: string; isDefault: boolean };
 type ModelRecommendation = { modelId: string; modelName: string; reason: string; vramMb: number; gpu: GpuStatus };
-type RuntimeStatus = { status: string; recording: boolean; paused: boolean; hotkey: string; inputDevice: string; gpuName: string; gpuBackend: string };
+type RuntimeStatus = {
+  status: string;
+  recording: boolean;
+  paused: boolean;
+  hotkey: string;
+  inputDevice: string;
+  gpuName: string;
+  gpuBackend: string;
+  gpuDetail?: string;
+};
 
 type SettingsItem = {
   group: "Dictation" | "Audio" | "Application";
@@ -37,26 +55,90 @@ type SettingsItem = {
   html: string;
 };
 
+const LANGUAGES = [
+  "Auto-detect",
+  "English",
+  "Spanish",
+  "French",
+  "German",
+  "Italian",
+  "Portuguese",
+  "Dutch",
+  "Russian",
+  "Japanese",
+  "Chinese",
+  "Korean",
+  "Arabic",
+  "Hindi",
+  "Turkish",
+  "Polish",
+  "Ukrainian",
+  "Swedish",
+  "Norwegian",
+  "Danish",
+  "Finnish",
+  "Czech",
+  "Greek",
+  "Hebrew",
+  "Indonesian",
+  "Vietnamese",
+  "Thai",
+  "Romanian",
+  "Hungarian",
+  "Catalan",
+];
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
+const isLogsWindow = location.hash === "#logs";
 let models: Model[] = [];
 let statuses: Record<string, ModelStatus> = {};
 let history: HistoryEntry[] = [];
 let settings: Settings;
 let presets: HotkeyPreset[] = [];
-let gpu: GpuStatus = { available: false, name: "Checking…", backend: "CPU", detail: "" };
+let gpu: GpuStatus = {
+  available: false,
+  name: "Checking…",
+  backend: "CPU",
+  detail: "",
+  deviceIndex: -1,
+  discrete: false,
+  vramMb: 0,
+};
 let devices: InputDevice[] = [];
 let recommendation: ModelRecommendation | null = null;
-let runtime: RuntimeStatus = { status: "Ready", recording: false, paused: false, hotkey: "", inputDevice: "Default microphone", gpuName: "", gpuBackend: "" };
+let runtime: RuntimeStatus = {
+  status: "Ready",
+  recording: false,
+  paused: false,
+  hotkey: "",
+  inputDevice: "Default microphone",
+  gpuName: "",
+  gpuBackend: "",
+};
 let recording = false;
 let recordingHotkey = false;
 let testingDictation = false;
 let testListening = false;
+let micTesting = false;
+let micLevel = 0;
+let micMeterTimer: number | null = null;
 let settingsQuery = "";
+let languageQuery = "";
 let view: View = "dictation";
 let noticeText = "";
+let showAbout = false;
+let logLines: string[] = [];
+
 const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const selected = () => models.find(model => model.id === settings.selectedModel);
+const modelInstalled = () => !!statuses[settings.selectedModel]?.installed;
 const nav = (id: View, label: string, icon: string) => `<button class="nav ${view === id ? "active" : ""}" data-view="${id}"><span class="nav-icon">${icon}</span>${label}</button>`;
+
+function emptySpeechMessage() {
+  return modelInstalled()
+    ? "No speech was recognized."
+    : "Install a speech model first (Models tab).";
+}
 
 function modelAction(model: Model, status?: ModelStatus) {
   if (status?.downloading) {
@@ -71,11 +153,15 @@ function modelAction(model: Model, status?: ModelStatus) {
 function modelCards() {
   return models.map(model => {
     const status = statuses[model.id];
+    const failed = !status?.installed && !status?.downloading && !!status?.message
+      && status.message !== "Installed";
     const state = status?.downloading
       ? `Downloading ${status.progress}%`
       : status?.installed
         ? "Installed"
-        : "Not installed";
+        : failed
+          ? `Failed: ${status?.message}`
+          : "Not installed";
     const isSelected = model.id === settings.selectedModel;
     const recommended = recommendation?.modelId === model.id;
     return `<article class="model-card ${isSelected ? "selected" : ""}" data-model="${model.id}" role="button" tabindex="0" aria-pressed="${isSelected}">
@@ -86,7 +172,7 @@ function modelCards() {
       <ul class="model-meta">
         <li>${escape(model.size)}</li>
         <li>${escape(model.languages)}</li>
-        <li class="install-state">${escape(state)}</li>
+        <li class="install-state ${failed ? "failed" : ""}">${escape(state)}</li>
       </ul>
       <div class="model-actions">${modelAction(model, status)}</div>
     </article>`;
@@ -107,6 +193,19 @@ function deviceOptions() {
   }
   if (settings.inputDevice && !devices.some(device => device.name === settings.inputDevice)) {
     options.push(`<option value="${escape(settings.inputDevice)}" selected>${escape(settings.inputDevice)} (saved)</option>`);
+  }
+  return options.join("");
+}
+
+function languageOptions() {
+  const query = languageQuery.trim().toLowerCase();
+  const list = LANGUAGES.filter(language => !query || language.toLowerCase().includes(query));
+  const selectedLanguage = settings.language || "Auto-detect";
+  const options = list.map(language =>
+    `<option value="${escape(language)}" ${language === selectedLanguage ? "selected" : ""}>${escape(language)}</option>`
+  );
+  if (selectedLanguage && !list.includes(selectedLanguage)) {
+    options.unshift(`<option value="${escape(selectedLanguage)}" selected>${escape(selectedLanguage)}</option>`);
   }
   return options.join("");
 }
@@ -134,11 +233,12 @@ function historyPage() {
 }
 
 function settingsItems(): SettingsItem[] {
+  const levelPct = Math.min(100, Math.round(micLevel * 140));
   return [
     {
       group: "Dictation",
       title: "Activation hotkey",
-      subtitle: "Pick a preset or press Record. Lone Right Ctrl/Alt/Shift use a low-level hook (RegisterHotKey cannot bind them). Escape cancels. The live listener pauses while recording.",
+      subtitle: "Pick a preset or press Record. New installs default to Right Ctrl (low-level hook). Escape cancels. The live listener pauses while recording.",
       keywords: "hotkey shortcut keyboard record preset right ctrl",
       html: `<div class="hotkey-controls"><select id="hotkey-preset">${hotkeyOptions()}</select>
     <button type="button" class="quiet-button" id="record-hotkey">${recordingHotkey ? "Cancel" : "Record"}</button></div>`,
@@ -153,9 +253,10 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Dictation",
       title: "Dictation language",
-      subtitle: "Auto-detect is best for multilingual speech.",
-      keywords: "language locale english",
-      html: `<select id="language"><option>Auto-detect</option><option>English</option><option>Spanish</option><option>French</option><option>German</option><option>Japanese</option><option>Chinese</option></select>`,
+      subtitle: "Search the list. Auto-detect is best for multilingual speech.",
+      keywords: "language locale english auto detect search",
+      html: `<div class="language-picker"><input id="language-filter" type="search" placeholder="Search languages" value="${escape(languageQuery)}" />
+      <select id="language">${languageOptions()}</select></div>`,
     },
     {
       group: "Dictation",
@@ -177,6 +278,14 @@ function settingsItems(): SettingsItem[] {
       subtitle: "WASAPI capture device used for dictation.",
       keywords: "mic microphone device wasapi input",
       html: `<select id="input-device">${deviceOptions()}</select>`,
+    },
+    {
+      group: "Audio",
+      title: "Mic Test",
+      subtitle: "Level meter only. Does not recognize or inject text.",
+      keywords: "mic test level meter volume",
+      html: `<div class="mic-test"><button type="button" class="quiet-button" id="mic-test" ${recording || testListening ? "disabled" : ""}>${micTesting ? "Stop Mic Test" : "Mic Test"}</button>
+      <div class="level-meter" aria-hidden="true"><span style="width:${levelPct}%"></span></div></div>`,
     },
     {
       group: "Audio",
@@ -202,7 +311,7 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Application",
       title: "Launch at login",
-      subtitle: "Start VocaWin with Windows for this user.",
+      subtitle: "Start VocaWin with Windows for this user (starts minimized).",
       keywords: "startup autostart login",
       html: `<label class="switch"><input id="launch-login" type="checkbox" ${settings.launchAtLogin ? "checked" : ""}/><span></span></label>`,
     },
@@ -226,8 +335,8 @@ function settingsItems(): SettingsItem[] {
       group: "Application",
       title: "GPU",
       subtitle: gpu.detail || gpu.backend,
-      keywords: "gpu vulkan directml cuda hardware",
-      html: `<div class="gpu-readout"><strong>${escape(gpu.name)}</strong><span>${escape(gpu.backend)}</span></div>`,
+      keywords: "gpu vulkan directml cuda hardware discrete",
+      html: `<div class="gpu-readout"><strong>${escape(gpu.name)}</strong><span>${escape(gpu.backend)}${gpu.discrete ? " · discrete" : ""}${gpu.vramMb ? ` · ~${gpu.vramMb} MB` : ""}</span></div>`,
     },
   ];
 }
@@ -253,20 +362,70 @@ function settingsPage() {
   <div class="settings-save"><button class="primary" id="save">Save changes</button></div>
   <footer class="settings-status">
     <div><strong>${escape(runtime.status)}</strong><span>${escape(runtime.inputDevice)} · ${escape(runtime.gpuName || gpu.name)}</span></div>
-    <button type="button" class="quiet-button" id="test-dictation" ${runtime.paused ? "disabled" : ""}>${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test Dictation"}</button>
+    <div class="status-actions">
+      <button type="button" class="quiet-button" id="mic-test-footer" ${recording || testListening ? "disabled" : ""}>${micTesting ? "Stop Mic Test" : "Mic Test"}</button>
+      <button type="button" class="quiet-button" id="test-dictation" ${runtime.paused || micTesting ? "disabled" : ""}>${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test Dictation"}</button>
+    </div>
   </footer>
   ${recordingHotkey ? `<p class="notice recording-hint">Press a key combo, or Escape to cancel.</p>` : ""}`;
 }
 
+function welcomeOverlay() {
+  if (settings.welcomeDismissed || isLogsWindow) return "";
+  return `<div class="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+    <div class="welcome-card">
+      <p class="overline">WELCOME</p>
+      <h2 id="welcome-title">VocaWin is in your tray</h2>
+      <p>Hold your hotkey (Right Ctrl by default) to dictate into any app. Optional: turn on Start on Login from the tray menu or Settings.</p>
+      <button class="primary" id="welcome-dismiss">Got it</button>
+    </div>
+  </div>`;
+}
+
+function aboutOverlay() {
+  if (!showAbout) return "";
+  return `<div class="welcome-overlay" role="dialog" aria-modal="true">
+    <div class="welcome-card">
+      <p class="overline">ABOUT</p>
+      <h2>VocaWin</h2>
+      <p>Private, offline voice dictation for Windows. Audio and models stay on this PC.</p>
+      <button class="primary" id="about-dismiss">Close</button>
+    </div>
+  </div>`;
+}
+
+function logsPage() {
+  const body = logLines.length
+    ? logLines.map(line => `<div class="log-line">${escape(line)}</div>`).join("")
+    : `<div class="empty-history">No log lines yet.</div>`;
+  return `<header><div><p class="overline">DIAGNOSTICS</p><h1>App <em>logs.</em></h1><p class="lede">Recent messages from this session. Opening View Logs again reuses this window.</p></div>
+    <button class="quiet-button" id="clear-logs">Clear</button></header>
+    <section class="log-panel">${body}</section>`;
+}
+
 function render() {
+  if (isLogsWindow) {
+    app.innerHTML = `<main class="logs-main">${logsPage()}</main>`;
+    document.querySelector("#clear-logs")?.addEventListener("click", async () => {
+      await invoke("clear_log_lines");
+      logLines = [];
+      render();
+    });
+    return;
+  }
+
   const pages: Record<View, () => string> = { dictation: dictationPage, models: modelsPage, history: historyPage, settings: settingsPage };
-  app.innerHTML = `<aside><div class="brand"><span class="mark"><img src="/src/assets/voca-logo.svg" alt="Voca"/></span><span>VocaWin</span></div><p class="brand-subtitle">Voice dictation, kept private.</p><nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}</nav><div class="privacy"><i>✓</i><div><b>Private by default</b><small>Your audio stays here</small></div></div></aside><main>${pages[view]()}<p class="notice" role="status">${escape(noticeText)}</p></main>`;
+  app.innerHTML = `<aside><div class="brand"><span class="mark"><img src="/src/assets/voca-logo.svg" alt="Voca"/></span><span>VocaWin</span></div><p class="brand-subtitle">Voice dictation, kept private.</p><nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}</nav><div class="privacy"><i>✓</i><div><b>Private by default</b><small>Your audio stays here</small></div></div></aside><main>${pages[view]()}${welcomeOverlay()}${aboutOverlay()}<p class="notice" role="status">${escape(noticeText)}</p></main>`;
   document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(button => button.addEventListener("click", () => { view = button.dataset.view as View; render(); }));
   document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach(button => button.addEventListener("click", () => { view = button.dataset.go as View; render(); }));
   document.querySelector("#record")?.addEventListener("click", toggleRecording);
   document.querySelector("#save")?.addEventListener("click", save);
   document.querySelector("#clear-history")?.addEventListener("click", clearHistory);
   document.querySelector("#test-dictation")?.addEventListener("click", testDictation);
+  document.querySelector("#mic-test")?.addEventListener("click", toggleMicTest);
+  document.querySelector("#mic-test-footer")?.addEventListener("click", toggleMicTest);
+  document.querySelector("#welcome-dismiss")?.addEventListener("click", dismissWelcome);
+  document.querySelector("#about-dismiss")?.addEventListener("click", () => { showAbout = false; render(); });
   document.querySelector("#settings-search")?.addEventListener("input", event => {
     settingsQuery = (event.target as HTMLInputElement).value;
     const active = document.activeElement === event.target;
@@ -276,6 +435,18 @@ function render() {
       if (input) {
         input.focus();
         input.setSelectionRange(settingsQuery.length, settingsQuery.length);
+      }
+    }
+  });
+  document.querySelector("#language-filter")?.addEventListener("input", event => {
+    languageQuery = (event.target as HTMLInputElement).value;
+    const active = document.activeElement === event.target;
+    render();
+    if (active) {
+      const input = document.querySelector<HTMLInputElement>("#language-filter");
+      if (input) {
+        input.focus();
+        input.setSelectionRange(languageQuery.length, languageQuery.length);
       }
     }
   });
@@ -402,18 +573,34 @@ async function refreshHistory() { history = await invoke<HistoryEntry[]>("get_hi
 async function refreshRuntime() {
   try { runtime = await invoke<RuntimeStatus>("get_runtime_status"); } catch { /* ignore */ }
 }
+async function refreshLogs() {
+  try { logLines = await invoke<string[]>("get_log_lines"); } catch { logLines = []; }
+}
 async function clearHistory() {
   try { await invoke("clear_history"); history = []; noticeText = "History cleared."; } catch (error) { noticeText = String(error); }
   render();
 }
+async function dismissWelcome() {
+  try {
+    await invoke("dismiss_welcome");
+    settings.welcomeDismissed = true;
+  } catch (error) {
+    noticeText = String(error);
+  }
+  render();
+}
 async function downloadModel(id: string) {
   try {
-    statuses[id] = { ...(statuses[id] ?? { installed: false, downloadable: true }), downloading: true, progress: 0 };
+    statuses[id] = { ...(statuses[id] ?? { installed: false, downloadable: true }), downloading: true, progress: 0, message: "Connecting…" };
     noticeText = `Downloading ${models.find(model => model.id === id)?.name ?? "model"}…`; render();
     const timer = window.setInterval(() => refreshStatuses().then(render).catch(() => undefined), 500);
     await invoke("download_model", { modelId: id });
     window.clearInterval(timer); await refreshStatuses(); noticeText = "Model installed locally.";
-  } catch (error) { await refreshStatuses().catch(() => undefined); noticeText = String(error); }
+  } catch (error) {
+    await refreshStatuses().catch(() => undefined);
+    const status = statuses[id];
+    noticeText = status?.message ? String(status.message) : String(error);
+  }
   render();
 }
 async function deleteModel(id: string) {
@@ -426,19 +613,67 @@ async function selectModel(id: string) {
 }
 async function toggleRecording() {
   try {
-    if (!recording) { await invoke("start_recording"); recording = true; noticeText = "Listening locally…"; await refreshRuntime(); render(); return; }
+    if (!recording) {
+      if (!modelInstalled()) {
+        noticeText = emptySpeechMessage();
+        render();
+        return;
+      }
+      await invoke("start_recording");
+      recording = true;
+      noticeText = "Listening locally…";
+      await refreshRuntime();
+      render();
+      return;
+    }
     recording = false; noticeText = "Transcribing on this PC…"; render();
     const text = await invoke<string>("stop_and_transcribe");
-    if (!text) { noticeText = "No speech was recognized."; render(); return; }
+    if (!text) { noticeText = emptySpeechMessage(); render(); return; }
     await invoke("inject_text", { text }); await refreshHistory(); noticeText = `Inserted: ${text}`;
   } catch (error) { recording = false; noticeText = String(error); }
   await refreshRuntime();
   render();
 }
+async function toggleMicTest() {
+  try {
+    if (!micTesting) {
+      if (recording || testListening) return;
+      await invoke("start_mic_test");
+      micTesting = true;
+      noticeText = "Mic Test: speak to watch the level. This does not recognize speech.";
+      if (micMeterTimer) window.clearInterval(micMeterTimer);
+      micMeterTimer = window.setInterval(async () => {
+        try {
+          micLevel = await invoke<number>("get_mic_level");
+          const bar = document.querySelector<HTMLElement>(".level-meter span");
+          if (bar) bar.style.width = `${Math.min(100, Math.round(micLevel * 140))}%`;
+        } catch { /* ignore */ }
+      }, 80);
+      render();
+      return;
+    }
+    await invoke("stop_mic_test");
+    micTesting = false;
+    micLevel = 0;
+    if (micMeterTimer) { window.clearInterval(micMeterTimer); micMeterTimer = null; }
+    noticeText = "Mic Test stopped.";
+  } catch (error) {
+    micTesting = false;
+    micLevel = 0;
+    if (micMeterTimer) { window.clearInterval(micMeterTimer); micMeterTimer = null; }
+    noticeText = String(error);
+  }
+  render();
+}
 async function testDictation() {
-  if (runtime.paused) return;
+  if (runtime.paused || micTesting) return;
   try {
     if (!testListening) {
+      if (!modelInstalled()) {
+        noticeText = emptySpeechMessage();
+        render();
+        return;
+      }
       testingDictation = true;
       await invoke("start_recording");
       recording = true;
@@ -455,7 +690,7 @@ async function testDictation() {
     noticeText = "Transcribing test take…";
     render();
     const text = await invoke<string>("stop_and_transcribe");
-    noticeText = text ? `Test result: ${text}` : "Test Dictation heard no speech.";
+    noticeText = text ? `Test result: ${text}` : emptySpeechMessage();
     await refreshHistory();
   } catch (error) {
     recording = false;
@@ -516,7 +751,7 @@ listen<string>("dictation-finished", async event => {
   recording = false;
   await refreshHistory().catch(() => undefined);
   await refreshRuntime().catch(() => undefined);
-  noticeText = event.payload ? `Inserted: ${event.payload}` : "No speech was recognized.";
+  noticeText = event.payload ? `Inserted: ${event.payload}` : emptySpeechMessage();
   render();
 }).catch(() => undefined);
 listen<string>("dictation-error", event => {
@@ -528,36 +763,65 @@ listen<string>("runtime-status", event => {
   runtime = { ...runtime, status: event.payload, paused: event.payload === "Paused" };
   render();
 }).catch(() => undefined);
-
-Promise.all([
-  invoke<Model[]>("get_models"),
-  invoke<Settings>("get_settings"),
-  invoke<Record<string, ModelStatus>>("get_model_statuses"),
-  invoke<HistoryEntry[]>("get_history"),
-  invoke<HotkeyPreset[]>("get_hotkey_presets"),
-  invoke<GpuStatus>("get_gpu_status"),
-  invoke<InputDevice[]>("list_input_devices").catch(() => [] as InputDevice[]),
-  invoke<ModelRecommendation>("recommend_model").catch(() => null),
-  invoke<RuntimeStatus>("get_runtime_status").catch(() => runtime),
-]).then(([catalog, saved, installs, entries, hotkeyPresets, gpuStatus, inputDevices, modelRec, runtimeStatus]) => {
-  models = catalog;
-  settings = {
-    ...saved,
-    maxRecordingSeconds: saved.maxRecordingSeconds ?? 60,
-    appendTrailingSpace: saved.appendTrailingSpace ?? true,
-    autoCapitalize: saved.autoCapitalize ?? true,
-    inputDevice: saved.inputDevice ?? "",
-    autoPauseEnabled: saved.autoPauseEnabled ?? false,
-    autoPauseApps: saved.autoPauseApps ?? "",
-    idleUnloadEnabled: saved.idleUnloadEnabled ?? false,
-    idleUnloadSeconds: saved.idleUnloadSeconds ?? 300,
-  };
-  statuses = installs;
-  history = entries;
-  presets = hotkeyPresets;
-  gpu = gpuStatus;
-  devices = inputDevices;
-  recommendation = modelRec;
-  runtime = runtimeStatus;
+listen<Settings>("settings-changed", event => {
+  settings = { ...settings, ...event.payload };
   render();
-}).catch(error => { app.textContent = `Could not start VocaWin: ${error}`; });
+}).catch(() => undefined);
+listen("show-about", () => {
+  showAbout = true;
+  render();
+}).catch(() => undefined);
+listen<string>("navigate", event => {
+  if (event.payload === "settings" || event.payload === "models" || event.payload === "history" || event.payload === "dictation") {
+    view = event.payload;
+    render();
+  }
+}).catch(() => undefined);
+listen<string>("log-line", event => {
+  logLines = [...logLines.slice(-499), event.payload];
+  if (isLogsWindow) render();
+}).catch(() => undefined);
+
+if (isLogsWindow) {
+  refreshLogs().then(render).catch(error => { app.textContent = `Could not open logs: ${error}`; });
+} else {
+  Promise.all([
+    invoke<Model[]>("get_models"),
+    invoke<Settings>("get_settings"),
+    invoke<Record<string, ModelStatus>>("get_model_statuses"),
+    invoke<HistoryEntry[]>("get_history"),
+    invoke<HotkeyPreset[]>("get_hotkey_presets"),
+    invoke<GpuStatus>("get_gpu_status"),
+    invoke<InputDevice[]>("list_input_devices").catch(() => [] as InputDevice[]),
+    invoke<ModelRecommendation>("recommend_model").catch(() => null),
+    invoke<RuntimeStatus>("get_runtime_status").catch(() => runtime),
+  ]).then(([catalog, saved, installs, entries, hotkeyPresets, gpuStatus, inputDevices, modelRec, runtimeStatus]) => {
+    models = catalog;
+    settings = {
+      ...saved,
+      maxRecordingSeconds: saved.maxRecordingSeconds ?? 60,
+      appendTrailingSpace: saved.appendTrailingSpace ?? true,
+      autoCapitalize: saved.autoCapitalize ?? true,
+      inputDevice: saved.inputDevice ?? "",
+      autoPauseEnabled: saved.autoPauseEnabled ?? false,
+      autoPauseApps: saved.autoPauseApps ?? "",
+      idleUnloadEnabled: saved.idleUnloadEnabled ?? false,
+      idleUnloadSeconds: saved.idleUnloadSeconds ?? 300,
+      welcomeDismissed: saved.welcomeDismissed ?? false,
+    };
+    statuses = installs;
+    history = entries;
+    presets = hotkeyPresets;
+    gpu = {
+      ...gpuStatus,
+      deviceIndex: gpuStatus.deviceIndex ?? -1,
+      discrete: gpuStatus.discrete ?? false,
+      vramMb: gpuStatus.vramMb ?? 0,
+      detail: gpuStatus.detail ?? "",
+    };
+    devices = inputDevices;
+    recommendation = modelRec;
+    runtime = runtimeStatus;
+    render();
+  }).catch(error => { app.textContent = `Could not start VocaWin: ${error}`; });
+}

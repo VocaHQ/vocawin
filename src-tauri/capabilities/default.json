@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Main VocaWin window",
-  "windows": ["main"],
+  "windows": ["main", "logs"],
   "permissions": [
     "core:default",
     "autostart:allow-enable",

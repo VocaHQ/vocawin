@@ -7,6 +7,7 @@ mod gpu;
 mod hardware;
 mod hook;
 mod hotkey;
+mod logbuf;
 mod output;
 mod power;
 mod sounds;
@@ -192,6 +193,9 @@ struct Settings {
     idle_unload_enabled: bool,
     #[serde(default = "default_idle_unload_seconds")]
     idle_unload_seconds: u32,
+    /// First-run welcome was dismissed.
+    #[serde(default)]
+    welcome_dismissed: bool,
 }
 
 fn default_true() -> bool {
@@ -209,7 +213,7 @@ fn default_idle_unload_seconds() -> u32 {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            hotkey: "Ctrl+Alt+Space".into(),
+            hotkey: "ControlRight".into(),
             activation_mode: "pushToTalk".into(),
             language: "Auto-detect".into(),
             silence_seconds: 1.5,
@@ -224,6 +228,7 @@ impl Default for Settings {
             auto_pause_apps: String::new(),
             idle_unload_enabled: false,
             idle_unload_seconds: 300,
+            welcome_dismissed: false,
         }
     }
 }
@@ -237,10 +242,15 @@ enum AudioCommand {
         silence_seconds: f32,
         max_seconds: f32,
         device_name: String,
+        /// Level meter only: no silence auto-stop and no transcription handoff.
+        meter_only: bool,
         reply: mpsc::Sender<Result<(), String>>,
     },
     Stop {
         reply: mpsc::Sender<Result<(Vec<f32>, u32), String>>,
+    },
+    Level {
+        reply: mpsc::Sender<f32>,
     },
 }
 
@@ -255,9 +265,15 @@ fn note_audio_sample(
     samples: &Arc<Mutex<Vec<f32>>>,
     last_voice_ms: &Arc<Mutex<u128>>,
     heard_speech: &Arc<Mutex<bool>>,
+    peak_level: &Arc<Mutex<f32>>,
+    store_samples: bool,
 ) {
     const VOICE_THRESHOLD: f32 = 0.015;
-    if mono.abs() >= VOICE_THRESHOLD {
+    let level = mono.abs();
+    if let Ok(mut peak) = peak_level.lock() {
+        *peak = (*peak * 0.92).max(level);
+    }
+    if level >= VOICE_THRESHOLD {
         if let Ok(mut heard) = heard_speech.lock() {
             *heard = true;
         }
@@ -265,7 +281,9 @@ fn note_audio_sample(
             *last = now_ms();
         }
     }
-    samples.lock().unwrap().push(mono);
+    if store_samples {
+        samples.lock().unwrap().push(mono);
+    }
 }
 
 #[cfg(windows)]
@@ -273,6 +291,8 @@ fn open_input_stream(
     samples: Arc<Mutex<Vec<f32>>>,
     last_voice_ms: Arc<Mutex<u128>>,
     heard_speech: Arc<Mutex<bool>>,
+    peak_level: Arc<Mutex<f32>>,
+    store_samples: bool,
     device_name: &str,
 ) -> Result<(cpal::Stream, u32), String> {
     let host = cpal::default_host();
@@ -298,6 +318,9 @@ fn open_input_stream(
         .lock()
         .map_err(|_| "Audio lock was poisoned")?
         .clear();
+    if let Ok(mut peak) = peak_level.lock() {
+        *peak = 0.0;
+    }
     let error_callback = |error| eprintln!("VocaWin audio input error: {error}");
     let config: cpal::StreamConfig = supported.clone().into();
     let stream = match supported.sample_format() {
@@ -305,12 +328,20 @@ fn open_input_stream(
             let samples = Arc::clone(&samples);
             let last_voice_ms = Arc::clone(&last_voice_ms);
             let heard_speech = Arc::clone(&heard_speech);
+            let peak_level = Arc::clone(&peak_level);
             device.build_input_stream(
                 &config,
                 move |data: &[f32], _| {
                     for frame in data.chunks(channels) {
                         let mono = frame.iter().sum::<f32>() / frame.len() as f32;
-                        note_audio_sample(mono, &samples, &last_voice_ms, &heard_speech);
+                        note_audio_sample(
+                            mono,
+                            &samples,
+                            &last_voice_ms,
+                            &heard_speech,
+                            &peak_level,
+                            store_samples,
+                        );
                     }
                 },
                 error_callback,
@@ -321,6 +352,7 @@ fn open_input_stream(
             let samples = Arc::clone(&samples);
             let last_voice_ms = Arc::clone(&last_voice_ms);
             let heard_speech = Arc::clone(&heard_speech);
+            let peak_level = Arc::clone(&peak_level);
             device.build_input_stream(
                 &config,
                 move |data: &[i16], _| {
@@ -330,7 +362,14 @@ fn open_input_stream(
                             .map(|sample| *sample as f32 / i16::MAX as f32)
                             .sum::<f32>()
                             / frame.len() as f32;
-                        note_audio_sample(mono, &samples, &last_voice_ms, &heard_speech);
+                        note_audio_sample(
+                            mono,
+                            &samples,
+                            &last_voice_ms,
+                            &heard_speech,
+                            &peak_level,
+                            store_samples,
+                        );
                     }
                 },
                 error_callback,
@@ -341,6 +380,7 @@ fn open_input_stream(
             let samples = Arc::clone(&samples);
             let last_voice_ms = Arc::clone(&last_voice_ms);
             let heard_speech = Arc::clone(&heard_speech);
+            let peak_level = Arc::clone(&peak_level);
             device.build_input_stream(
                 &config,
                 move |data: &[u16], _| {
@@ -350,7 +390,14 @@ fn open_input_stream(
                             .map(|sample| (*sample as f32 / u16::MAX as f32) * 2.0 - 1.0)
                             .sum::<f32>()
                             / frame.len() as f32;
-                        note_audio_sample(mono, &samples, &last_voice_ms, &heard_speech);
+                        note_audio_sample(
+                            mono,
+                            &samples,
+                            &last_voice_ms,
+                            &heard_speech,
+                            &peak_level,
+                            store_samples,
+                        );
                     }
                 },
                 error_callback,
@@ -379,11 +426,13 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
     let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
     let last_voice_ms = Arc::new(Mutex::new(now_ms()));
     let heard_speech = Arc::new(Mutex::new(false));
+    let peak_level = Arc::new(Mutex::new(0.0_f32));
     let mut stream: Option<cpal::Stream> = None;
     let mut sample_rate: Option<u32> = None;
     let mut started_ms: Option<u128> = None;
     let mut silence_seconds = 1.5_f32;
     let mut max_seconds = 60.0_f32;
+    let mut meter_only = false;
 
     loop {
         let timed_out = match commands.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -393,10 +442,12 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                         silence_seconds: silence,
                         max_seconds: max,
                         device_name,
+                        meter_only: meter,
                         reply,
                     } => {
                         silence_seconds = silence.clamp(0.3, 10.0);
                         max_seconds = max.clamp(3.0, 300.0);
+                        meter_only = meter;
                         let result = if stream.is_some() {
                             Err("A recording is already in progress".into())
                         } else {
@@ -404,6 +455,8 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                                 Arc::clone(&samples),
                                 Arc::clone(&last_voice_ms),
                                 Arc::clone(&heard_speech),
+                                Arc::clone(&peak_level),
+                                !meter,
                                 &device_name,
                             ) {
                                 Ok((next_stream, rate)) => {
@@ -412,8 +465,10 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                                     started_ms = Some(now_ms());
                                     *last_voice_ms.lock().unwrap() = now_ms();
                                     *heard_speech.lock().unwrap() = false;
-                                    let _ = app.emit("recording-changed", true);
-                                    set_tray_recording(&app, true);
+                                    if !meter {
+                                        let _ = app.emit("recording-changed", true);
+                                        set_tray_recording(&app, true);
+                                    }
                                     Ok(())
                                 }
                                 Err(error) => Err(error),
@@ -422,17 +477,26 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                         let _ = reply.send(result);
                     }
                     AudioCommand::Stop { reply } => {
+                        let was_meter = meter_only;
+                        meter_only = false;
                         let result = take_recording(
                             &mut stream,
                             &mut sample_rate,
                             &mut started_ms,
                             &samples,
                         );
-                        if result.is_ok() {
+                        if result.is_ok() && !was_meter {
                             let _ = app.emit("recording-changed", false);
                             set_tray_recording(&app, false);
                         }
+                        if let Ok(mut peak) = peak_level.lock() {
+                            *peak = 0.0;
+                        }
                         let _ = reply.send(result);
+                    }
+                    AudioCommand::Level { reply } => {
+                        let level = peak_level.lock().map(|v| *v).unwrap_or(0.0);
+                        let _ = reply.send(level);
                     }
                 }
                 false
@@ -441,7 +505,7 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
 
-        if timed_out && stream.is_some() {
+        if timed_out && stream.is_some() && !meter_only {
             let started = started_ms.unwrap_or_else(now_ms);
             let elapsed = (now_ms().saturating_sub(started)) as f32 / 1000.0;
             let last_voice = *last_voice_ms.lock().unwrap_or_else(|e| e.into_inner());
@@ -508,6 +572,23 @@ impl AudioRecorder {
                 silence_seconds,
                 max_seconds,
                 device_name,
+                meter_only: false,
+                reply,
+            })
+            .map_err(|_| "Audio thread is not running".to_string())?;
+        response
+            .recv()
+            .map_err(|_| "Audio thread did not respond".to_string())?
+    }
+
+    fn start_meter(&self, device_name: String) -> Result<(), String> {
+        let (reply, response) = mpsc::channel();
+        self.commands
+            .send(AudioCommand::Start {
+                silence_seconds: 10.0,
+                max_seconds: 300.0,
+                device_name,
+                meter_only: true,
                 reply,
             })
             .map_err(|_| "Audio thread is not running".to_string())?;
@@ -525,6 +606,14 @@ impl AudioRecorder {
             .recv()
             .map_err(|_| "Audio thread did not respond".to_string())?
     }
+
+    fn level(&self) -> f32 {
+        let (reply, response) = mpsc::channel();
+        if self.commands.send(AudioCommand::Level { reply }).is_err() {
+            return 0.0;
+        }
+        response.recv().unwrap_or(0.0)
+    }
 }
 
 /// Non-Windows builds keep an unavailable mic stub so Linux/macOS CI can validate
@@ -539,20 +628,54 @@ impl AudioRecorder {
     fn start(&self, _: f32, _: f32, _: String) -> Result<(), String> {
         Err("Microphone capture is available in Windows builds only.".into())
     }
+    fn start_meter(&self, _: String) -> Result<(), String> {
+        Err("Microphone capture is available in Windows builds only.".into())
+    }
     fn stop(&self) -> Result<(Vec<f32>, u32), String> {
         Err("Microphone capture is available in Windows builds only.".into())
     }
+    fn level(&self) -> f32 {
+        0.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayPhase {
+    Idle,
+    Listening,
+    Processing,
+}
+
+fn set_tray_phase(app: &AppHandle, phase: TrayPhase) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let (tip, bytes) = match phase {
+            TrayPhase::Idle => ("VocaWin", include_bytes!("../icons/tray-idle.png").as_slice()),
+            TrayPhase::Listening => (
+                "VocaWin - Listening",
+                include_bytes!("../icons/tray-listening.png").as_slice(),
+            ),
+            TrayPhase::Processing => (
+                "VocaWin - Processing",
+                include_bytes!("../icons/tray-processing.png").as_slice(),
+            ),
+        };
+        let _ = tray.set_tooltip(Some(tip));
+        if let Ok(icon) = tauri::image::Image::from_bytes(bytes) {
+            let _ = tray.set_icon(Some(icon));
+        }
+    }
+    let _ = refresh_tray_menu(app);
 }
 
 fn set_tray_recording(app: &AppHandle, recording: bool) {
-    if let Some(tray) = app.tray_by_id("main") {
-        let tip = if recording {
-            "VocaWin - Recording"
+    set_tray_phase(
+        app,
+        if recording {
+            TrayPhase::Listening
         } else {
-            "VocaWin"
-        };
-        let _ = tray.set_tooltip(Some(tip));
-    }
+            TrayPhase::Idle
+        },
+    );
 }
 
 #[cfg(windows)]
@@ -562,6 +685,7 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
         let mut flag = state.recording.lock().unwrap_or_else(|e| e.into_inner());
         *flag = false;
     }
+    set_tray_phase(app, TrayPhase::Processing);
     let sound = state
         .settings
         .lock()
@@ -577,9 +701,11 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
             let _ = app.emit("dictation-finished", String::new());
         }
         Err(error) => {
+            logbuf::push_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error);
         }
     }
+    set_tray_phase(app, TrayPhase::Idle);
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -736,6 +862,7 @@ fn save_settings(
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")? = settings;
+    let _ = refresh_tray_menu(&app);
     Ok(())
 }
 
@@ -1357,8 +1484,31 @@ fn transcribe_samples(
         "Spanish" => Some("es"),
         "French" => Some("fr"),
         "German" => Some("de"),
+        "Italian" => Some("it"),
+        "Portuguese" => Some("pt"),
+        "Dutch" => Some("nl"),
+        "Russian" => Some("ru"),
         "Japanese" => Some("ja"),
         "Chinese" => Some("zh"),
+        "Korean" => Some("ko"),
+        "Arabic" => Some("ar"),
+        "Hindi" => Some("hi"),
+        "Turkish" => Some("tr"),
+        "Polish" => Some("pl"),
+        "Ukrainian" => Some("uk"),
+        "Swedish" => Some("sv"),
+        "Norwegian" => Some("no"),
+        "Danish" => Some("da"),
+        "Finnish" => Some("fi"),
+        "Czech" => Some("cs"),
+        "Greek" => Some("el"),
+        "Hebrew" => Some("he"),
+        "Indonesian" => Some("id"),
+        "Vietnamese" => Some("vi"),
+        "Thai" => Some("th"),
+        "Romanian" => Some("ro"),
+        "Hungarian" => Some("hu"),
+        "Catalan" => Some("ca"),
         _ => None,
     };
     let raw = if !settings.selected_model.starts_with("whisper-")
@@ -1387,6 +1537,7 @@ fn transcribe_samples(
             pcm,
             language_code.map(str::to_string),
             gpu.available,
+            gpu.device_index,
             settings.idle_unload_enabled,
         )?
     };
@@ -1421,10 +1572,17 @@ fn stop_and_transcribe(app: AppHandle, state: State<'_, AppState>) -> Result<Str
         .lock()
         .map(|settings| settings.sound_effects)
         .unwrap_or(true);
-    let text = transcribe_recording(&state)?;
+    set_tray_phase(&app, TrayPhase::Processing);
+    let text = match transcribe_recording(&state) {
+        Ok(text) => text,
+        Err(error) => {
+            set_tray_phase(&app, TrayPhase::Idle);
+            return Err(error);
+        }
+    };
     sounds::play_if_enabled(sound, false);
     let _ = app.emit("recording-changed", false);
-    set_tray_recording(&app, false);
+    set_tray_phase(&app, TrayPhase::Idle);
     Ok(text)
 }
 
@@ -1443,6 +1601,70 @@ fn system_summary() -> serde_json::Value {
 #[tauri::command]
 fn get_gpu_status() -> gpu::GpuStatus {
     gpu::detect_gpu()
+}
+
+#[tauri::command]
+fn get_log_lines() -> Vec<String> {
+    logbuf::snapshot()
+}
+
+#[tauri::command]
+fn clear_log_lines() {
+    logbuf::clear();
+}
+
+#[tauri::command]
+fn dismiss_welcome(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")?
+        .clone();
+    settings.welcome_dismissed = true;
+    persist_settings(&state.settings_path, &settings)?;
+    *state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")? = settings.clone();
+    let _ = app.emit("settings-changed", settings);
+    Ok(())
+}
+
+#[tauri::command]
+fn selected_model_installed(state: State<'_, AppState>) -> bool {
+    state
+        .settings
+        .lock()
+        .map(|settings| model_is_installed(&state.models_path, &settings.selected_model))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn start_mic_test(state: State<'_, AppState>) -> Result<(), String> {
+    if *state
+        .recording
+        .lock()
+        .map_err(|_| "Recording lock was poisoned")?
+    {
+        return Err("Stop dictation before running Mic Test.".into());
+    }
+    let device = state
+        .settings
+        .lock()
+        .map(|settings| settings.input_device.clone())
+        .unwrap_or_default();
+    state.recorder.start_meter(device)
+}
+
+#[tauri::command]
+fn stop_mic_test(state: State<'_, AppState>) -> Result<(), String> {
+    let _ = state.recorder.stop()?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_mic_level(state: State<'_, AppState>) -> f32 {
+    state.recorder.level()
 }
 
 #[tauri::command]
@@ -1491,6 +1713,9 @@ fn get_runtime_status(state: State<'_, AppState>) -> serde_json::Value {
         "inputDevice": if settings.input_device.is_empty() { "Default microphone".into() } else { settings.input_device },
         "gpuName": gpu.name,
         "gpuBackend": gpu.backend,
+        "gpuDetail": gpu.detail,
+        "gpuDiscrete": gpu.discrete,
+        "gpuVramMb": gpu.vram_mb,
     })
 }
 
@@ -1506,6 +1731,7 @@ fn inject_text(text: String) -> Result<(), String> {
 }
 
 pub fn run() {
+    let start_minimized = std::env::args().any(|arg| arg == "--start-minimized");
     let mut builder = tauri::Builder::default();
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
         if let Some(window) = app.get_webview_window("main") {
@@ -1514,8 +1740,12 @@ pub fn run() {
         }
     }));
     builder
-        .plugin(tauri_plugin_autostart::Builder::new().build())
-        .setup(|app| {
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args(["--start-minimized"])
+                .build(),
+        )
+        .setup(move |app| {
             let app_data = app.path().app_data_dir()?;
             let settings_path = app_data.join("settings.json");
             let history_path = app_data.join("history.json");
@@ -1544,6 +1774,7 @@ pub fn run() {
             hook::start(handle.clone());
             if let Err(error) = register_dictation_hotkey(&handle, &settings.hotkey) {
                 eprintln!("VocaWin hotkey registration failed: {error}");
+                logbuf::push(format!("Hotkey registration failed: {error}"));
             }
             setup_tray(app)?;
             start_auto_pause_watcher(handle.clone());
@@ -1557,7 +1788,7 @@ pub fn run() {
                     .registered_hotkey
                     .lock()
                     .map(|value| value.clone())
-                    .unwrap_or_else(|_| "Ctrl+Alt+Space".into());
+                    .unwrap_or_else(|_| "ControlRight".into());
                 if let Err(error) = register_dictation_hotkey(&app, &hotkey) {
                     eprintln!("VocaWin hotkey re-register after wake failed: {error}");
                 } else {
@@ -1572,7 +1803,11 @@ pub fn run() {
                         let _ = window_for_close.hide();
                     }
                 });
+                if start_minimized {
+                    let _ = window.hide();
+                }
             }
+            logbuf::push("VocaWin ready.");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1586,6 +1821,13 @@ pub fn run() {
             delete_model,
             system_summary,
             get_gpu_status,
+            get_log_lines,
+            clear_log_lines,
+            dismiss_welcome,
+            selected_model_installed,
+            start_mic_test,
+            stop_mic_test,
+            get_mic_level,
             get_hotkey_presets,
             pause_hotkey_listener,
             resume_hotkey_listener,
@@ -1634,13 +1876,27 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
             if toggle {
                 if recording {
-                    if let Ok(text) = transcribe_recording(&state) {
-                        sounds::play_if_enabled(settings.sound_effects, false);
-                        let _ = output::inject(&text);
-                        let _ = handle.emit("dictation-finished", text);
+                    set_tray_phase(handle, TrayPhase::Processing);
+                    match transcribe_recording(&state) {
+                        Ok(text) => {
+                            sounds::play_if_enabled(settings.sound_effects, false);
+                            let _ = output::inject(&text);
+                            let _ = handle.emit("dictation-finished", text);
+                        }
+                        Err(error) => {
+                            logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
+                            let _ = handle.emit("dictation-error", error);
+                        }
                     }
                     let _ = handle.emit("recording-changed", false);
-                    set_tray_recording(handle, false);
+                    set_tray_phase(handle, TrayPhase::Idle);
+                } else if !model_is_installed(&state.models_path, &settings.selected_model) {
+                    let message = format!(
+                        "No speech model is installed. Open Models and download {} first.",
+                        settings.selected_model
+                    );
+                    logbuf::push_and_emit(handle, message.clone());
+                    let _ = handle.emit("dictation-error", message);
                 } else if state
                     .recorder
                     .start(
@@ -1653,10 +1909,17 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                     *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
                     sounds::play_if_enabled(settings.sound_effects, true);
                     let _ = handle.emit("recording-changed", true);
-                    set_tray_recording(handle, true);
+                    set_tray_phase(handle, TrayPhase::Listening);
                 }
-            } else if !recording
-                && state
+            } else if !recording {
+                if !model_is_installed(&state.models_path, &settings.selected_model) {
+                    let message = format!(
+                        "No speech model is installed. Open Models and download {} first.",
+                        settings.selected_model
+                    );
+                    logbuf::push_and_emit(handle, message.clone());
+                    let _ = handle.emit("dictation-error", message);
+                } else if state
                     .recorder
                     .start(
                         settings.silence_seconds,
@@ -1664,11 +1927,12 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         settings.input_device.clone(),
                     )
                     .is_ok()
-            {
-                *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
-                sounds::play_if_enabled(settings.sound_effects, true);
-                let _ = handle.emit("recording-changed", true);
-                set_tray_recording(handle, true);
+                {
+                    *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                    sounds::play_if_enabled(settings.sound_effects, true);
+                    let _ = handle.emit("recording-changed", true);
+                    set_tray_phase(handle, TrayPhase::Listening);
+                }
             }
         }
         hook::HookEvent::Released => {
@@ -1677,13 +1941,20 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             }
             let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
             if recording {
-                if let Ok(text) = transcribe_recording(&state) {
-                    sounds::play_if_enabled(settings.sound_effects, false);
-                    let _ = output::inject(&text);
-                    let _ = handle.emit("dictation-finished", text);
+                set_tray_phase(handle, TrayPhase::Processing);
+                match transcribe_recording(&state) {
+                    Ok(text) => {
+                        sounds::play_if_enabled(settings.sound_effects, false);
+                        let _ = output::inject(&text);
+                        let _ = handle.emit("dictation-finished", text);
+                    }
+                    Err(error) => {
+                        logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
+                        let _ = handle.emit("dictation-error", error);
+                    }
                 }
                 let _ = handle.emit("recording-changed", false);
-                set_tray_recording(handle, false);
+                set_tray_phase(handle, TrayPhase::Idle);
             }
         }
     }
@@ -1726,16 +1997,16 @@ fn start_auto_pause_watcher(app: AppHandle) {
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-    let show = MenuItem::with_id(app, "show", "Show window", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
-    let icon = app
-        .default_window_icon()
-        .ok_or("VocaWin is missing its default window icon for the tray")?
-        .clone();
+    let icon = match tauri::image::Image::from_bytes(include_bytes!("../icons/tray-idle.png")) {
+        Ok(icon) => icon,
+        Err(_) => app
+            .default_window_icon()
+            .ok_or("VocaWin is missing a tray icon")?
+            .clone(),
+    };
+    let menu = build_tray_menu(app.handle())?;
 
     TrayIconBuilder::with_id("main")
         .icon(icon)
@@ -1743,11 +2014,33 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+            "start_voice" => {
+                if let Err(error) = tray_start_voice(app) {
+                    logbuf::push_and_emit(app, format!("Start Voice Typing failed: {error}"));
                 }
+            }
+            "stop_voice" => {
+                if let Err(error) = tray_stop_voice(app) {
+                    logbuf::push_and_emit(app, format!("Stop Voice Typing failed: {error}"));
+                }
+            }
+            "start_on_login" => {
+                if let Err(error) = tray_toggle_login(app) {
+                    logbuf::push_and_emit(app, format!("Start on Login failed: {error}"));
+                }
+            }
+            "settings" => {
+                show_main_window(app);
+                let _ = app.emit("navigate", "settings");
+            }
+            "view_logs" => {
+                if let Err(error) = show_logs_window(app) {
+                    logbuf::push_and_emit(app, format!("View Logs failed: {error}"));
+                }
+            }
+            "about" => {
+                show_main_window(app);
+                let _ = app.emit("show-about", ());
             }
             "quit" => {
                 app.exit(0);
@@ -1773,6 +2066,204 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
+    Ok(())
+}
+
+fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+
+    let state = app.try_state::<AppState>();
+    let recording = state
+        .as_ref()
+        .and_then(|s| s.recording.lock().ok().map(|v| *v))
+        .unwrap_or(false);
+    let launch = state
+        .as_ref()
+        .and_then(|s| s.settings.lock().ok().map(|settings| settings.launch_at_login))
+        .unwrap_or(false);
+
+    let start = MenuItem::with_id(
+        app,
+        "start_voice",
+        "Start Voice Typing",
+        !recording,
+        None::<&str>,
+    )
+    .map_err(|error| error.to_string())?;
+    let stop = MenuItem::with_id(
+        app,
+        "stop_voice",
+        "Stop Voice Typing",
+        recording,
+        None::<&str>,
+    )
+    .map_err(|error| error.to_string())?;
+    let login = CheckMenuItem::with_id(
+        app,
+        "start_on_login",
+        "Start on Login",
+        true,
+        launch,
+        None::<&str>,
+    )
+    .map_err(|error| error.to_string())?;
+    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)
+        .map_err(|error| error.to_string())?;
+    let logs = MenuItem::with_id(app, "view_logs", "View Logs", true, None::<&str>)
+        .map_err(|error| error.to_string())?;
+    let about = MenuItem::with_id(app, "about", "About", true, None::<&str>)
+        .map_err(|error| error.to_string())?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
+        .map_err(|error| error.to_string())?;
+    let sep1 = PredefinedMenuItem::separator(app).map_err(|error| error.to_string())?;
+    let sep2 = PredefinedMenuItem::separator(app).map_err(|error| error.to_string())?;
+    let sep3 = PredefinedMenuItem::separator(app).map_err(|error| error.to_string())?;
+
+    Menu::with_items(
+        app,
+        &[
+            &start, &stop, &sep1, &login, &sep2, &settings, &logs, &about, &sep3, &quit,
+        ],
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn refresh_tray_menu(app: &AppHandle) -> Result<(), String> {
+    let menu = build_tray_menu(app)?;
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_menu(Some(menu))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn show_logs_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window("logs") {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        "logs",
+        tauri::WebviewUrl::App("index.html#logs".into()),
+    )
+    .title("VocaWin Logs")
+    .inner_size(720.0, 480.0)
+    .min_inner_size(480.0, 320.0)
+    .build()
+    .map_err(|error| format!("Could not open Logs window: {error}"))?;
+    let window_for_close = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = window_for_close.hide();
+        }
+    });
+    Ok(())
+}
+
+fn tray_start_voice(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if *state
+        .dictation_paused
+        .lock()
+        .map_err(|_| "Pause lock was poisoned")?
+    {
+        return Err("Dictation is paused while a watched app is running.".into());
+    }
+    if *state
+        .recording
+        .lock()
+        .map_err(|_| "Recording lock was poisoned")?
+    {
+        return Ok(());
+    }
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")?
+        .clone();
+    if !model_is_installed(&state.models_path, &settings.selected_model) {
+        return Err(format!(
+            "No speech model is installed. Open Models and download {} first.",
+            settings.selected_model
+        ));
+    }
+    state.recorder.start(
+        settings.silence_seconds,
+        settings.max_recording_seconds,
+        settings.input_device.clone(),
+    )?;
+    *state
+        .recording
+        .lock()
+        .map_err(|_| "Recording lock was poisoned")? = true;
+    sounds::play_if_enabled(settings.sound_effects, true);
+    let _ = app.emit("recording-changed", true);
+    set_tray_phase(app, TrayPhase::Listening);
+    Ok(())
+}
+
+fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if !*state
+        .recording
+        .lock()
+        .map_err(|_| "Recording lock was poisoned")?
+    {
+        return Ok(());
+    }
+    set_tray_phase(app, TrayPhase::Processing);
+    let sound = state
+        .settings
+        .lock()
+        .map(|settings| settings.sound_effects)
+        .unwrap_or(true);
+    match transcribe_recording(&state) {
+        Ok(text) => {
+            sounds::play_if_enabled(sound, false);
+            if !text.is_empty() {
+                let _ = output::inject(&text);
+            }
+            let _ = app.emit("dictation-finished", text);
+            let _ = app.emit("recording-changed", false);
+            set_tray_phase(app, TrayPhase::Idle);
+            Ok(())
+        }
+        Err(error) => {
+            let _ = app.emit("recording-changed", false);
+            set_tray_phase(app, TrayPhase::Idle);
+            logbuf::push_and_emit(app, format!("Dictation error: {error}"));
+            let _ = app.emit("dictation-error", error.clone());
+            Err(error)
+        }
+    }
+}
+
+fn tray_toggle_login(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")?
+        .clone();
+    settings.launch_at_login = !settings.launch_at_login;
+    persist_settings(&state.settings_path, &settings)?;
+    apply_launch_at_login(app, settings.launch_at_login)?;
+    *state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")? = settings.clone();
+    let _ = app.emit("settings-changed", settings);
+    refresh_tray_menu(app)?;
     Ok(())
 }
 
