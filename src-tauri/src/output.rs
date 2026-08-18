@@ -53,11 +53,13 @@ pub fn inject(text: &str) -> Result<(), String> {
     if text.is_empty() {
         return Ok(());
     }
-    match inject_send_input(text) {
+    // Mac TextInjector path: clipboard + paste chord + restore. SendInput remains
+    // as a fallback when the clipboard path cannot run.
+    match inject_via_clipboard(text) {
         Ok(()) => Ok(()),
-        Err(send_input_error) => inject_via_clipboard(text).map_err(|clipboard_error| {
+        Err(clipboard_error) => inject_send_input(text).map_err(|send_input_error| {
             format!(
-                "SendInput failed ({send_input_error}); clipboard paste also failed ({clipboard_error})"
+                "Clipboard paste failed ({clipboard_error}); SendInput also failed ({send_input_error})"
             )
         }),
     }
@@ -161,7 +163,8 @@ fn inject_via_clipboard(text: &str) -> Result<(), String> {
     if sent as usize != inputs.len() {
         return Err("Ctrl+V SendInput failed".into());
     }
-    std::thread::sleep(std::time::Duration::from_millis(40));
+    // Match Mac TextInjector: give the target app time to consume Ctrl+V.
+    std::thread::sleep(std::time::Duration::from_millis(150));
     if let Some(previous) = previous {
         let _ = write_clipboard_unicode(&previous);
     }

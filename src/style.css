@@ -9,4 +9,13 @@
 .gpu-readout strong,.gpu-readout span{display:block}
 .gpu-readout span{margin-top:4px;color:#5a615d;font-size:11px;font-weight:400}
 .recording-hint{color:#0f6b57}
-@media(prefers-color-scheme:dark){.settings-group,.recording-hint{color:#77d0b2}.gpu-readout span{color:#c2c8c3}}
+.settings-search{margin:0 0 14px}
+.settings-search input{width:100%;border:1px solid #c6cdc8;border-radius:8px;padding:11px 12px;background:#fff}
+.settings-save{margin:8px 0 18px}
+.stacked-control{display:grid;gap:8px;justify-items:end;min-width:205px}
+.stacked-control textarea,.stacked-control input[type=number]{width:205px;border:1px solid #c6cdc8;border-radius:7px;padding:9px 10px;font:inherit;font-size:12px;resize:vertical}
+.settings-status{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0 0;border-top:1px solid #e3e9e5}
+.settings-status strong,.settings-status span{display:block}
+.settings-status span{margin-top:4px;color:#5a615d;font-size:11px}
+.hw-tip{margin:0 0 14px;padding:12px 14px;border-radius:10px;background:#d5e9e1;color:#093e32;font-size:12px;line-height:1.45}
+@media(prefers-color-scheme:dark){.settings-group,.recording-hint{color:#77d0b2}.gpu-readout span,.settings-status span{color:#c2c8c3}.settings-search input,.stacked-control textarea,.stacked-control input[type=number]{background:#292c29;border-color:#3c403d;color:#e3e4e1}.settings-status{border-color:#3c403d}.hw-tip{background:#34463d;color:#c3f3e0}}

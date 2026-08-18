@@ -1,9 +1,15 @@
 //! VocaWin's platform shell. Recognition engines are deliberately behind a small
 //! catalog/adapter boundary so model downloads never require a cloud account.
 
+mod autopause;
+mod devices;
 mod gpu;
+mod hardware;
 mod hotkey;
 mod output;
+mod power;
+mod sounds;
+mod whisper_cache;
 
 #[cfg(windows)]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -173,6 +179,18 @@ struct Settings {
     #[serde(default = "default_true")]
     auto_capitalize: bool,
     selected_model: String,
+    /// Empty string means the WASAPI default capture device.
+    #[serde(default)]
+    input_device: String,
+    #[serde(default)]
+    auto_pause_enabled: bool,
+    /// Newline / comma separated process names (e.g. `obs64.exe`).
+    #[serde(default)]
+    auto_pause_apps: String,
+    #[serde(default)]
+    idle_unload_enabled: bool,
+    #[serde(default = "default_idle_unload_seconds")]
+    idle_unload_seconds: u32,
 }
 
 fn default_true() -> bool {
@@ -181,6 +199,10 @@ fn default_true() -> bool {
 
 fn default_max_recording_seconds() -> f32 {
     60.0
+}
+
+fn default_idle_unload_seconds() -> u32 {
+    300
 }
 
 impl Default for Settings {
@@ -196,6 +218,11 @@ impl Default for Settings {
             append_trailing_space: true,
             auto_capitalize: true,
             selected_model: "whisper-tiny".into(),
+            input_device: String::new(),
+            auto_pause_enabled: false,
+            auto_pause_apps: String::new(),
+            idle_unload_enabled: false,
+            idle_unload_seconds: 300,
         }
     }
 }
@@ -208,6 +235,7 @@ enum AudioCommand {
     Start {
         silence_seconds: f32,
         max_seconds: f32,
+        device_name: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
     Stop {
@@ -244,10 +272,22 @@ fn open_input_stream(
     samples: Arc<Mutex<Vec<f32>>>,
     last_voice_ms: Arc<Mutex<u128>>,
     heard_speech: Arc<Mutex<bool>>,
+    device_name: &str,
 ) -> Result<(cpal::Stream, u32), String> {
-    let device = cpal::default_host()
-        .default_input_device()
-        .ok_or("No microphone was found. Connect or enable an input device and try again.")?;
+    let host = cpal::default_host();
+    let device = if device_name.trim().is_empty() {
+        host.default_input_device()
+            .ok_or("No microphone was found. Connect or enable an input device and try again.")?
+    } else {
+        host.input_devices()
+            .map_err(|error| format!("Could not enumerate microphones: {error}"))?
+            .find(|candidate| candidate.name().ok().as_deref() == Some(device_name))
+            .ok_or_else(|| {
+                format!(
+                    "Microphone `{device_name}` was not found. Pick another device in Settings."
+                )
+            })?
+    };
     let supported = device
         .default_input_config()
         .map_err(|error| format!("Could not read microphone format: {error}"))?;
@@ -351,6 +391,7 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                     AudioCommand::Start {
                         silence_seconds: silence,
                         max_seconds: max,
+                        device_name,
                         reply,
                     } => {
                         silence_seconds = silence.clamp(0.3, 10.0);
@@ -362,6 +403,7 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                                 Arc::clone(&samples),
                                 Arc::clone(&last_voice_ms),
                                 Arc::clone(&heard_speech),
+                                &device_name,
                             ) {
                                 Ok((next_stream, rate)) => {
                                     sample_rate = Some(rate);
@@ -458,12 +500,13 @@ impl AudioRecorder {
         Self { commands }
     }
 
-    fn start(&self, silence_seconds: f32, max_seconds: f32) -> Result<(), String> {
+    fn start(&self, silence_seconds: f32, max_seconds: f32, device_name: String) -> Result<(), String> {
         let (reply, response) = mpsc::channel();
         self.commands
             .send(AudioCommand::Start {
                 silence_seconds,
                 max_seconds,
+                device_name,
                 reply,
             })
             .map_err(|_| "Audio thread is not running".to_string())?;
@@ -492,7 +535,7 @@ impl AudioRecorder {
     fn new(_: AppHandle) -> Self {
         Self
     }
-    fn start(&self, _: f32, _: f32) -> Result<(), String> {
+    fn start(&self, _: f32, _: f32, _: String) -> Result<(), String> {
         Err("Microphone capture is available in Windows builds only.".into())
     }
     fn stop(&self) -> Result<(Vec<f32>, u32), String> {
@@ -518,6 +561,12 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
         let mut flag = state.recording.lock().unwrap_or_else(|e| e.into_inner());
         *flag = false;
     }
+    let sound = state
+        .settings
+        .lock()
+        .map(|settings| settings.sound_effects)
+        .unwrap_or(true);
+    sounds::play_if_enabled(sound, false);
     match transcribe_samples(&state, samples, sample_rate) {
         Ok(text) if !text.is_empty() => {
             let _ = output::inject(&text);
@@ -560,6 +609,8 @@ struct AppState {
     recorder: AudioRecorder,
     recording: Mutex<bool>,
     registered_hotkey: Mutex<String>,
+    dictation_paused: Mutex<bool>,
+    whisper_cache: whisper_cache::WhisperCache,
 }
 
 /// A malformed or partially-written settings file must never prevent dictation
@@ -657,10 +708,25 @@ fn save_settings(
     if settings.activation_mode != "pushToTalk" && settings.activation_mode != "toggle" {
         return Err("Activation mode must be pushToTalk or toggle".into());
     }
+    if settings.idle_unload_enabled && !(30..=3600).contains(&settings.idle_unload_seconds) {
+        return Err("Idle unload must be between 30 and 3600 seconds".into());
+    }
     settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
     persist_settings(&state.settings_path, &settings)?;
     apply_launch_at_login(&app, settings.launch_at_login)?;
-    register_dictation_hotkey(&app, &settings.hotkey)?;
+    state
+        .whisper_cache
+        .configure_idle(settings.idle_unload_enabled, settings.idle_unload_seconds);
+    if !settings.idle_unload_enabled {
+        state.whisper_cache.unload();
+    }
+    let paused = *state
+        .dictation_paused
+        .lock()
+        .map_err(|_| "Pause lock was poisoned")?;
+    if !paused {
+        register_dictation_hotkey(&app, &settings.hotkey)?;
+    }
     *state
         .registered_hotkey
         .lock()
@@ -1244,18 +1310,28 @@ fn write_pcm_wav(path: &std::path::Path, pcm: &[f32]) -> Result<(), String> {
 /// push-to-talk is released (or when toggle mode is stopped).
 #[tauri::command]
 fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if *state
+        .dictation_paused
+        .lock()
+        .map_err(|_| "Pause lock was poisoned")?
+    {
+        return Err("Dictation is paused while a watched app is running.".into());
+    }
     let settings = state
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
-    state
-        .recorder
-        .start(settings.silence_seconds, settings.max_recording_seconds)?;
+    state.recorder.start(
+        settings.silence_seconds,
+        settings.max_recording_seconds,
+        settings.input_device.clone(),
+    )?;
     *state
         .recording
         .lock()
         .map_err(|_| "Recording lock was poisoned")? = true;
+    sounds::play_if_enabled(settings.sound_effects, true);
     let _ = app.emit("recording-changed", true);
     set_tray_recording(&app, true);
     Ok(())
@@ -1305,33 +1381,13 @@ fn transcribe_samples(
             ));
         }
         let gpu = gpu::detect_gpu();
-        let mut context_params = whisper_rs::WhisperContextParameters::default();
-        context_params.use_gpu(gpu.available);
-        context_params.gpu_device(0);
-        let context = whisper_rs::WhisperContext::new_with_params(&model_path, context_params)
-            .map_err(|error| format!("Could not load Whisper model: {error}"))?;
-        let mut session = context
-            .create_state()
-            .map_err(|error| format!("Could not create Whisper session: {error}"))?;
-        let mut parameters =
-            whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
-        parameters.set_translate(false);
-        parameters.set_language(language_code);
-        parameters.set_print_special(false);
-        parameters.set_print_progress(false);
-        parameters.set_print_realtime(false);
-        parameters.set_print_timestamps(false);
-        session
-            .full(parameters, &pcm)
-            .map_err(|error| format!("Transcription failed: {error}"))?;
-        (0..session.full_n_segments())
-            .filter_map(|index| {
-                session
-                    .get_segment(index)
-                    .and_then(|segment| segment.to_str().ok().map(str::to_owned))
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
+        state.whisper_cache.transcribe(
+            model_path,
+            pcm,
+            language_code.map(str::to_string),
+            gpu.available,
+            settings.idle_unload_enabled,
+        )?
     };
     let text = output::apply_output_polish(
         &raw,
@@ -1359,7 +1415,13 @@ fn transcribe_recording(state: &AppState) -> Result<String, String> {
 
 #[tauri::command]
 fn stop_and_transcribe(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    let sound = state
+        .settings
+        .lock()
+        .map(|settings| settings.sound_effects)
+        .unwrap_or(true);
     let text = transcribe_recording(&state)?;
+    sounds::play_if_enabled(sound, false);
     let _ = app.emit("recording-changed", false);
     set_tray_recording(&app, false);
     Ok(text)
@@ -1388,6 +1450,47 @@ fn get_hotkey_presets() -> Vec<serde_json::Value> {
         .iter()
         .map(|(id, label)| serde_json::json!({ "id": id, "label": label }))
         .collect()
+}
+
+#[tauri::command]
+fn list_input_devices() -> Result<Vec<devices::InputDevice>, String> {
+    devices::list_input_devices()
+}
+
+#[tauri::command]
+fn recommend_model() -> hardware::ModelRecommendation {
+    hardware::recommend_starting_model()
+}
+
+#[tauri::command]
+fn get_runtime_status(state: State<'_, AppState>) -> serde_json::Value {
+    let settings = state
+        .settings
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
+    let paused = *state
+        .dictation_paused
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let gpu = gpu::detect_gpu();
+    let status = if recording {
+        "Recording"
+    } else if paused {
+        "Paused"
+    } else {
+        "Ready"
+    };
+    serde_json::json!({
+        "status": status,
+        "recording": recording,
+        "paused": paused,
+        "hotkey": settings.hotkey,
+        "inputDevice": if settings.input_device.is_empty() { "Default microphone".into() } else { settings.input_device },
+        "gpuName": gpu.name,
+        "gpuBackend": gpu.backend,
+    })
 }
 
 /// On Windows this is the final platform boundary: the recognizer gives us
@@ -1420,6 +1523,11 @@ pub fn run() {
             fs::create_dir_all(&models_path)?;
             let settings = load_settings(&settings_path);
             let handle = app.handle().clone();
+            let whisper_cache = whisper_cache::WhisperCache::new();
+            whisper_cache.configure_idle(
+                settings.idle_unload_enabled,
+                settings.idle_unload_seconds,
+            );
             app.manage(AppState {
                 settings: Mutex::new(settings.clone()),
                 settings_path,
@@ -1429,12 +1537,32 @@ pub fn run() {
                 recorder: AudioRecorder::new(handle.clone()),
                 recording: Mutex::new(false),
                 registered_hotkey: Mutex::new(settings.hotkey.clone()),
+                dictation_paused: Mutex::new(false),
+                whisper_cache,
             });
             let _ = apply_launch_at_login(&handle, settings.launch_at_login);
             if let Err(error) = register_dictation_hotkey(&handle, &settings.hotkey) {
                 eprintln!("VocaWin hotkey registration failed: {error}");
             }
             setup_tray(app)?;
+            start_auto_pause_watcher(handle.clone());
+            power::start_sleep_wake_watcher(handle.clone(), |app| {
+                let state = app.state::<AppState>();
+                let paused = *state.dictation_paused.lock().unwrap_or_else(|e| e.into_inner());
+                if paused {
+                    return;
+                }
+                let hotkey = state
+                    .registered_hotkey
+                    .lock()
+                    .map(|value| value.clone())
+                    .unwrap_or_else(|_| "Ctrl+Alt+Space".into());
+                if let Err(error) = register_dictation_hotkey(&app, &hotkey) {
+                    eprintln!("VocaWin hotkey re-register after wake failed: {error}");
+                } else {
+                    let _ = app.emit("runtime-status", "Ready");
+                }
+            });
             if let Some(window) = app.get_webview_window("main") {
                 let window_for_close = window.clone();
                 window.on_window_event(move |event| {
@@ -1458,6 +1586,9 @@ pub fn run() {
             system_summary,
             get_gpu_status,
             get_hotkey_presets,
+            list_input_devices,
+            recommend_model,
+            get_runtime_status,
             start_recording,
             stop_and_transcribe,
             inject_text
@@ -1470,11 +1601,16 @@ fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), S
     #[cfg(windows)]
     {
         use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+        // RegisterHotKey consumes the combo OS-wide so the key does not leak
+        // into the focused app while VocaWin owns the shortcut.
         let shortcut = hotkey::parse_hotkey(hotkey_spec)?;
         let gs = app.global_shortcut();
         let _ = gs.unregister_all();
         gs.on_shortcut(shortcut, move |handle, _, event| {
             let state = handle.state::<AppState>();
+            if *state.dictation_paused.lock().unwrap_or_else(|e| e.into_inner()) {
+                return;
+            }
             let settings = state
                 .settings
                 .lock()
@@ -1487,26 +1623,38 @@ fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), S
                     if toggle {
                         if recording {
                             if let Ok(text) = transcribe_recording(&state) {
+                                sounds::play_if_enabled(settings.sound_effects, false);
                                 let _ = output::inject(&text);
+                                let _ = handle.emit("dictation-finished", text);
                             }
                             let _ = handle.emit("recording-changed", false);
                             set_tray_recording(handle, false);
                         } else if state
                             .recorder
-                            .start(settings.silence_seconds, settings.max_recording_seconds)
+                            .start(
+                                settings.silence_seconds,
+                                settings.max_recording_seconds,
+                                settings.input_device.clone(),
+                            )
                             .is_ok()
                         {
                             *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                            sounds::play_if_enabled(settings.sound_effects, true);
                             let _ = handle.emit("recording-changed", true);
                             set_tray_recording(handle, true);
                         }
                     } else if !recording
                         && state
                             .recorder
-                            .start(settings.silence_seconds, settings.max_recording_seconds)
+                            .start(
+                                settings.silence_seconds,
+                                settings.max_recording_seconds,
+                                settings.input_device.clone(),
+                            )
                             .is_ok()
                     {
                         *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                        sounds::play_if_enabled(settings.sound_effects, true);
                         let _ = handle.emit("recording-changed", true);
                         set_tray_recording(handle, true);
                     }
@@ -1518,7 +1666,9 @@ fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), S
                     let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
                     if recording {
                         if let Ok(text) = transcribe_recording(&state) {
+                            sounds::play_if_enabled(settings.sound_effects, false);
                             let _ = output::inject(&text);
+                            let _ = handle.emit("dictation-finished", text);
                         }
                         let _ = handle.emit("recording-changed", false);
                         set_tray_recording(handle, false);
@@ -1534,6 +1684,53 @@ fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), S
         let _ = (app, hotkey_spec);
         Ok(())
     }
+}
+
+fn unregister_dictation_hotkey(app: &AppHandle) {
+    #[cfg(windows)]
+    {
+        use tauri_plugin_global_shortcut::GlobalShortcutExt;
+        let _ = app.global_shortcut().unregister_all();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+}
+
+fn start_auto_pause_watcher(app: AppHandle) {
+    std::thread::Builder::new()
+        .name("vocawin-autopause".into())
+        .spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let state = app.state::<AppState>();
+            let settings = match state.settings.lock() {
+                Ok(settings) => settings.clone(),
+                Err(_) => continue,
+            };
+            let should_pause = settings.auto_pause_enabled
+                && autopause::matching_process_running(&autopause::parse_app_list(
+                    &settings.auto_pause_apps,
+                ));
+            let mut paused = match state.dictation_paused.lock() {
+                Ok(guard) => guard,
+                Err(_) => continue,
+            };
+            if should_pause && !*paused {
+                *paused = true;
+                drop(paused);
+                unregister_dictation_hotkey(&app);
+                let _ = app.emit("runtime-status", "Paused");
+            } else if !should_pause && *paused {
+                *paused = false;
+                drop(paused);
+                if let Err(error) = register_dictation_hotkey(&app, &settings.hotkey) {
+                    eprintln!("VocaWin hotkey restore after auto-pause failed: {error}");
+                }
+                let _ = app.emit("runtime-status", "Ready");
+            }
+        })
+        .ok();
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {

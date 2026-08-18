@@ -8,21 +8,24 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Whisper-family local inference
 - [x] ONNX adapters: Parakeet TDT, Moonshine, SenseVoice, GigaAM, Canary
 - [x] In-app Download for every catalog model (Whisper GGML + ONNX archives/files), progress, install check, and Remove
-- [ ] Model disk-use display and hardware recommendations
+- [x] Hardware recommendation for a starting model size
+- [ ] Model disk-use display
 - [ ] Parakeet CTC and Vosk adapters (kept out of the catalog until they work)
 - [ ] Model cache migration, resumable downloads, and checksums
 
 ## Dictation experience
 
 - [x] Microphone capture, mono conversion, 16 kHz resampling
+- [x] Microphone device picker (WASAPI / cpal list)
 - [x] Push-to-talk and toggle activation, with hotkey re-registration after save
-- [x] Hotkey presets + Record capture (Escape cancels)
+- [x] Hotkey presets + Record capture (Escape cancels); RegisterHotKey consumes the combo
 - [x] Silence energy auto-stop and max recording duration
 - [x] Trailing space and auto-capitalize output polish
-- [x] Clipboard-preserving paste fallback when SendInput fails
-- [ ] Microphone device picker and start/stop sound cues
+- [x] Clipboard + paste inject with restore (SendInput fallback)
+- [x] Start/stop sound cues when enabled
 - [x] Local transcription history with clear-history control
 - [x] Recording tray tooltip state
+- [x] Settings search + footer status + Test Dictation (no inject)
 
 ## Windows product quality
 
@@ -33,6 +36,9 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] System tray icon with Show/Quit and close-to-tray
 - [x] Launch at login and single-instance focus
 - [x] Whisper Vulkan GPU path + Settings GPU readout (DirectML kept for ONNX)
+- [x] Auto-pause while listed apps run (opt-in)
+- [x] Idle Whisper unload keep-alive (opt-in, default 300s)
+- [x] Sleep/wake hotkey recovery (WM_POWERBROADCAST)
 - [ ] Onboarding, microphone diagnostics, accessible error states
 - [ ] Signed release workflow, updater, crash-free upgrade migration
 
