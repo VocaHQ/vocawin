@@ -206,7 +206,11 @@ struct Settings {
     #[serde(default = "default_max_recording_seconds")]
     max_recording_seconds: f32,
     launch_at_login: bool,
+    #[serde(default = "default_true")]
     sound_effects: bool,
+    /// Catalog id. Empty on old files; `load_settings` fills it from `sound_effects`.
+    #[serde(default)]
+    sound_theme: String,
     #[serde(default = "default_true")]
     append_trailing_space: bool,
     #[serde(default = "default_true")]
@@ -251,6 +255,7 @@ impl Default for Settings {
             max_recording_seconds: 60.0,
             launch_at_login: false,
             sound_effects: true,
+            sound_theme: "voca".into(),
             append_trailing_space: true,
             auto_capitalize: true,
             selected_model: "whisper-tiny".into(),
@@ -746,9 +751,9 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
     let sound = state
         .settings
         .lock()
-        .map(|settings| settings.sound_effects)
-        .unwrap_or(true);
-    sounds::play_if_enabled(sound, false);
+        .map(|settings| settings.sound_theme.clone())
+        .unwrap_or_else(|_| "voca".into());
+    sounds::play_if_enabled(&sound, false);
     match transcribe_samples(&state, samples, sample_rate) {
         Ok(text) if !text.is_empty() => {
             let inject = *state
@@ -774,7 +779,7 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
             }
         }
         Err(error) => {
-            sounds::play_error_if_enabled(sound);
+            sounds::play_error_if_enabled(&sound);
             logbuf::push_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error);
         }
@@ -822,10 +827,12 @@ struct AppState {
 /// from starting. In that case we retain the file for diagnosis and use safe
 /// defaults until the user saves settings again.
 fn load_settings(path: &std::path::Path) -> Settings {
-    fs::read_to_string(path)
+    let mut settings = fs::read_to_string(path)
         .ok()
         .and_then(|contents| serde_json::from_str(&contents).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    sounds::apply_theme(&mut settings.sound_theme, &mut settings.sound_effects);
+    settings
 }
 
 fn load_history(path: &Path) -> Vec<HistoryEntry> {
@@ -916,6 +923,7 @@ fn save_settings(
     if settings.idle_unload_enabled && !(30..=3600).contains(&settings.idle_unload_seconds) {
         return Err("Idle unload must be between 30 and 3600 seconds".into());
     }
+    sounds::apply_theme(&mut settings.sound_theme, &mut settings.sound_effects);
     settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
     persist_settings(&state.settings_path, &settings)?;
     // Disk is the source of truth after persist. Refresh AppState before
@@ -1689,7 +1697,7 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
         logbuf::push_and_emit(app, format!("Start dictation failed: {error}"));
         return Err(error);
     }
-    sounds::play_if_enabled(settings.sound_effects, true);
+    sounds::play_if_enabled(&settings.sound_theme, true);
     let _ = app.emit("recording-changed", true);
     set_tray_phase(app, TrayPhase::Listening);
     Ok(())
@@ -1814,18 +1822,18 @@ async fn stop_and_transcribe(app: AppHandle) -> Result<String, String> {
         let sound = state
             .settings
             .lock()
-            .map(|settings| settings.sound_effects)
-            .unwrap_or(true);
+            .map(|settings| settings.sound_theme.clone())
+            .unwrap_or_else(|_| "voca".into());
         set_tray_phase(&app, TrayPhase::Processing);
         let text = match transcribe_recording(&state) {
             Ok(text) => text,
             Err(error) => {
                 set_tray_phase(&app, TrayPhase::Idle);
-                sounds::play_error_if_enabled(sound);
+                sounds::play_error_if_enabled(&sound);
                 return Err(error);
             }
         };
-        sounds::play_if_enabled(sound, false);
+        sounds::play_if_enabled(&sound, false);
         let _ = app.emit("recording-changed", false);
         set_tray_phase(&app, TrayPhase::Idle);
         Ok(text)
@@ -1989,6 +1997,11 @@ fn inject_text(text: String) -> Result<(), String> {
     output::inject(&text)
 }
 
+#[tauri::command]
+fn preview_sound(theme: String, start: bool) -> Result<(), String> {
+    sounds::preview_theme(&theme, start)
+}
+
 pub fn run() {
     let start_minimized = std::env::args().any(|arg| arg == "--start-minimized");
     let mut builder = tauri::Builder::default();
@@ -2101,6 +2114,7 @@ pub fn run() {
             get_runtime_status,
             start_recording,
             stop_and_transcribe,
+            preview_sound,
             inject_text
         ])
         .run(tauri::generate_context!())
@@ -2144,12 +2158,12 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                     set_tray_phase(handle, TrayPhase::Processing);
                     match transcribe_recording(&state) {
                         Ok(text) => {
-                            sounds::play_if_enabled(settings.sound_effects, false);
+                            sounds::play_if_enabled(&settings.sound_theme, false);
                             let _ = output::inject(&text);
                             let _ = handle.emit("dictation-finished", text);
                         }
                         Err(error) => {
-                            sounds::play_error_if_enabled(settings.sound_effects);
+                            sounds::play_error_if_enabled(&settings.sound_theme);
                             logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
                             let _ = handle.emit("dictation-error", error);
                         }
@@ -2158,7 +2172,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                     set_tray_phase(handle, TrayPhase::Idle);
                 } else if let Err(error) = begin_voice_session(handle, true) {
                     if error.contains("No speech model is installed") {
-                        sounds::play_error_if_enabled(settings.sound_effects);
+                        sounds::play_error_if_enabled(&settings.sound_theme);
                         logbuf::push_and_emit(handle, error.clone());
                         let _ = handle.emit("dictation-error", error);
                     }
@@ -2166,7 +2180,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             } else if !recording {
                 if let Err(error) = begin_voice_session(handle, true) {
                     if error.contains("No speech model is installed") {
-                        sounds::play_error_if_enabled(settings.sound_effects);
+                        sounds::play_error_if_enabled(&settings.sound_theme);
                         logbuf::push_and_emit(handle, error.clone());
                         let _ = handle.emit("dictation-error", error);
                     }
@@ -2182,12 +2196,12 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                 set_tray_phase(handle, TrayPhase::Processing);
                 match transcribe_recording(&state) {
                     Ok(text) => {
-                        sounds::play_if_enabled(settings.sound_effects, false);
+                        sounds::play_if_enabled(&settings.sound_theme, false);
                         let _ = output::inject(&text);
                         let _ = handle.emit("dictation-finished", text);
                     }
                     Err(error) => {
-                        sounds::play_error_if_enabled(settings.sound_effects);
+                        sounds::play_error_if_enabled(&settings.sound_theme);
                         logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
                         let _ = handle.emit("dictation-error", error);
                     }
@@ -2426,11 +2440,11 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
     let sound = state
         .settings
         .lock()
-        .map(|settings| settings.sound_effects)
-        .unwrap_or(true);
+        .map(|settings| settings.sound_theme.clone())
+        .unwrap_or_else(|_| "voca".into());
     match transcribe_recording(&state) {
         Ok(text) => {
-            sounds::play_if_enabled(sound, false);
+            sounds::play_if_enabled(&sound, false);
             if !text.is_empty() {
                 let _ = output::inject(&text);
             }
@@ -2442,7 +2456,7 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
         Err(error) => {
             let _ = app.emit("recording-changed", false);
             set_tray_phase(app, TrayPhase::Idle);
-            sounds::play_error_if_enabled(sound);
+            sounds::play_error_if_enabled(&sound);
             logbuf::push_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error.clone());
             Err(error)
@@ -2563,7 +2577,50 @@ mod tests {
             ..Settings::default()
         };
         persist_settings(&path, &settings).unwrap();
-        assert_eq!(load_settings(&path).hotkey, "Ctrl+Shift+V");
+        let loaded = load_settings(&path);
+        assert_eq!(loaded.hotkey, "Ctrl+Shift+V");
+        assert_eq!(loaded.sound_theme, "voca");
+        assert!(loaded.sound_effects);
+    }
+
+    #[test]
+    fn old_settings_json_without_theme_still_loads() {
+        let directory = tempfile::tempdir().unwrap();
+        let on_path = directory.path().join("on.json");
+        fs::write(
+            &on_path,
+            r#"{"hotkey":"AltRight","activationMode":"pushToTalk","language":"Auto-detect","silenceSeconds":1.5,"maxRecordingSeconds":60.0,"launchAtLogin":false,"soundEffects":true,"appendTrailingSpace":true,"autoCapitalize":true,"selectedModel":"whisper-tiny"}"#,
+        )
+        .unwrap();
+        let on = load_settings(&on_path);
+        assert_eq!(on.sound_theme, "voca");
+        assert!(on.sound_effects);
+
+        let off_path = directory.path().join("off.json");
+        fs::write(
+            &off_path,
+            r#"{"hotkey":"AltRight","activationMode":"pushToTalk","language":"Auto-detect","silenceSeconds":1.5,"maxRecordingSeconds":60.0,"launchAtLogin":false,"soundEffects":false,"appendTrailingSpace":true,"autoCapitalize":true,"selectedModel":"whisper-tiny"}"#,
+        )
+        .unwrap();
+        let off = load_settings(&off_path);
+        assert_eq!(off.sound_theme, "off");
+        assert!(!off.sound_effects);
+
+        let fifth_path = directory.path().join("fifth.json");
+        fs::write(
+            &fifth_path,
+            r#"{"hotkey":"AltRight","activationMode":"pushToTalk","language":"Auto-detect","silenceSeconds":1.5,"maxRecordingSeconds":60.0,"launchAtLogin":false,"soundEffects":true,"soundTheme":"fifth","appendTrailingSpace":true,"autoCapitalize":true,"selectedModel":"whisper-tiny"}"#,
+        )
+        .unwrap();
+        let fifth = load_settings(&fifth_path);
+        assert_eq!(fifth.sound_theme, "voca");
+        assert!(fifth.sound_effects);
+    }
+
+    #[test]
+    fn default_sound_theme_is_voca() {
+        assert_eq!(Settings::default().sound_theme, "voca");
+        assert!(Settings::default().sound_effects);
     }
 
     #[test]
