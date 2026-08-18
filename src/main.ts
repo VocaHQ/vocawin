@@ -23,7 +23,7 @@ type Settings = {
 };
 type View = "dictation" | "models" | "history" | "settings";
 type HistoryEntry = { id: number; text: string; modelId: string; createdAtMs: number };
-type ModelStatus = { installed: boolean; downloadable: boolean; downloading: boolean; progress: number; message?: string };
+type ModelStatus = { installed: boolean; downloadable: boolean; downloading: boolean; progress: number; message?: string; bytesOnDisk?: number };
 type HotkeyPreset = { id: string; label: string };
 type GpuStatus = {
   available: boolean;
@@ -132,6 +132,12 @@ let logLines: string[] = [];
 const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const selected = () => models.find(model => model.id === settings.selectedModel);
 const modelInstalled = () => !!statuses[settings.selectedModel]?.installed;
+const formatBytes = (bytes?: number) => {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB on disk`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB on disk`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB on disk`;
+};
 const nav = (id: View, label: string, icon: string) => `<button class="nav ${view === id ? "active" : ""}" data-view="${id}"><span class="nav-icon">${icon}</span>${label}</button>`;
 
 function emptySpeechMessage() {
@@ -158,7 +164,9 @@ function modelCards() {
     const state = status?.downloading
       ? `Downloading ${status.progress}%`
       : status?.installed
-        ? "Installed"
+        ? status.bytesOnDisk
+          ? `Installed · ${formatBytes(status.bytesOnDisk)}`
+          : "Installed"
         : failed
           ? `Failed: ${status?.message}`
           : "Not installed";

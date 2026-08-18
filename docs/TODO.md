@@ -10,7 +10,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] In-app Download for every catalog model (Whisper GGML + ONNX archives/files), progress, install check, and Remove
 - [x] Hardware recommendation for a starting model size
 - [x] Failed downloads stay Failed (never Complete/Installed)
-- [ ] Model disk-use display
+- [x] Installed models show on-disk size
 - [ ] Parakeet CTC and Vosk adapters (kept out of the catalog until they work)
 - [ ] Model cache migration, resumable downloads, and checksums
 

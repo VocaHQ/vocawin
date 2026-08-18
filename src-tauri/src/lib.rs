@@ -762,6 +762,8 @@ struct ModelInstallStatus {
     downloading: bool,
     progress: u8,
     message: Option<String>,
+    #[serde(default)]
+    bytes_on_disk: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1049,10 +1051,46 @@ fn model_is_installed(models_path: &Path, id: &str) -> bool {
     }
 }
 
+fn path_bytes(path: &Path) -> u64 {
+    if path.is_file() {
+        return fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
+    }
+    if !path.is_dir() {
+        return 0;
+    }
+    let mut total = 0_u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                stack.push(child);
+            } else if let Ok(meta) = entry.metadata() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+fn model_bytes_on_disk(models_path: &Path, id: &str) -> u64 {
+    if !model_is_installed(models_path, id) {
+        return 0;
+    }
+    path_bytes(&model_path(models_path, id))
+}
+
 fn installation_status(state: &AppState, id: &str) -> ModelInstallStatus {
     if let Ok(downloads) = state.downloads.lock() {
         if let Some(status) = downloads.get(id) {
-            return status.clone();
+            let mut status = status.clone();
+            if status.installed && status.bytes_on_disk == 0 {
+                status.bytes_on_disk = model_bytes_on_disk(&state.models_path, id);
+            }
+            return status;
         }
     }
     ModelInstallStatus {
@@ -1061,6 +1099,7 @@ fn installation_status(state: &AppState, id: &str) -> ModelInstallStatus {
         downloading: false,
         progress: 0,
         message: None,
+        bytes_on_disk: model_bytes_on_disk(&state.models_path, id),
     }
 }
 
@@ -1080,6 +1119,7 @@ fn mark_progress(state: &AppState, model_id: &str, progress: u8, message: impl I
             downloading: true,
             progress,
             message: Some(message.into()),
+            bytes_on_disk: 0,
         },
     );
 }
@@ -1268,6 +1308,7 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
                 downloading: true,
                 progress: 0,
                 message: Some("Connecting…".into()),
+                bytes_on_disk: 0,
             },
         );
     }
@@ -1325,6 +1366,7 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
             downloading: false,
             progress: 100,
             message: Some("Installed".into()),
+            bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
         },
         Err(error) => ModelInstallStatus {
             installed: model_is_installed(&state.models_path, &model_id),
@@ -1332,6 +1374,7 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
             downloading: false,
             progress: 0,
             message: Some(error.clone()),
+            bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
         },
     };
     set_download_status(&state, &model_id, status);
@@ -1496,6 +1539,12 @@ fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
+    if !model_is_installed(&state.models_path, &settings.selected_model) {
+        return Err(format!(
+            "No speech model is installed. Open Models and download {} first.",
+            settings.selected_model
+        ));
+    }
     state.recorder.start(
         settings.silence_seconds,
         settings.max_recording_seconds,
@@ -2370,6 +2419,19 @@ mod tests {
         assert!(output
             .iter()
             .all(|sample| (*sample - 0.5).abs() < f32::EPSILON));
+    }
+
+    #[test]
+    fn path_bytes_counts_files_and_nested_dirs() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("one.bin");
+        fs::write(&file, vec![0u8; 40]).unwrap();
+        assert_eq!(path_bytes(&file), 40);
+        let nested = directory.path().join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("a"), vec![0u8; 10]).unwrap();
+        fs::write(nested.join("b"), vec![0u8; 15]).unwrap();
+        assert_eq!(path_bytes(directory.path()), 65);
     }
 
     #[test]
