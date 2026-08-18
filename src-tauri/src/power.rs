@@ -1,4 +1,4 @@
-//! Sleep/wake recovery via RegisterSuspendResumeNotification.
+//! Sleep/wake recovery via WM_POWERBROADCAST on a message-only window.
 
 use tauri::AppHandle;
 
@@ -7,7 +7,11 @@ pub fn start_sleep_wake_watcher(app: AppHandle, on_wake: impl Fn(AppHandle) + Se
     {
         std::thread::Builder::new()
             .name("vocawin-power".into())
-            .spawn(move || windows_power_loop(app, on_wake))
+            .spawn(move || {
+                if let Err(error) = windows_power_loop(app, on_wake) {
+                    eprintln!("VocaWin power watcher stopped: {error}");
+                }
+            })
             .ok();
     }
     #[cfg(not(windows))]
@@ -17,38 +21,27 @@ pub fn start_sleep_wake_watcher(app: AppHandle, on_wake: impl Fn(AppHandle) + Se
 }
 
 #[cfg(windows)]
-fn windows_power_loop(app: AppHandle, on_wake: impl Fn(AppHandle) + Send + 'static) {
-    use std::sync::mpsc;
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::System::Power::RegisterSuspendResumeNotification;
-    use windows::Win32::System::SystemServices::DEVICE_NOTIFY_CALLBACK;
-    use windows::Win32::UI::WindowsAndMessaging::DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS;
+fn windows_power_loop(
+    app: AppHandle,
+    on_wake: impl Fn(AppHandle) + Send + 'static,
+) -> Result<(), String> {
+    use std::sync::{mpsc, OnceLock};
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
+        TranslateMessage, CW_USEDEFAULT, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
+        WM_POWERBROADCAST, WNDCLASSW,
+    };
 
     // winuser.h PBT_* values
-    const PBT_APMRESUMESUSPEND: u32 = 0x0007;
-    const PBT_APMRESUMEAUTOMATIC: u32 = 0x0012;
+    const PBT_APMRESUMESUSPEND: usize = 0x0007;
+    const PBT_APMRESUMEAUTOMATIC: usize = 0x0012;
 
-    struct Ctx {
-        tx: mpsc::Sender<()>,
-    }
-
-    unsafe extern "system" fn power_callback(
-        context: *const core::ffi::c_void,
-        typ: u32,
-        _setting: *const core::ffi::c_void,
-    ) -> u32 {
-        if typ == PBT_APMRESUMEAUTOMATIC || typ == PBT_APMRESUMESUSPEND {
-            if !context.is_null() {
-                let ctx = &*(context as *const Ctx);
-                let _ = ctx.tx.send(());
-            }
-        }
-        0
-    }
-
+    static WAKE: OnceLock<mpsc::Sender<()>> = OnceLock::new();
     let (tx, rx) = mpsc::channel::<()>();
-    let ctx = Box::new(Ctx { tx });
-    let ctx_ptr = Box::into_raw(ctx);
+    let _ = WAKE.set(tx);
 
     std::thread::spawn(move || {
         while rx.recv().is_ok() {
@@ -56,25 +49,55 @@ fn windows_power_loop(app: AppHandle, on_wake: impl Fn(AppHandle) + Send + 'stat
         }
     });
 
-    unsafe {
-        let mut params = DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS {
-            Callback: Some(power_callback),
-            Context: ctx_ptr as *mut _,
-        };
-        match RegisterSuspendResumeNotification(
-            HANDLE(&mut params as *mut _ as _),
-            DEVICE_NOTIFY_CALLBACK,
-        ) {
-            Ok(_handle) => {
-                // Keep this thread alive so the registration and context stay valid.
-                loop {
-                    std::thread::park();
+    unsafe extern "system" fn wnd_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if msg == WM_POWERBROADCAST {
+            let event = wparam.0;
+            if event == PBT_APMRESUMEAUTOMATIC || event == PBT_APMRESUMESUSPEND {
+                if let Some(tx) = WAKE.get() {
+                    let _ = tx.send(());
                 }
             }
-            Err(error) => {
-                eprintln!("VocaWin could not register suspend/resume notification: {error}");
-                let _ = Box::from_raw(ctx_ptr);
-            }
+        }
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
+
+    unsafe {
+        let class_name: Vec<u16> = "VocaWinPower\0".encode_utf16().collect();
+        let module = GetModuleHandleW(None).map_err(|error| error.to_string())?;
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(wnd_proc),
+            hInstance: module.into(),
+            lpszClassName: PCWSTR(class_name.as_ptr()),
+            ..Default::default()
+        };
+        let _ = RegisterClassW(&class);
+        let hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            PCWSTR(class_name.as_ptr()),
+            PCWSTR(class_name.as_ptr()),
+            WINDOW_STYLE::default(),
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            HWND_MESSAGE,
+            None,
+            module,
+            None,
+        )
+        .map_err(|error| error.to_string())?;
+        let _ = hwnd;
+
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, HWND::default(), 0, 0).into() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
         }
     }
+    Ok(())
 }
