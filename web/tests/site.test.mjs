@@ -10,7 +10,7 @@ const css = readFileSync(join(siteRoot, "styles.css"), "utf8");
 const script = readFileSync(join(siteRoot, "script.js"), "utf8");
 
 test("page has one title and landmark structure", () => {
-  assert.match(html, /<title>VocaWin — voice typing that stays on this PC<\/title>/);
+  assert.match(html, /<title>VocaWin: voice typing that stays on this PC<\/title>/);
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
   assert.match(html, /<main id="main-content">/);
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
