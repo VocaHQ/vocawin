@@ -5,6 +5,7 @@ mod autopause;
 mod devices;
 mod gpu;
 mod hardware;
+mod hook;
 mod hotkey;
 mod output;
 mod power;
@@ -1514,7 +1515,6 @@ pub fn run() {
     }));
     builder
         .plugin(tauri_plugin_autostart::Builder::new().build())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
             let settings_path = app_data.join("settings.json");
@@ -1541,6 +1541,7 @@ pub fn run() {
                 whisper_cache,
             });
             let _ = apply_launch_at_login(&handle, settings.launch_at_login);
+            hook::start(handle.clone());
             if let Err(error) = register_dictation_hotkey(&handle, &settings.hotkey) {
                 eprintln!("VocaWin hotkey registration failed: {error}");
             }
@@ -1586,6 +1587,8 @@ pub fn run() {
             system_summary,
             get_gpu_status,
             get_hotkey_presets,
+            pause_hotkey_listener,
+            resume_hotkey_listener,
             list_input_devices,
             recommend_model,
             get_runtime_status,
@@ -1597,104 +1600,92 @@ pub fn run() {
         .expect("error while running VocaWin");
 }
 
-fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-        // RegisterHotKey consumes the combo OS-wide so the key does not leak
-        // into the focused app while VocaWin owns the shortcut.
-        let shortcut = hotkey::parse_hotkey(hotkey_spec)?;
-        let gs = app.global_shortcut();
-        let _ = gs.unregister_all();
-        gs.on_shortcut(shortcut, move |handle, _, event| {
-            let state = handle.state::<AppState>();
-            if *state.dictation_paused.lock().unwrap_or_else(|e| e.into_inner()) {
-                return;
-            }
-            let settings = state
-                .settings
-                .lock()
-                .map(|s| s.clone())
-                .unwrap_or_default();
-            let toggle = settings.activation_mode == "toggle";
-            match event.state {
-                ShortcutState::Pressed => {
-                    let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
-                    if toggle {
-                        if recording {
-                            if let Ok(text) = transcribe_recording(&state) {
-                                sounds::play_if_enabled(settings.sound_effects, false);
-                                let _ = output::inject(&text);
-                                let _ = handle.emit("dictation-finished", text);
-                            }
-                            let _ = handle.emit("recording-changed", false);
-                            set_tray_recording(handle, false);
-                        } else if state
-                            .recorder
-                            .start(
-                                settings.silence_seconds,
-                                settings.max_recording_seconds,
-                                settings.input_device.clone(),
-                            )
-                            .is_ok()
-                        {
-                            *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
-                            sounds::play_if_enabled(settings.sound_effects, true);
-                            let _ = handle.emit("recording-changed", true);
-                            set_tray_recording(handle, true);
-                        }
-                    } else if !recording
-                        && state
-                            .recorder
-                            .start(
-                                settings.silence_seconds,
-                                settings.max_recording_seconds,
-                                settings.input_device.clone(),
-                            )
-                            .is_ok()
-                    {
-                        *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
-                        sounds::play_if_enabled(settings.sound_effects, true);
-                        let _ = handle.emit("recording-changed", true);
-                        set_tray_recording(handle, true);
-                    }
-                }
-                ShortcutState::Released => {
-                    if toggle {
-                        return;
-                    }
-                    let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
-                    if recording {
-                        if let Ok(text) = transcribe_recording(&state) {
-                            sounds::play_if_enabled(settings.sound_effects, false);
-                            let _ = output::inject(&text);
-                            let _ = handle.emit("dictation-finished", text);
-                        }
-                        let _ = handle.emit("recording-changed", false);
-                        set_tray_recording(handle, false);
-                    }
-                }
-            }
-        })
-        .map_err(|error| format!("Could not register global shortcut: {error}"))?;
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (app, hotkey_spec);
-        Ok(())
-    }
+fn register_dictation_hotkey(_app: &AppHandle, hotkey_spec: &str) -> Result<(), String> {
+    let binding = hotkey::parse_hotkey(hotkey_spec)?;
+    hook::set_binding(binding);
+    Ok(())
 }
 
-fn unregister_dictation_hotkey(app: &AppHandle) {
-    #[cfg(windows)]
-    {
-        use tauri_plugin_global_shortcut::GlobalShortcutExt;
-        let _ = app.global_shortcut().unregister_all();
+#[tauri::command]
+fn pause_hotkey_listener() {
+    // Mac stops its tap while Record is open so the capture UI can see keys.
+    hook::set_capture_paused(true);
+}
+
+#[tauri::command]
+fn resume_hotkey_listener() {
+    hook::set_capture_paused(false);
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
+    let state = handle.state::<AppState>();
+    if *state.dictation_paused.lock().unwrap_or_else(|e| e.into_inner()) {
+        return;
     }
-    #[cfg(not(windows))]
-    {
-        let _ = app;
+    let settings = state
+        .settings
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    let toggle = settings.activation_mode == "toggle";
+    match event {
+        hook::HookEvent::Pressed => {
+            let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
+            if toggle {
+                if recording {
+                    if let Ok(text) = transcribe_recording(&state) {
+                        sounds::play_if_enabled(settings.sound_effects, false);
+                        let _ = output::inject(&text);
+                        let _ = handle.emit("dictation-finished", text);
+                    }
+                    let _ = handle.emit("recording-changed", false);
+                    set_tray_recording(handle, false);
+                } else if state
+                    .recorder
+                    .start(
+                        settings.silence_seconds,
+                        settings.max_recording_seconds,
+                        settings.input_device.clone(),
+                    )
+                    .is_ok()
+                {
+                    *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                    sounds::play_if_enabled(settings.sound_effects, true);
+                    let _ = handle.emit("recording-changed", true);
+                    set_tray_recording(handle, true);
+                }
+            } else if !recording
+                && state
+                    .recorder
+                    .start(
+                        settings.silence_seconds,
+                        settings.max_recording_seconds,
+                        settings.input_device.clone(),
+                    )
+                    .is_ok()
+            {
+                *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                sounds::play_if_enabled(settings.sound_effects, true);
+                let _ = handle.emit("recording-changed", true);
+                set_tray_recording(handle, true);
+            }
+        }
+        hook::HookEvent::Released => {
+            if toggle {
+                return;
+            }
+            let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
+            if recording {
+                if let Ok(text) = transcribe_recording(&state) {
+                    sounds::play_if_enabled(settings.sound_effects, false);
+                    let _ = output::inject(&text);
+                    let _ = handle.emit("dictation-finished", text);
+                }
+                let _ = handle.emit("recording-changed", false);
+                set_tray_recording(handle, false);
+            }
+        }
     }
 }
 
@@ -1719,11 +1710,12 @@ fn start_auto_pause_watcher(app: AppHandle) {
             if should_pause && !*paused {
                 *paused = true;
                 drop(paused);
-                unregister_dictation_hotkey(&app);
+                hook::set_dictation_paused(true);
                 let _ = app.emit("runtime-status", "Paused");
             } else if !should_pause && *paused {
                 *paused = false;
                 drop(paused);
+                hook::set_dictation_paused(false);
                 if let Err(error) = register_dictation_hotkey(&app, &settings.hotkey) {
                     eprintln!("VocaWin hotkey restore after auto-pause failed: {error}");
                 }

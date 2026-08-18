@@ -18,7 +18,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Microphone capture, mono conversion, 16 kHz resampling
 - [x] Microphone device picker (WASAPI / cpal list)
 - [x] Push-to-talk and toggle activation, with hotkey re-registration after save
-- [x] Hotkey presets + Record capture (Escape cancels); RegisterHotKey consumes the combo
+- [x] Hotkey presets + Record capture (Escape cancels); WH_KEYBOARD_LL for lone Right Ctrl/Alt/Shift; listener pauses while Record
 - [x] Silence energy auto-stop and max recording duration
 - [x] Trailing space and auto-capitalize output polish
 - [x] Clipboard + paste inject with restore (SendInput fallback)

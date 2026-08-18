@@ -138,8 +138,8 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Dictation",
       title: "Activation hotkey",
-      subtitle: "Pick a preset or press Record, then the keys. Escape cancels. Windows consumes the combo so it does not type into the front app.",
-      keywords: "hotkey shortcut keyboard record preset",
+      subtitle: "Pick a preset or press Record. Lone Right Ctrl/Alt/Shift use a low-level hook (RegisterHotKey cannot bind them). Escape cancels. The live listener pauses while recording.",
+      keywords: "hotkey shortcut keyboard record preset right ctrl",
       html: `<div class="hotkey-controls"><select id="hotkey-preset">${hotkeyOptions()}</select>
     <button type="button" class="quiet-button" id="record-hotkey">${recordingHotkey ? "Cancel" : "Record"}</button></div>`,
     },
@@ -280,9 +280,7 @@ function render() {
     }
   });
   document.querySelector("#record-hotkey")?.addEventListener("click", () => {
-    recordingHotkey = !recordingHotkey;
-    noticeText = recordingHotkey ? "Press a key combo…" : "";
-    render();
+    void toggleHotkeyRecording();
   });
   const language = document.querySelector<HTMLSelectElement>("#language"); if (language) language.value = settings.language;
   const activation = document.querySelector<HTMLSelectElement>("#activation"); if (activation) activation.value = settings.activationMode;
@@ -313,17 +311,42 @@ function codeToHotkeyPart(code: string, key: string): string | null {
   const map: Record<string, string> = {
     Space: "Space",
     F8: "F8",
-    Pause: "Pause",
+    F9: "F9",
+    F10: "F10",
     ControlRight: "ControlRight",
     ControlLeft: "ControlLeft",
     AltRight: "AltRight",
     AltLeft: "AltLeft",
+    ShiftRight: "ShiftRight",
+    ShiftLeft: "ShiftLeft",
   };
   if (map[code]) return map[code];
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit[0-9]$/.test(code)) return code.slice(5);
   if (key.length === 1) return key.toUpperCase();
   return null;
+}
+
+async function toggleHotkeyRecording() {
+  if (recordingHotkey) {
+    recordingHotkey = false;
+    noticeText = "Hotkey recording cancelled.";
+    try { await invoke("resume_hotkey_listener"); } catch { /* ignore */ }
+    render();
+    return;
+  }
+  try { await invoke("pause_hotkey_listener"); } catch { /* ignore */ }
+  recordingHotkey = true;
+  noticeText = "Press a key or combo. Escape cancels. Lone Right Ctrl/Alt/Shift are valid.";
+  render();
+}
+
+function finishHotkeyCapture(spec: string, label: string) {
+  settings.hotkey = spec;
+  recordingHotkey = false;
+  noticeText = `Hotkey set to ${label}. Save to apply.`;
+  void invoke("resume_hotkey_listener").catch(() => undefined);
+  render();
 }
 
 function onGlobalKeyDown(event: KeyboardEvent) {
@@ -333,6 +356,12 @@ function onGlobalKeyDown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     recordingHotkey = false;
     noticeText = "Hotkey recording cancelled.";
+    void invoke("resume_hotkey_listener").catch(() => undefined);
+    render();
+    return;
+  }
+  if (event.key === "Meta" || event.code.startsWith("Meta") || event.code === "OSLeft" || event.code === "OSRight") {
+    noticeText = "Win/Super is reserved on Windows. Pick another key.";
     render();
     return;
   }
@@ -344,34 +373,26 @@ function onGlobalKeyDown(event: KeyboardEvent) {
   if (event.shiftKey) parts.push("Shift");
   const keyPart = codeToHotkeyPart(event.code, event.key);
   if (!keyPart) return;
-  if (keyPart === "ControlRight" || keyPart === "AltRight" || keyPart === "ControlLeft" || keyPart === "AltLeft") {
-    settings.hotkey = keyPart;
-  } else {
-    parts.push(keyPart);
-    settings.hotkey = parts.join("+");
+  if (keyPart === "ControlRight" || keyPart === "AltRight" || keyPart === "ShiftRight"
+    || keyPart === "ControlLeft" || keyPart === "AltLeft" || keyPart === "ShiftLeft") {
+    finishHotkeyCapture(keyPart, keyPart);
+    return;
   }
-  recordingHotkey = false;
-  noticeText = `Hotkey set to ${settings.hotkey}. Save to apply.`;
-  render();
+  parts.push(keyPart);
+  finishHotkeyCapture(parts.join("+"), parts.join("+"));
 }
 
 function onGlobalKeyUp(event: KeyboardEvent) {
   if (!recordingHotkey) return;
-  if (event.code === "ControlRight" || event.code === "AltRight") {
-    if (!event.shiftKey && !event.metaKey) {
-      if (event.code === "ControlRight" && !event.altKey) {
-        event.preventDefault();
-        settings.hotkey = "ControlRight";
-        recordingHotkey = false;
-        noticeText = "Hotkey set to Right Ctrl. Save to apply.";
-        render();
-      } else if (event.code === "AltRight" && !event.ctrlKey) {
-        event.preventDefault();
-        settings.hotkey = "AltRight";
-        recordingHotkey = false;
-        noticeText = "Hotkey set to Right Alt. Save to apply.";
-        render();
-      }
+  if (event.code === "ControlRight" || event.code === "AltRight" || event.code === "ShiftRight") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === "ControlRight") {
+      finishHotkeyCapture("ControlRight", "Right Ctrl");
+    } else if (event.code === "AltRight") {
+      finishHotkeyCapture("AltRight", "Right Alt");
+    } else {
+      finishHotkeyCapture("ShiftRight", "Right Shift");
     }
   }
 }
