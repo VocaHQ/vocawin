@@ -129,11 +129,3 @@ jobs:
             C:/t/release/bundle/msi/*.msi
           if-no-files-found: error
           retention-days: 14
-      - name: Upload public alpha cert
-        if: steps.sign.outputs.signed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: vocawin-alpha-cer
-          path: ${{ runner.temp }}/vocawin-alpha.cer
-          if-no-files-found: error
-          retention-days: 14
