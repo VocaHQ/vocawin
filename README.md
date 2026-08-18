@@ -2,9 +2,10 @@
 
 **Voice-to-text for Windows** | Coming soon
 
-VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC after you download a model. There is no public installer yet.
+VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC after you download a model. There is no stable public installer yet.
 
 [![Website](https://img.shields.io/badge/Website-vocawin.com-0F6B57?style=flat-square)](https://vocawin.com)
+[![Alpha](https://img.shields.io/badge/Status-Alpha-0F6B57?style=flat-square)](#development)
 [![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-0F6B57?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/discord/1538633755877580810?style=flat-square&logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e?style=flat-square)](https://vocahq.com)
@@ -13,7 +14,7 @@ VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a
 
 ## What is VocaWin?
 
-VocaWin is being built as native Windows voice typing. After a Whisper model is on disk, recording and speech-to-text are meant to stay on this PC. No Voca account, no hosted speech API.
+VocaWin is being built as native Windows voice typing. After a Whisper or ONNX model is on disk, recording and speech-to-text are meant to stay on this PC. No Voca account, no hosted speech API.
 
 It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.com), and [VocaPhone](https://vocaphone.vocahq.com). The family directory is [vocahq.com](https://vocahq.com).
 
@@ -29,7 +30,7 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 ## Planned Features
 
 - **System-wide text injection** - Transcribed text appears wherever your cursor is
-- **Push-to-talk and toggle** - Hold a hotkey (planned default: Right Ctrl) or double-tap to toggle
+- **Push-to-talk and toggle** - Hold a hotkey (planned default: Right Alt, like VocaLinux) or double-tap to toggle
 - **GPU acceleration** - NVIDIA CUDA, AMD, and Intel paths via whisper.cpp
 - **Language support** - Follows the selected Whisper model
 - **Configurable settings** - Hotkeys, models, languages, silence detection
@@ -41,10 +42,12 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 The repo already contains an early Rust + Tauri 2 shell used for local development. This is not a public release.
 
 - Privacy-first settings model (no account, telemetry, or transcription endpoint)
-- Local model catalog covering Whisper/whisper.cpp, Distil-Whisper, Parakeet, Moonshine, SenseVoice, GigaAM, Canary, and Vosk
+- Local model catalog covering Whisper/whisper.cpp, Distil-Whisper, Parakeet, Moonshine, SenseVoice, GigaAM, and Canary
+- One-click in-app model Download into the layout each recognizer expects
 - Microphone capture, sample-rate conversion, and offline Whisper transcription through `whisper-rs` / whisper.cpp
 - ONNX Runtime adapters for Parakeet TDT, Moonshine, SenseVoice, GigaAM, and Canary; DirectML is enabled in Windows builds
 - Native Unicode text injection for Windows (`SendInput`), isolated from recognition engines
+- System tray with Show window / Quit, and close-to-tray
 - Settings dashboard built with TypeScript and Vite
 
 The recognizer is intentionally not stubbed as a cloud API: VocaWin will only invoke a locally installed/downloaded engine. Model downloads may use the network once, but audio and transcription never do.
@@ -58,7 +61,8 @@ Tauri UI (TypeScript)
       ├─ Global push-to-talk shortcut + UI recording coordinator
       ├─ CPAL microphone capture + 16 kHz resampling
       ├─ whisper.cpp adapter (Whisper-family models)
-      ├─ ONNX / Vosk adapter boundary                (next)
+      ├─ ONNX adapters (Parakeet, Moonshine, SenseVoice, GigaAM, Canary)
+      ├─ System tray (Show / Quit, close-to-tray)
       └─ Windows text injector (SendInput)
 ```
 
@@ -66,11 +70,10 @@ Tauri UI (TypeScript)
 | --- | --- | --- |
 | whisper.cpp | Tiny through Large v3 Turbo, Distil-Whisper | Vulkan, CPU fallback |
 | ONNX Runtime | Parakeet, Moonshine, SenseVoice, GigaAM, Canary | DirectML, CPU fallback |
-| Vosk | compact language models | CPU |
 
 ### Local model setup (developers)
 
-The development build does not bundle a large model. For Whisper testing, download a whisper.cpp GGML model into VocaWin's local model folder:
+The development build does not bundle a large model. Prefer the in-app Download buttons on the Models page. For Whisper testing from a shell, you can also place a whisper.cpp GGML model into VocaWin's local model folder:
 
 ```powershell
 $models = Join-Path $env:APPDATA "com.vocahq.vocawin\models"
@@ -114,6 +117,10 @@ npm run check           # TypeScript build + Rust tests
 ```
 
 A macOS/Linux host can validate the frontend and Rust command layer, but Windows injection and installer artifacts must be exercised on Windows 10/11.
+
+Windows CI also builds an unsigned NSIS (and MSI) installer and uploads it as a GitHub Actions workflow artifact. That artifact is an alpha/dev build for trying the app, not a public release. It is not signed. Pull requests and pushes to main stay artifact-only.
+
+Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same unsigned NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. That is for testers. It is not a signed store build, and vocawin.com stays Coming soon.
 
 ## System Requirements (planned)
 

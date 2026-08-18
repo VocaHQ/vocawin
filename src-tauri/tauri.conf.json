@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{"label":"main","title":"VocaWin","width":1060,"height":700,"minWidth":840,"minHeight":580}],
+    "windows": [{"label":"main","title":"VocaWin · Alpha","width":1060,"height":700,"minWidth":840,"minHeight":580}],
     "security": {"csp": "default-src 'self'; style-src 'self' 'unsafe-inline';"}
   },
   "bundle": {

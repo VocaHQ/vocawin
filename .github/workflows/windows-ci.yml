@@ -4,14 +4,23 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   test:
     name: Build and test on Windows
     runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      # Short target dir avoids MAX_PATH in whisper.cpp vulkan-shaders-gen nests.
+      CARGO_TARGET_DIR: C:\t
+      # MSBuild ExternalProject races / FileTracker path limits; Ninja avoids both.
+      CMAKE_GENERATOR: Ninja
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,11 +28,76 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install CMake, LLVM, Ninja, and Vulkan SDK
+        shell: pwsh
+        run: |
+          choco install cmake llvm ninja -y --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          $ver = "1.3.290.0"
+          $installer = "$env:RUNNER_TEMP\VulkanSDK.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+          echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
+          echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
+      # Ninja does not load MSVC INCLUDE/LIB/PATH; vcvars must be exported.
+      - uses: ilammy/msvc-dev-cmd@v1
       - name: Install frontend dependencies
         run: npm ci
       - name: Build frontend
         run: npm run build
-      # This compiles the cfg(windows) injection implementation as well as the
-      # Tauri command layer; it does not require a microphone or display.
+      # Compiles cfg(windows) injection, Vulkan-enabled whisper-rs, and the
+      # Tauri command layer. Does not require a physical GPU or microphone.
       - name: Test Rust command layer
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  installer:
+    name: Unsigned Windows installer (alpha)
+    runs-on: windows-latest
+    env:
+      CARGO_TARGET_DIR: C:\t
+      CMAKE_GENERATOR: Ninja
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install CMake, LLVM, Ninja, and Vulkan SDK
+        shell: pwsh
+        run: |
+          choco install cmake llvm ninja -y --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          $ver = "1.3.290.0"
+          $installer = "$env:RUNNER_TEMP\VulkanSDK.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+          echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
+          echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build unsigned NSIS and MSI installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_TARGET_DIR: C:\t
+          CMAKE_GENERATOR: Ninja
+        with:
+          # Build only. Do not set tagName. Tag Releases live in
+          # windows-alpha-release.yml so PR and main stay artifact-only.
+          args: --bundles nsis,msi
+          includeUpdaterJson: false
+      - name: Upload unsigned alpha installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: VocaWin-windows-alpha
+          path: |
+            C:/t/release/bundle/nsis/*-setup.exe
+            C:/t/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 14
