@@ -4,14 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   test:
     name: Build and test on Windows
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,3 +31,38 @@ jobs:
       # Tauri command layer; it does not require a microphone or display.
       - name: Test Rust command layer
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  installer:
+    name: Unsigned Windows installer (alpha)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install CMake and LLVM
+        run: |
+          choco install cmake llvm -y --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build unsigned NSIS and MSI installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Build only. Artifact upload is explicit below so we never create a Release.
+          args: --bundles nsis,msi
+      - name: Upload unsigned alpha installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: VocaWin-windows-alpha
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 14

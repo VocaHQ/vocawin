@@ -4,10 +4,12 @@ Every engine executes locally. A model is downloaded only once; VocaWin never up
 
 ## Layout
 
-Place each extracted ONNX model directory under `%APPDATA%\com.vocahq.vocawin\models` using the catalog ID as the directory name:
+In-app Download unpacks each model under `%APPDATA%\com.vocahq.vocawin\models` using the catalog ID:
 
 ```text
 models/
+├── whisper-tiny.bin
+├── distil-whisper-large-v3.bin
 ├── parakeet-tdt-0.6b-v3/
 ├── moonshine-tiny/
 ├── moonshine-base/
@@ -16,21 +18,22 @@ models/
 └── canary-180m/
 ```
 
-The adapter validates that the directory exists, then lets `transcribe-rs` validate the engine-specific ONNX files. This avoids accepting incomplete downloads as installed models.
+Whisper-family models are a single GGML `.bin`. ONNX models are directories whose filenames match what `transcribe-rs` expects.
 
 ## Supported adapters
 
-| VocaWin ID | Adapter | Source model |
+| VocaWin ID | Adapter | Source package |
 | --- | --- | --- |
-| `parakeet-tdt-0.6b-v3` | ONNX Runtime / Parakeet | [int8 ONNX](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/main) |
-| `moonshine-tiny` | ONNX Runtime / Moonshine | [Moonshine ONNX releases](https://github.com/usefulsensors/moonshine) |
+| `whisper-*` / `distil-whisper-large-v3` | whisper.cpp | Official GGML `.bin` from Hugging Face |
+| `parakeet-tdt-0.6b-v3` | ONNX Runtime / Parakeet | [int8 archive](https://blob.handy.computer/parakeet-v3-int8.tar.gz) |
+| `moonshine-tiny` | ONNX Runtime / Moonshine | [ONNX files](https://huggingface.co/onnx-community/moonshine-tiny-ONNX) |
 | `moonshine-base` | ONNX Runtime / Moonshine | [Moonshine base archive](https://blob.handy.computer/moonshine-base.tar.gz) |
-| `sensevoice-small` | ONNX Runtime / SenseVoice | [sherpa-onnx release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models) |
-| `gigaam-v3` | ONNX Runtime / GigaAM | [GigaAM v3 ONNX](https://huggingface.co/istupakov/gigaam-v3-onnx/tree/main) |
-| `canary-180m` | ONNX Runtime / Canary | [Canary 180M ONNX](https://huggingface.co/istupakov/canary-180m-flash-onnx) |
+| `sensevoice-small` | ONNX Runtime / SenseVoice | [int8 archive](https://blob.handy.computer/sense-voice-int8.tar.gz) |
+| `gigaam-v3` | ONNX Runtime / GigaAM | [int8 archive](https://blob.handy.computer/giga-am-v3-int8.tar.gz) |
+| `canary-180m` | ONNX Runtime / Canary | [Canary 180M archive](https://blob.handy.computer/canary-180m-flash.tar.gz) |
 
 VocaWin's Windows dependency enables ONNX Runtime's DirectML execution provider. If it is not available for a model or GPU, ONNX Runtime falls back to CPU.
 
-## Not yet wired
+## Not in the catalog
 
-`parakeet-ctc-1.1b` and `vosk-small-en` remain visible in the catalog but do not yet have a production adapter. They fail with a clear local error rather than falling back to any network API.
+`parakeet-ctc-1.1b` and `vosk-small-en` stay out of the Models list until an adapter can transcribe them. The UI never offers a Download that cannot run.

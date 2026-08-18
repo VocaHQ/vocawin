@@ -19,26 +19,47 @@ const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;",
 const selected = () => models.find(model => model.id === settings.selectedModel);
 const nav = (id: View, label: string, icon: string) => `<button class="nav ${view === id ? "active" : ""}" data-view="${id}"><span class="nav-icon">${icon}</span>${label}</button>`;
 
+function modelAction(model: Model, status?: ModelStatus) {
+  if (status?.downloading) {
+    return `<button class="model-action brand-action" data-download="${model.id}" disabled>Downloading ${status.progress}%</button>`;
+  }
+  if (status?.installed) {
+    return `<button class="model-action" data-delete="${model.id}">Remove</button>`;
+  }
+  return `<button class="model-action brand-action" data-download="${model.id}">Download</button>`;
+}
+
 function modelCards() {
   return models.map(model => {
     const status = statuses[model.id];
-    const state = status?.downloading ? `Downloading ${status.progress}%` : status?.installed ? "Installed" : "Not installed";
-    const action = status?.installed ? `<button class="secondary-action" data-delete="${model.id}">Remove</button>` : status?.downloadable ? `<button class="secondary-action brand-action" data-download="${model.id}" ${status?.downloading ? "disabled" : ""}>${status?.downloading ? "Downloading…" : "Download"}</button>` : `<span class="manual-action">Manual install</span>`;
-    return `<article class="model-card ${model.id === settings.selectedModel ? "selected" : ""}"><button class="model-choice" data-model="${model.id}">
-      <span class="check">${model.id === settings.selectedModel ? "✓" : ""}</span><b>${escape(model.name)}</b><span>${escape(model.engine)}</span><small>${escape(model.description)}</small><footer>${escape(model.languages)} <em>${escape(model.size)}</em></footer>
-    </button><div class="model-actions"><span class="install-state">${escape(state)}</span>${action}</div></article>`;
+    const state = status?.downloading
+      ? `Downloading ${status.progress}%`
+      : status?.installed
+        ? "Installed"
+        : "Not installed";
+    const isSelected = model.id === settings.selectedModel;
+    return `<article class="model-card ${isSelected ? "selected" : ""}" data-model="${model.id}" role="button" tabindex="0" aria-pressed="${isSelected}">
+      <span class="check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
+      <b>${escape(model.name)}</b>
+      <span class="engine">${escape(model.engine)}</span>
+      <small>${escape(model.description)}</small>
+      <ul class="model-meta">
+        <li>${escape(model.size)}</li>
+        <li>${escape(model.languages)}</li>
+        <li class="install-state">${escape(state)}</li>
+      </ul>
+      <div class="model-actions">${modelAction(model, status)}</div>
+    </article>`;
   }).join("");
 }
 function dictationPage() {
   const model = selected();
   return `<header><div><p class="overline">VOICE DICTATION</p><h1>Speak naturally.<br><em>Keep it private.</em></h1><p class="lede">VocaWin turns your voice into text on your own computer — never in the cloud.</p></div><span class="state"><i></i>${recording ? "Listening" : "Ready"}</span></header>
   <section class="record-panel"><div class="mic ${recording ? "recording" : ""}">${recording ? "❚❚" : "⌁"}</div><h2>${recording ? "Listening…" : "Ready to dictate"}</h2><p>${recording ? "Speak now, then stop when you are finished." : `Use ${escape(settings.hotkey)} or start below.`}</p><button class="primary" id="record">${recording ? "Stop & transcribe" : "Start dictation"}</button><small>Everything is processed locally on this device.</small></section>
-  <section class="overview"><div class="info-card"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${escape(model?.engine ?? "")} · ${escape(model?.languages ?? "")}</span><button class="text-button" data-go="models">Change model →</button></div><div class="info-card"><p class="card-label">ACTIVATION</p><strong>${escape(settings.hotkey)}</strong><span>${settings.activationMode === "pushToTalk" ? "Press and hold to dictate" : "Toggle dictation on and off"}</span><button class="text-button" data-go="settings">Edit shortcut →</button></div></section>`;
+  <section class="overview"><div class="info-card"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${escape(model?.engine ?? "")} · ${escape(model?.languages ?? "")}</span><button class="text-button" data-go="models">Change model →</button></div><div class="info-card"><p class="card-label">ACTIVATION</p><strong>${escape(settings.hotkey)}</strong><span>Press and hold to dictate</span><button class="text-button" data-go="settings">Edit shortcut →</button></div></section>`;
 }
 function modelsPage() {
-  const active = selected();
-  return `<header><div><p class="overline">ON-DEVICE MODELS</p><h1>Choose your <em>engine.</em></h1><p class="lede">Models stay on your PC. Pick the trade-off between speed, accuracy, and language coverage.</p></div></header>
-  <section class="selected-model"><div><p class="card-label">CURRENTLY SELECTED</p><strong>${escape(active?.name ?? "None")}</strong><span>${escape(active?.description ?? "")}</span></div><span class="pill">${escape(active?.size ?? "")}</span></section>
+  return `<header><div><p class="overline">ON-DEVICE MODELS</p><h1>Choose your <em>engine.</em></h1><p class="lede">Models stay on your PC. Pick the trade-off between speed, accuracy, and language coverage. Click a card to select it.</p></div></header>
   <div class="model-grid">${modelCards()}</div>`;
 }
 function historyPage() {
@@ -47,9 +68,8 @@ function historyPage() {
 }
 function settingsPage() {
   return `<header><div><p class="overline">PREFERENCES</p><h1>Make it <em>yours.</em></h1><p class="lede">VocaWin only stores these choices locally on this PC.</p></div></header>
-  <section class="settings-card"><div class="setting-row"><div><strong>Activation hotkey</strong><p>Use this anywhere in Windows to start dictating.</p></div><input id="hotkey" value="${escape(settings.hotkey)}" /></div>
+  <section class="settings-card"><div class="setting-row"><div><strong>Activation hotkey</strong><p>Hold this anywhere in Windows to dictate (push to talk).</p></div><input id="hotkey" value="${escape(settings.hotkey)}" /></div>
   <div class="setting-row"><div><strong>Dictation language</strong><p>Auto-detect is best for multilingual speech.</p></div><select id="language"><option>Auto-detect</option><option>English</option><option>Spanish</option><option>French</option><option>German</option><option>Japanese</option><option>Chinese</option></select></div>
-  <div class="setting-row"><div><strong>Activation style</strong><p>Choose press-and-hold or a toggle.</p></div><select id="activation"><option value="pushToTalk">Push to talk</option><option value="toggle">Toggle</option></select></div>
   <div class="setting-row"><div><strong>Sound feedback</strong><p>Play a small cue when dictation starts and stops.</p></div><label class="switch"><input id="sound" type="checkbox" ${settings.soundEffects ? "checked" : ""}/><span></span></label></div>
   <div class="settings-footer"><button class="primary" id="save">Save changes</button></div></section>`;
 }
@@ -62,10 +82,27 @@ function render() {
   document.querySelector("#save")?.addEventListener("click", save);
   document.querySelector("#clear-history")?.addEventListener("click", clearHistory);
   const language = document.querySelector<HTMLSelectElement>("#language"); if (language) language.value = settings.language;
-  const activation = document.querySelector<HTMLSelectElement>("#activation"); if (activation) activation.value = settings.activationMode;
-  document.querySelectorAll<HTMLButtonElement>("[data-model]").forEach(button => button.addEventListener("click", () => selectModel(button.dataset.model!)));
-  document.querySelectorAll<HTMLButtonElement>("[data-download]").forEach(button => button.addEventListener("click", () => downloadModel(button.dataset.download!)));
-  document.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach(button => button.addEventListener("click", () => deleteModel(button.dataset.delete!)));
+  document.querySelectorAll<HTMLElement>("[data-model]").forEach(card => {
+    const select = () => selectModel(card.dataset.model!);
+    card.addEventListener("click", event => {
+      if ((event.target as HTMLElement).closest("[data-download], [data-delete]")) return;
+      select();
+    });
+    card.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select();
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-download]").forEach(button => button.addEventListener("click", event => {
+    event.stopPropagation();
+    downloadModel(button.dataset.download!);
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach(button => button.addEventListener("click", event => {
+    event.stopPropagation();
+    deleteModel(button.dataset.delete!);
+  }));
 }
 async function refreshStatuses() { statuses = await invoke<Record<string, ModelStatus>>("get_model_statuses"); }
 async function refreshHistory() { history = await invoke<HistoryEntry[]>("get_history"); }
@@ -104,7 +141,8 @@ async function toggleRecording() {
 async function save() {
   settings.hotkey = document.querySelector<HTMLInputElement>("#hotkey")!.value.trim() || "Ctrl+Alt+Space";
   settings.language = document.querySelector<HTMLSelectElement>("#language")!.value;
-  settings.activationMode = document.querySelector<HTMLSelectElement>("#activation")!.value;
+  settings.activationMode = "pushToTalk";
+  settings.launchAtLogin = false;
   settings.soundEffects = document.querySelector<HTMLInputElement>("#sound")!.checked;
   try { await invoke("save_settings", { settings }); noticeText = "Settings saved locally."; } catch (error) { noticeText = String(error); }
   render();

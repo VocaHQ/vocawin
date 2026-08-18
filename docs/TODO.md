@@ -7,10 +7,10 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Model catalog and persistent selected model
 - [x] Whisper-family local inference
 - [x] ONNX adapters: Parakeet TDT, Moonshine, SenseVoice, GigaAM, Canary
-- [~] In-app Whisper download, progress, basic completion check, and deletion (ONNX archives, cancellation, checksums remain)
+- [x] In-app Download for every catalog model (Whisper GGML + ONNX archives/files), progress, install check, and Remove
 - [ ] Model disk-use display and hardware recommendations
-- [ ] Complete Parakeet CTC and Vosk adapters
-- [ ] Model cache migration and resumable downloads
+- [ ] Parakeet CTC and Vosk adapters (kept out of the catalog until they work)
+- [ ] Model cache migration, resumable downloads, and checksums
 
 ## Dictation experience
 
@@ -18,7 +18,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Push-to-talk global shortcut and Windows text injection
 - [ ] Toggle activation mode and hotkey re-registration after settings changes
 - [ ] Silence/VAD auto-stop, maximum duration, microphone device picker
-- [ ] Recording/transcribing tray states, audio level meter, start/stop sound
+- [ ] Recording/transcribing tray icon states, audio level meter, start/stop sound
 - [x] Local transcription history with clear-history control
 - [ ] Clipboard-preserving paste fallback
 
@@ -26,7 +26,9 @@ This checklist tracks the path from the current local-recognition foundation to 
 
 - [x] Settings persistence and NSIS/MSI Tauri configuration
 - [x] Windows CI compilation job
-- [ ] System tray, launch at login, single-instance behavior
+- [x] Unsigned NSIS/MSI installer artifact job (alpha/dev, no signing or Release)
+- [x] System tray icon with Show/Quit and close-to-tray
+- [ ] Launch at login and single-instance behavior
 - [ ] Onboarding, microphone diagnostics, accessible error states
 - [ ] Signed release workflow, updater, crash-free upgrade migration
 

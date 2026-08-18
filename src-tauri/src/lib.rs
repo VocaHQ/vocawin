@@ -91,7 +91,7 @@ fn model_catalog() -> Vec<Model> {
             id: "distil-whisper-large-v3",
             name: "Distil-Whisper Large v3",
             engine: "whisper.cpp",
-            size: "756 MB",
+            size: "1.5 GB",
             languages: "English",
             acceleration: "CPU · Vulkan",
             description: "Fast English-only Whisper derivative.",
@@ -100,32 +100,23 @@ fn model_catalog() -> Vec<Model> {
             id: "parakeet-tdt-0.6b-v3",
             name: "Parakeet TDT 0.6B v3",
             engine: "ONNX Runtime",
-            size: "1.2 GB",
+            size: "478 MB",
             languages: "25 languages",
             acceleration: "CPU · DirectML",
             description: "High-speed multilingual dictation.",
         },
         Model {
-            id: "parakeet-ctc-1.1b",
-            name: "Parakeet CTC 1.1B",
-            engine: "ONNX Runtime",
-            size: "2.2 GB",
-            languages: "English",
-            acceleration: "CPU · DirectML",
-            description: "High-recall English transcription.",
-        },
-        Model {
             id: "moonshine-tiny",
-            name: "Moonshine v2 Tiny",
+            name: "Moonshine Tiny",
             engine: "ONNX Runtime",
-            size: "60 MB",
+            size: "145 MB",
             languages: "English",
             acceleration: "CPU",
             description: "Low-memory, quick English notes.",
         },
         Model {
             id: "moonshine-base",
-            name: "Moonshine v2 Base",
+            name: "Moonshine Base",
             engine: "ONNX Runtime",
             size: "190 MB",
             languages: "English",
@@ -145,7 +136,7 @@ fn model_catalog() -> Vec<Model> {
             id: "gigaam-v3",
             name: "GigaAM v3",
             engine: "ONNX Runtime",
-            size: "270 MB",
+            size: "225 MB",
             languages: "Russian",
             acceleration: "CPU",
             description: "Russian recognition with punctuation.",
@@ -154,19 +145,10 @@ fn model_catalog() -> Vec<Model> {
             id: "canary-180m",
             name: "Canary 180M Flash",
             engine: "ONNX Runtime",
-            size: "320 MB",
+            size: "150 MB",
             languages: "English · Spanish · German · French",
             acceleration: "CPU · DirectML",
             description: "Fast four-language transcription.",
-        },
-        Model {
-            id: "vosk-small-en",
-            name: "Vosk Small English",
-            engine: "Vosk",
-            size: "40 MB",
-            languages: "English",
-            acceleration: "CPU",
-            description: "Small-footprint offline fallback.",
         },
     ]
 }
@@ -486,7 +468,7 @@ fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-fn save_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), String> {
+fn save_settings(mut settings: Settings, state: State<'_, AppState>) -> Result<(), String> {
     if !model_catalog()
         .iter()
         .any(|model| model.id == settings.selected_model)
@@ -496,6 +478,10 @@ fn save_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), S
     if !(0.3..=10.0).contains(&settings.silence_seconds) {
         return Err("Silence timeout must be between 0.3 and 10 seconds".into());
     }
+    // Toggle activation and launch-at-login are not implemented yet. Keep the
+    // persisted values honest so the UI cannot claim they do something.
+    settings.activation_mode = "pushToTalk".into();
+    settings.launch_at_login = false;
     persist_settings(&state.settings_path, &settings)?;
     *state
         .settings
@@ -531,27 +517,99 @@ fn model_path(models_path: &Path, id: &str) -> PathBuf {
     }
 }
 
-fn whisper_download_url(id: &str) -> Option<&'static str> {
+/// How a catalog model is fetched. Archives unpack into `models/{id}/` with the
+/// filenames expected by the matching `transcribe-rs` loader.
+#[derive(Clone, Copy)]
+enum ModelPackage {
+    /// Single whisper.cpp GGML `.bin` written as `models/{id}.bin`.
+    GgmlBin { url: &'static str },
+    /// Official `.tar.gz` whose contents become `models/{id}/`.
+    TarGz { url: &'static str },
+    /// Flat files downloaded into `models/{id}/`.
+    Files { files: &'static [(&'static str, &'static str)] },
+}
+
+fn model_package(id: &str) -> Option<ModelPackage> {
     match id {
-        "whisper-tiny" => {
-            Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin")
-        }
-        "whisper-base" => {
-            Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin")
-        }
-        "whisper-small" => {
-            Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin")
-        }
-        "whisper-medium" => {
-            Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin")
-        }
-        "whisper-large-v3" => {
-            Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin")
-        }
-        "whisper-large-v3-turbo" => Some(
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-        ),
+        "whisper-tiny" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+        }),
+        "whisper-base" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+        }),
+        "whisper-small" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+        }),
+        "whisper-medium" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+        }),
+        "whisper-large-v3" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+        }),
+        "whisper-large-v3-turbo" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        }),
+        "distil-whisper-large-v3" => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main/ggml-distil-large-v3.bin",
+        }),
+        "parakeet-tdt-0.6b-v3" => Some(ModelPackage::TarGz {
+            url: "https://blob.handy.computer/parakeet-v3-int8.tar.gz",
+        }),
+        "moonshine-tiny" => Some(ModelPackage::Files {
+            files: &[
+                (
+                    "encoder_model.onnx",
+                    "https://huggingface.co/onnx-community/moonshine-tiny-ONNX/resolve/main/onnx/encoder_model.onnx",
+                ),
+                (
+                    "decoder_model_merged.onnx",
+                    "https://huggingface.co/onnx-community/moonshine-tiny-ONNX/resolve/main/onnx/decoder_model_merged.onnx",
+                ),
+                (
+                    "tokenizer.json",
+                    "https://huggingface.co/onnx-community/moonshine-tiny-ONNX/resolve/main/tokenizer.json",
+                ),
+            ],
+        }),
+        "moonshine-base" => Some(ModelPackage::TarGz {
+            url: "https://blob.handy.computer/moonshine-base.tar.gz",
+        }),
+        "sensevoice-small" => Some(ModelPackage::TarGz {
+            url: "https://blob.handy.computer/sense-voice-int8.tar.gz",
+        }),
+        "gigaam-v3" => Some(ModelPackage::TarGz {
+            url: "https://blob.handy.computer/giga-am-v3-int8.tar.gz",
+        }),
+        "canary-180m" => Some(ModelPackage::TarGz {
+            url: "https://blob.handy.computer/canary-180m-flash.tar.gz",
+        }),
         _ => None,
+    }
+}
+
+fn model_is_installed(models_path: &Path, id: &str) -> bool {
+    let path = model_path(models_path, id);
+    match id {
+        id if id.starts_with("whisper-") || id.starts_with("distil-whisper-") => path.is_file(),
+        "parakeet-tdt-0.6b-v3" => {
+            path.join("encoder-model.int8.onnx").is_file() && path.join("vocab.txt").is_file()
+        }
+        "moonshine-tiny" | "moonshine-base" => {
+            path.join("encoder_model.onnx").is_file()
+                && path.join("decoder_model_merged.onnx").is_file()
+                && path.join("tokenizer.json").is_file()
+        }
+        "sensevoice-small" => {
+            path.join("model.int8.onnx").is_file() && path.join("tokens.txt").is_file()
+        }
+        "gigaam-v3" => {
+            (path.join("model.int8.onnx").is_file() || path.join("model.onnx").is_file())
+                && path.join("vocab.txt").is_file()
+        }
+        "canary-180m" => {
+            path.join("encoder-model.int8.onnx").is_file() && path.join("vocab.txt").is_file()
+        }
+        _ => path.exists(),
     }
 }
 
@@ -562,12 +620,181 @@ fn installation_status(state: &AppState, id: &str) -> ModelInstallStatus {
         }
     }
     ModelInstallStatus {
-        installed: model_path(&state.models_path, id).exists(),
-        downloadable: whisper_download_url(id).is_some(),
+        installed: model_is_installed(&state.models_path, id),
+        downloadable: model_package(id).is_some(),
         downloading: false,
         progress: 0,
         message: None,
     }
+}
+
+fn set_download_status(state: &AppState, model_id: &str, status: ModelInstallStatus) {
+    if let Ok(mut downloads) = state.downloads.lock() {
+        downloads.insert(model_id.to_string(), status);
+    }
+}
+
+fn mark_progress(state: &AppState, model_id: &str, progress: u8, message: impl Into<String>) {
+    set_download_status(
+        state,
+        model_id,
+        ModelInstallStatus {
+            installed: false,
+            downloadable: true,
+            downloading: true,
+            progress,
+            message: Some(message.into()),
+        },
+    );
+}
+
+async fn download_url_to_file(
+    state: &AppState,
+    model_id: &str,
+    url: &str,
+    destination: &Path,
+    progress_start: u8,
+    progress_end: u8,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    if let Some(parent) = destination.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| format!("Could not create download directory: {error}"))?;
+    }
+    let temporary = destination.with_extension("partial");
+    let result = async {
+        let response = reqwest::get(url)
+            .await
+            .map_err(|error| format!("Could not start download: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("Model download failed: {error}"))?;
+        let total = response.content_length();
+        let mut stream = response.bytes_stream();
+        let mut file = tokio::fs::File::create(&temporary)
+            .await
+            .map_err(|error| format!("Could not create model file: {error}"))?;
+        let mut downloaded = 0_u64;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|error| format!("Model download interrupted: {error}"))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|error| format!("Could not write model file: {error}"))?;
+            downloaded += chunk.len() as u64;
+            let fraction = total
+                .map(|length| downloaded as f64 / length.max(1) as f64)
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0);
+            let progress = progress_start
+                + ((progress_end.saturating_sub(progress_start) as f64) * fraction).round() as u8;
+            mark_progress(
+                state,
+                model_id,
+                progress.min(99),
+                format!("Downloading… {}%", progress.min(99)),
+            );
+        }
+        file.flush()
+            .await
+            .map_err(|error| format!("Could not finalize model file: {error}"))?;
+        drop(file);
+        if destination.exists() {
+            tokio::fs::remove_file(destination).await.ok();
+        }
+        tokio::fs::rename(&temporary, destination)
+            .await
+            .map_err(|error| format!("Could not install model: {error}"))?;
+        Ok::<(), String>(())
+    }
+    .await;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&temporary).await;
+    }
+    result
+}
+
+fn unpack_tar_gz_into(archive_path: &Path, destination: &Path) -> Result<(), String> {
+    use flate2::read::GzDecoder;
+
+    if destination.exists() {
+        if destination.is_dir() {
+            fs::remove_dir_all(destination)
+                .map_err(|error| format!("Could not clear model directory: {error}"))?;
+        } else {
+            fs::remove_file(destination)
+                .map_err(|error| format!("Could not clear model path: {error}"))?;
+        }
+    }
+    fs::create_dir_all(destination)
+        .map_err(|error| format!("Could not create model directory: {error}"))?;
+
+    let staging = destination.with_extension("extracting");
+    if staging.exists() {
+        fs::remove_dir_all(&staging).ok();
+    }
+    fs::create_dir_all(&staging)
+        .map_err(|error| format!("Could not create extract directory: {error}"))?;
+
+    let file = fs::File::open(archive_path)
+        .map_err(|error| format!("Could not open model archive: {error}"))?;
+    let mut archive = tar::Archive::new(GzDecoder::new(file));
+    archive
+        .unpack(&staging)
+        .map_err(|error| format!("Could not unpack model archive: {error}"))?;
+
+    let children = walkdir_shallow(&staging)?;
+    let payload = if children.len() == 1 && children[0].is_dir() {
+        children[0].clone()
+    } else {
+        staging.clone()
+    };
+
+    // Ignore macOS AppleDouble junk that some CDN archives still ship.
+    for entry in walkdir_shallow(&payload)? {
+        let Some(name) = entry.file_name() else {
+            continue;
+        };
+        let name = name.to_string_lossy();
+        if name.starts_with("._") || name == ".DS_Store" {
+            let _ = if entry.is_dir() {
+                fs::remove_dir_all(&entry)
+            } else {
+                fs::remove_file(&entry)
+            };
+        }
+    }
+
+    for entry in walkdir_shallow(&payload)? {
+        let Some(name) = entry.file_name() else {
+            continue;
+        };
+        let name_text = name.to_string_lossy();
+        if name_text.starts_with("._") || name_text == ".DS_Store" {
+            continue;
+        }
+        let target = destination.join(name);
+        fs::rename(&entry, &target).map_err(|error| {
+            format!(
+                "Could not place model file {}: {error}",
+                name.to_string_lossy()
+            )
+        })?;
+    }
+    let _ = fs::remove_dir_all(&staging);
+    Ok(())
+}
+
+fn walkdir_shallow(path: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut children = Vec::new();
+    for entry in fs::read_dir(path).map_err(|error| format!("Could not read extract directory: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("Could not read extract entry: {error}"))?;
+        children.push(entry.path());
+    }
+    children.sort();
+    Ok(children)
 }
 
 #[tauri::command]
@@ -580,9 +807,10 @@ fn get_model_statuses(state: State<'_, AppState>) -> HashMap<String, ModelInstal
 
 #[tauri::command]
 async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let url = whisper_download_url(&model_id).ok_or("In-app download is not available for this model yet. See the model guide for its local layout.")?;
-    let destination = model_path(&state.models_path, &model_id);
-    if destination.exists() {
+    let package = model_package(&model_id).ok_or_else(|| {
+        "In-app download is not available for this model.".to_string()
+    })?;
+    if model_is_installed(&state.models_path, &model_id) {
         return Ok(());
     }
     {
@@ -607,51 +835,53 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
             },
         );
     }
-    let temporary = destination.with_extension("bin.download");
+
     let result = async {
-        use futures_util::StreamExt;
-        let response = reqwest::get(url)
-            .await
-            .map_err(|error| format!("Could not start download: {error}"))?
-            .error_for_status()
-            .map_err(|error| format!("Model download failed: {error}"))?;
-        let total = response.content_length();
-        let mut stream = response.bytes_stream();
-        let mut file = tokio::fs::File::create(&temporary)
-            .await
-            .map_err(|error| format!("Could not create model file: {error}"))?;
-        let mut downloaded = 0_u64;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|error| format!("Model download interrupted: {error}"))?;
-            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+        match package {
+            ModelPackage::GgmlBin { url } => {
+                let destination = model_path(&state.models_path, &model_id);
+                download_url_to_file(&state, &model_id, url, &destination, 0, 99).await?;
+            }
+            ModelPackage::TarGz { url } => {
+                let archive = state
+                    .models_path
+                    .join(format!("{model_id}.tar.gz.partial"));
+                download_url_to_file(&state, &model_id, url, &archive, 0, 85).await?;
+                mark_progress(&state, &model_id, 90, "Unpacking…");
+                let models_path = state.models_path.clone();
+                let model_id_for_blocking = model_id.clone();
+                tokio::task::spawn_blocking(move || {
+                    unpack_tar_gz_into(&archive, &models_path.join(&model_id_for_blocking))?;
+                    let _ = fs::remove_file(&archive);
+                    Ok::<(), String>(())
+                })
                 .await
-                .map_err(|error| format!("Could not write model file: {error}"))?;
-            downloaded += chunk.len() as u64;
-            let progress = total
-                .map(|length| ((downloaded.saturating_mul(100) / length).min(99)) as u8)
-                .unwrap_or(0);
-            if let Ok(mut downloads) = state.downloads.lock() {
-                downloads.insert(
-                    model_id.clone(),
-                    ModelInstallStatus {
-                        installed: false,
-                        downloadable: true,
-                        downloading: true,
-                        progress,
-                        message: Some(format!("Downloading… {}%", progress)),
-                    },
-                );
+                .map_err(|error| format!("Unpack task failed: {error}"))??;
+            }
+            ModelPackage::Files { files } => {
+                let destination = model_path(&state.models_path, &model_id);
+                tokio::fs::create_dir_all(&destination)
+                    .await
+                    .map_err(|error| format!("Could not create model directory: {error}"))?;
+                let count = files.len().max(1) as u8;
+                for (index, (filename, url)) in files.iter().enumerate() {
+                    let start = (index as u8).saturating_mul(99 / count);
+                    let end = ((index as u8 + 1).saturating_mul(99 / count)).min(99);
+                    let file_path = destination.join(filename);
+                    download_url_to_file(&state, &model_id, url, &file_path, start, end).await?;
+                }
             }
         }
-        tokio::io::AsyncWriteExt::flush(&mut file)
-            .await
-            .map_err(|error| format!("Could not finalize model file: {error}"))?;
-        tokio::fs::rename(&temporary, &destination)
-            .await
-            .map_err(|error| format!("Could not install model: {error}"))?;
+        if !model_is_installed(&state.models_path, &model_id) {
+            return Err(
+                "Download finished but the expected model files are missing. Try Remove, then Download again."
+                    .into(),
+            );
+        }
         Ok::<(), String>(())
     }
     .await;
+
     let status = match &result {
         Ok(()) => ModelInstallStatus {
             installed: true,
@@ -660,22 +890,15 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
             progress: 100,
             message: Some("Installed".into()),
         },
-        Err(error) => {
-            let _ = tokio::fs::remove_file(&temporary).await;
-            ModelInstallStatus {
-                installed: false,
-                downloadable: true,
-                downloading: false,
-                progress: 0,
-                message: Some(error.clone()),
-            }
-        }
+        Err(error) => ModelInstallStatus {
+            installed: model_is_installed(&state.models_path, &model_id),
+            downloadable: true,
+            downloading: false,
+            progress: 0,
+            message: Some(error.clone()),
+        },
     };
-    state
-        .downloads
-        .lock()
-        .map_err(|_| "Download lock was poisoned")?
-        .insert(model_id, status);
+    set_download_status(&state, &model_id, status);
     result
 }
 
@@ -690,6 +913,9 @@ fn delete_model(model_id: String, state: State<'_, AppState>) -> Result<(), Stri
         return Ok(());
     }
     .map_err(|error| format!("Could not remove model: {error}"))?;
+    // Clean leftover partial downloads for this model.
+    let partial_archive = state.models_path.join(format!("{model_id}.tar.gz.partial"));
+    let _ = fs::remove_file(partial_archive);
     state
         .downloads
         .lock()
@@ -1018,6 +1244,16 @@ pub fn run() {
                     }).map_err(|error| format!("Could not register global shortcut {shortcut_for_handler:?}: {error}"))?;
                 }
             }
+            setup_tray(app)?;
+            if let Some(window) = app.get_webview_window("main") {
+                let window_for_close = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window_for_close.hide();
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1038,6 +1274,57 @@ pub fn run() {
         .expect("error while running VocaWin");
 }
 
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "show", "Show window", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let icon = app
+        .default_window_icon()
+        .ok_or("VocaWin is missing its default window icon for the tray")?
+        .clone();
+
+    TrayIconBuilder::new()
+        .icon(icon)
+        .tooltip("VocaWin")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1050,6 +1337,8 @@ mod tests {
         assert_eq!(ids.len(), catalog.len());
         assert!(catalog.iter().any(|m| m.engine == "whisper.cpp"));
         assert!(catalog.iter().any(|m| m.engine == "ONNX Runtime"));
+        assert!(catalog.iter().all(|m| model_package(m.id).is_some()));
+        assert!(!catalog.iter().any(|m| m.id.contains("vosk") || m.id.contains("ctc")));
     }
 
     #[test]
@@ -1078,5 +1367,93 @@ mod tests {
     fn app_state_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<AppState>();
+    }
+
+    #[test]
+    fn tar_gz_flat_archive_lands_in_catalog_directory() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+
+        let directory = tempfile::tempdir().unwrap();
+        let archive = directory.path().join("flat.tar.gz");
+        {
+            let file = fs::File::create(&archive).unwrap();
+            let encoder = GzEncoder::new(file, Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(4);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "model.int8.onnx", &b"onnx"[..])
+                .unwrap();
+            let mut header = tar::Header::new_gnu();
+            header.set_size(5);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "vocab.txt", &b"vocab"[..])
+                .unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        }
+        let destination = directory.path().join("gigaam-v3");
+        unpack_tar_gz_into(&archive, &destination).unwrap();
+        assert_eq!(
+            fs::read_to_string(destination.join("model.int8.onnx")).unwrap(),
+            "onnx"
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("vocab.txt")).unwrap(),
+            "vocab"
+        );
+    }
+
+    #[test]
+    fn tar_gz_nested_archive_renames_to_catalog_id() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+
+        let directory = tempfile::tempdir().unwrap();
+        let archive = directory.path().join("nested.tar.gz");
+        {
+            let file = fs::File::create(&archive).unwrap();
+            let encoder = GzEncoder::new(file, Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(3);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    "moonshine-base/encoder_model.onnx",
+                    &b"enc"[..],
+                )
+                .unwrap();
+            let mut header = tar::Header::new_gnu();
+            header.set_size(3);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    "moonshine-base/decoder_model_merged.onnx",
+                    &b"dec"[..],
+                )
+                .unwrap();
+            let mut header = tar::Header::new_gnu();
+            header.set_size(4);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "moonshine-base/tokenizer.json", &b"toks"[..])
+                .unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        }
+        let destination = directory.path().join("moonshine-base");
+        unpack_tar_gz_into(&archive, &destination).unwrap();
+        assert!(destination.join("encoder_model.onnx").is_file());
+        assert!(destination.join("tokenizer.json").is_file());
+        assert!(!destination.join("moonshine-base").exists());
     }
 }

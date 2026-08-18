@@ -24,7 +24,7 @@ transcribe-rs = { version = "0.3.8", features = ["onnx"] }
 hound = "3.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 futures-util = "0.3"
-tokio = { version = "1", features = ["fs", "io-util"] }
+tokio = { version = "1", features = ["fs", "io-util", "rt"] }
 tar = "0.4"
 flate2 = "1"
 thiserror = "2"
