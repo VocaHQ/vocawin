@@ -21,10 +21,10 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Push-to-talk and toggle activation, with hotkey re-registration after save
 - [x] Hotkey presets + Record capture (Escape cancels); WH_KEYBOARD_LL for lone Right Ctrl/Alt/Shift; listener pauses while Record
 - [x] New-install default hotkey Right Ctrl (existing TROOPER Ctrl+Alt+Space settings kept until changed)
-- [x] Silence energy auto-stop and max recording duration
+- [x] Silence energy auto-stop in toggle mode only (PTT stops on key-up); `silence_seconds` wired
 - [x] Trailing space and auto-capitalize output polish
 - [x] Clipboard + paste inject with restore (SendInput fallback)
-- [x] Start/stop sound cues when enabled
+- [x] Start/stop/error sound cues when enabled (PlaySound WAV; not silent Beep)
 - [x] Local transcription history with clear-history control
 - [x] Tray idle / listening / processing icons and full tray menu
 - [x] Settings search + Mic Test (level) + Test Dictation (recognize, no inject)
@@ -39,7 +39,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Official Voca mic app/tray icons (brand book §9 / §10)
 - [x] System tray menu: Start/Stop Voice Typing, Start on Login, Settings, View Logs, About, Quit
 - [x] Launch at login and single-instance focus (`--start-minimized` for login / CLI)
-- [x] Whisper Vulkan GPU path (prefer discrete, skip WARP) + Settings GPU readout
+- [x] Whisper Vulkan on Windows builds only; catalog/system_summary match compile-time reality; prefer discrete, skip WARP
 - [x] Auto-pause while listed apps run (opt-in)
 - [x] Idle Whisper unload keep-alive (opt-in, default 300s)
 - [x] Sleep/wake hotkey recovery (WM_POWERBROADCAST)

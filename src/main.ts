@@ -290,8 +290,8 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Audio",
       title: "Silence auto-stop",
-      subtitle: "Seconds of quiet before toggle mode ends a take.",
-      keywords: "vad silence timeout",
+      subtitle: "Seconds of quiet before toggle mode ends a take. Push-to-talk ignores this and stops on key-up.",
+      keywords: "vad silence timeout toggle",
       html: `<input id="silence" type="number" min="0.3" max="10" step="0.1" value="${settings.silenceSeconds}" />`,
     },
     {
@@ -304,7 +304,7 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Audio",
       title: "Sound feedback",
-      subtitle: "Play a small cue when dictation starts and stops.",
+      subtitle: "Play start, stop, and error cues through the default playback device.",
       keywords: "sound beep audio cue",
       html: `<label class="switch"><input id="sound" type="checkbox" ${settings.soundEffects ? "checked" : ""}/><span></span></label>`,
     },

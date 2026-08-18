@@ -20,7 +20,6 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 cpal = "0.15"
-whisper-rs = "0.16"
 transcribe-rs = { version = "0.3.8", features = ["onnx"] }
 hound = "3.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
@@ -29,6 +28,10 @@ tokio = { version = "1", features = ["fs", "io-util", "rt"] }
 tar = "0.4"
 flate2 = "1"
 thiserror = "2"
+
+# Non-Windows keeps CPU-only whisper for shared unit tests.
+[target.'cfg(not(windows))'.dependencies]
+whisper-rs = { version = "0.16" }
 
 # Vulkan for whisper.cpp on Windows (NVIDIA/AMD/Intel). CUDA skipped to keep
 # windows-latest CI free of the CUDA toolkit; Vulkan covers TROOPER's RTX path.
@@ -39,6 +42,7 @@ windows = { version = "0.58", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dxgi",
   "Win32_Graphics_Gdi",
+  "Win32_Media_Audio",
   "Win32_System_DataExchange",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_LibraryLoader",

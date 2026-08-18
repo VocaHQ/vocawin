@@ -121,10 +121,20 @@ fn detect_windows_gpu() -> GpuStatus {
             GpuStatus {
                 available: true,
                 name: chosen.name.clone(),
-                backend: "Vulkan (whisper.cpp) · DirectML (ONNX)".into(),
+                backend: if cfg!(vocawin_whisper_vulkan) {
+                    "Vulkan (whisper.cpp) · DirectML (ONNX)".into()
+                } else {
+                    "CPU".into()
+                },
                 detail: format!(
-                    "Using {kind} adapter “{}” (~{} MB VRAM) for Whisper Vulkan. Software/WARP adapters are skipped.",
-                    chosen.name, chosen.vram_mb
+                    "Using {kind} adapter “{}” (~{} MB VRAM){}. Software/WARP adapters are skipped.",
+                    chosen.name,
+                    chosen.vram_mb,
+                    if cfg!(vocawin_whisper_vulkan) {
+                        " for Whisper Vulkan"
+                    } else {
+                        ""
+                    }
                 ),
                 device_index: chosen.index as i32,
                 discrete: chosen.discrete,

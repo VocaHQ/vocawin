@@ -41,9 +41,40 @@ struct Model {
     description: &'static str,
 }
 
+/// Compile-time honesty for Whisper catalog labels. Set by `build.rs` only when
+/// the Windows target enables `whisper-rs/vulkan`.
+fn whisper_acceleration() -> &'static str {
+    if cfg!(vocawin_whisper_vulkan) {
+        "CPU · Vulkan"
+    } else {
+        "CPU"
+    }
+}
+
+fn onnx_acceleration(directml: bool) -> &'static str {
+    if directml && cfg!(windows) {
+        "CPU · DirectML"
+    } else {
+        "CPU"
+    }
+}
+
+fn gpu_backends_summary() -> Vec<&'static str> {
+    let mut backends = Vec::new();
+    if cfg!(vocawin_whisper_vulkan) {
+        backends.push("Vulkan (whisper.cpp)");
+    }
+    if cfg!(windows) {
+        backends.push("DirectML (ONNX Runtime)");
+    }
+    backends.push("CPU fallback");
+    backends
+}
+
 /// The catalog is intentionally engine-neutral. The transcription adapter can
 /// select whisper.cpp (GGUF), ONNX Runtime, or Vosk without changing the UI.
 fn model_catalog() -> Vec<Model> {
+    let whisper_accel = whisper_acceleration();
     vec![
         Model {
             id: "whisper-tiny",
@@ -51,7 +82,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "75 MB",
             languages: "99 languages",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Fastest Whisper option; included as the first-run recommendation.",
         },
         Model {
@@ -60,7 +91,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "142 MB",
             languages: "99 languages",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Balanced accuracy for everyday dictation.",
         },
         Model {
@@ -69,7 +100,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "466 MB",
             languages: "99 languages",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Higher accuracy on modern PCs.",
         },
         Model {
@@ -78,7 +109,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "1.5 GB",
             languages: "99 languages",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Excellent multilingual recognition.",
         },
         Model {
@@ -87,7 +118,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "3.1 GB",
             languages: "99 languages",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Maximum Whisper accuracy.",
         },
         Model {
@@ -96,7 +127,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "1.6 GB",
             languages: "99 languages",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Large-v3 quality tuned for lower latency.",
         },
         Model {
@@ -105,7 +136,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "whisper.cpp",
             size: "1.5 GB",
             languages: "English",
-            acceleration: "CPU · Vulkan",
+            acceleration: whisper_accel,
             description: "Fast English-only Whisper derivative.",
         },
         Model {
@@ -114,7 +145,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "ONNX Runtime",
             size: "478 MB",
             languages: "25 languages",
-            acceleration: "CPU · DirectML",
+            acceleration: onnx_acceleration(true),
             description: "High-speed multilingual dictation.",
         },
         Model {
@@ -123,7 +154,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "ONNX Runtime",
             size: "145 MB",
             languages: "English",
-            acceleration: "CPU",
+            acceleration: onnx_acceleration(false),
             description: "Low-memory, quick English notes.",
         },
         Model {
@@ -132,7 +163,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "ONNX Runtime",
             size: "190 MB",
             languages: "English",
-            acceleration: "CPU",
+            acceleration: onnx_acceleration(false),
             description: "Compact English model.",
         },
         Model {
@@ -141,7 +172,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "ONNX Runtime",
             size: "240 MB",
             languages: "Chinese · Japanese · Korean · Cantonese · English",
-            acceleration: "CPU · DirectML",
+            acceleration: onnx_acceleration(true),
             description: "East Asian language specialist.",
         },
         Model {
@@ -150,7 +181,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "ONNX Runtime",
             size: "225 MB",
             languages: "Russian",
-            acceleration: "CPU",
+            acceleration: onnx_acceleration(false),
             description: "Russian recognition with punctuation.",
         },
         Model {
@@ -159,7 +190,7 @@ fn model_catalog() -> Vec<Model> {
             engine: "ONNX Runtime",
             size: "150 MB",
             languages: "English · Spanish · German · French",
-            acceleration: "CPU · DirectML",
+            acceleration: onnx_acceleration(true),
             description: "Fast four-language transcription.",
         },
     ]
@@ -242,6 +273,8 @@ enum AudioCommand {
         silence_seconds: f32,
         max_seconds: f32,
         device_name: String,
+        /// Toggle/double-tap only. Push-to-talk ignores silence and stops on key-up.
+        silence_auto_stop: bool,
         /// Level meter only: no silence auto-stop and no transcription handoff.
         meter_only: bool,
         reply: mpsc::Sender<Result<(), String>>,
@@ -433,6 +466,7 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
     let mut silence_seconds = 1.5_f32;
     let mut max_seconds = 60.0_f32;
     let mut meter_only = false;
+    let mut silence_auto_stop = false;
 
     loop {
         let timed_out = match commands.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -442,11 +476,13 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                         silence_seconds: silence,
                         max_seconds: max,
                         device_name,
+                        silence_auto_stop: enable_silence,
                         meter_only: meter,
                         reply,
                     } => {
                         silence_seconds = silence.clamp(0.3, 10.0);
                         max_seconds = max.clamp(3.0, 300.0);
+                        silence_auto_stop = enable_silence;
                         meter_only = meter;
                         let result = if stream.is_some() {
                             Err("A recording is already in progress".into())
@@ -511,7 +547,8 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
             let last_voice = *last_voice_ms.lock().unwrap_or_else(|e| e.into_inner());
             let quiet_for = (now_ms().saturating_sub(last_voice)) as f32 / 1000.0;
             let heard = *heard_speech.lock().unwrap_or_else(|e| e.into_inner());
-            let silence_hit = heard && quiet_for >= silence_seconds;
+            let silence_hit =
+                silence_auto_stop && heard && quiet_for >= silence_seconds;
             let max_hit = elapsed >= max_seconds;
             if silence_hit || max_hit {
                 if let Ok((pcm, rate)) =
@@ -565,13 +602,20 @@ impl AudioRecorder {
         Self { commands }
     }
 
-    fn start(&self, silence_seconds: f32, max_seconds: f32, device_name: String) -> Result<(), String> {
+    fn start(
+        &self,
+        silence_seconds: f32,
+        max_seconds: f32,
+        device_name: String,
+        silence_auto_stop: bool,
+    ) -> Result<(), String> {
         let (reply, response) = mpsc::channel();
         self.commands
             .send(AudioCommand::Start {
                 silence_seconds,
                 max_seconds,
                 device_name,
+                silence_auto_stop,
                 meter_only: false,
                 reply,
             })
@@ -588,6 +632,7 @@ impl AudioRecorder {
                 silence_seconds: 10.0,
                 max_seconds: 300.0,
                 device_name,
+                silence_auto_stop: false,
                 meter_only: true,
                 reply,
             })
@@ -625,7 +670,7 @@ impl AudioRecorder {
     fn new(_: AppHandle) -> Self {
         Self
     }
-    fn start(&self, _: f32, _: f32, _: String) -> Result<(), String> {
+    fn start(&self, _: f32, _: f32, _: String, _: bool) -> Result<(), String> {
         Err("Microphone capture is available in Windows builds only.".into())
     }
     fn start_meter(&self, _: String) -> Result<(), String> {
@@ -701,6 +746,7 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
             let _ = app.emit("dictation-finished", String::new());
         }
         Err(error) => {
+            sounds::play_error_if_enabled(sound);
             logbuf::push_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error);
         }
@@ -1454,6 +1500,7 @@ fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
         settings.silence_seconds,
         settings.max_recording_seconds,
         settings.input_device.clone(),
+        settings.activation_mode == "toggle",
     )?;
     *state
         .recording
@@ -1532,11 +1579,12 @@ fn transcribe_samples(
             ));
         }
         let gpu = gpu::detect_gpu();
+        let use_gpu = cfg!(vocawin_whisper_vulkan) && gpu.available;
         state.whisper_cache.transcribe(
             model_path,
             pcm,
             language_code.map(str::to_string),
-            gpu.available,
+            use_gpu,
             gpu.device_index,
             settings.idle_unload_enabled,
         )?
@@ -1577,6 +1625,7 @@ fn stop_and_transcribe(app: AppHandle, state: State<'_, AppState>) -> Result<Str
         Ok(text) => text,
         Err(error) => {
             set_tray_phase(&app, TrayPhase::Idle);
+            sounds::play_error_if_enabled(sound);
             return Err(error);
         }
     };
@@ -1593,7 +1642,8 @@ fn system_summary() -> serde_json::Value {
         "platform": "Windows 10/11",
         "runtime": "Rust + Tauri",
         "privacy": "Audio and transcription remain on this device",
-        "gpuBackends": ["Vulkan (whisper.cpp)", "DirectML (ONNX Runtime)", "CPU fallback"],
+        "gpuBackends": gpu_backends_summary(),
+        "whisperAcceleration": whisper_acceleration(),
         "gpu": gpu
     })
 }
@@ -1884,6 +1934,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                             let _ = handle.emit("dictation-finished", text);
                         }
                         Err(error) => {
+                            sounds::play_error_if_enabled(settings.sound_effects);
                             logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
                             let _ = handle.emit("dictation-error", error);
                         }
@@ -1895,6 +1946,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         "No speech model is installed. Open Models and download {} first.",
                         settings.selected_model
                     );
+                    sounds::play_error_if_enabled(settings.sound_effects);
                     logbuf::push_and_emit(handle, message.clone());
                     let _ = handle.emit("dictation-error", message);
                 } else if state
@@ -1903,6 +1955,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         settings.silence_seconds,
                         settings.max_recording_seconds,
                         settings.input_device.clone(),
+                        true,
                     )
                     .is_ok()
                 {
@@ -1917,6 +1970,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         "No speech model is installed. Open Models and download {} first.",
                         settings.selected_model
                     );
+                    sounds::play_error_if_enabled(settings.sound_effects);
                     logbuf::push_and_emit(handle, message.clone());
                     let _ = handle.emit("dictation-error", message);
                 } else if state
@@ -1925,6 +1979,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         settings.silence_seconds,
                         settings.max_recording_seconds,
                         settings.input_device.clone(),
+                        false,
                     )
                     .is_ok()
                 {
@@ -1949,6 +2004,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         let _ = handle.emit("dictation-finished", text);
                     }
                     Err(error) => {
+                        sounds::play_error_if_enabled(settings.sound_effects);
                         logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
                         let _ = handle.emit("dictation-error", error);
                     }
@@ -2201,6 +2257,7 @@ fn tray_start_voice(app: &AppHandle) -> Result<(), String> {
         settings.silence_seconds,
         settings.max_recording_seconds,
         settings.input_device.clone(),
+        settings.activation_mode == "toggle",
     )?;
     *state
         .recording
@@ -2241,6 +2298,7 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
         Err(error) => {
             let _ = app.emit("recording-changed", false);
             set_tray_phase(app, TrayPhase::Idle);
+            sounds::play_error_if_enabled(sound);
             logbuf::push_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error.clone());
             Err(error)
@@ -2281,6 +2339,27 @@ mod tests {
         assert!(catalog.iter().any(|m| m.engine == "ONNX Runtime"));
         assert!(catalog.iter().all(|m| model_package(m.id).is_some()));
         assert!(!catalog.iter().any(|m| m.id.contains("vosk") || m.id.contains("ctc")));
+    }
+
+    #[test]
+    fn whisper_acceleration_matches_vulkan_cfg() {
+        let expected = if cfg!(vocawin_whisper_vulkan) {
+            "CPU · Vulkan"
+        } else {
+            "CPU"
+        };
+        assert_eq!(whisper_acceleration(), expected);
+        assert!(model_catalog()
+            .iter()
+            .filter(|model| model.engine == "whisper.cpp")
+            .all(|model| model.acceleration == expected));
+        let backends = gpu_backends_summary();
+        assert!(backends.contains(&"CPU fallback"));
+        if cfg!(vocawin_whisper_vulkan) {
+            assert!(backends.iter().any(|b| b.contains("Vulkan")));
+        } else {
+            assert!(!backends.iter().any(|b| b.contains("Vulkan")));
+        }
     }
 
     #[test]
