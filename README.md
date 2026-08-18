@@ -118,7 +118,7 @@ npm run check           # TypeScript build + Rust tests
 
 A macOS/Linux host can validate the frontend and Rust command layer, but Windows injection and installer artifacts must be exercised on Windows 10/11.
 
-Windows CI also builds an unsigned NSIS (and MSI) installer and uploads it as a GitHub Actions workflow artifact. That artifact is an alpha/dev build for trying the app, not a public release. It is not signed. Pull requests and pushes to main stay artifact-only.
+Windows CI also builds an unsigned NSIS (and MSI) installer and uploads it as a GitHub Actions workflow artifact. That artifact is an alpha/dev build for trying the app, not a public release. It is not signed. Pull requests and pushes to main stay artifact-only. Testers can read [the setup guide](docs/setup.md) for SmartScreen, first-run model download, and tray colors.
 
 Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same unsigned NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. That is for testers. It is not a signed store build, and vocawin.com stays Coming soon.
 

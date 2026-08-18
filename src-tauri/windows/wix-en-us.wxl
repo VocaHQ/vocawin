@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="en-us" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="LaunchApp">Launch VocaWin</String>
+  <String Id="DowngradeErrorMessage">A newer version of VocaWin is already installed.</String>
+  <String Id="PathEnvVarFeature">Add the VocaWin install folder to PATH so you can run it from a terminal.</String>
+  <String Id="InstallAppFeature">Installs VocaWin.</String>
+  <String Id="WelcomeDlgTitle">{\WixUI_Font_Bigger}VocaWin</String>
+  <String Id="WelcomeDlgDescription">This setup puts VocaWin on this PC. Hold a hotkey, speak, and text is meant to land at your cursor. After you download a speech-to-text model, dictation stays on this computer. This build is an unsigned alpha. vocawin.com is still Coming soon.</String>
+  <String Id="ExitDialogTitle">{\WixUI_Font_Bigger}VocaWin is installed.</String>
+  <String Id="ExitDialogDescription">The first run will ask you to download a model. That uses the network once. After that, audio stays on this PC. Open the setup guide at https://github.com/VocaHQ/vocawin/blob/main/docs/setup.md</String>
+</WixLocalization>

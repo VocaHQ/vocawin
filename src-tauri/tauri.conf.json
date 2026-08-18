@@ -15,8 +15,28 @@
   },
   "bundle": {
     "active": true,
-    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/installer/setup-icon-256.png"],
     "targets": ["nsis", "msi"],
-    "windows": {"nsis": {"installMode": "currentUser", "displayLanguageSelector": true}, "wix": {"language": ["en-US"]}}
+    "homepage": "https://github.com/VocaHQ/vocawin/blob/main/docs/setup.md",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "headerImage": "icons/installer/nsis-header.bmp",
+        "sidebarImage": "icons/installer/nsis-sidebar.bmp",
+        "installerIcon": "icons/installer/setup-icon.ico",
+        "uninstallerIcon": "icons/installer/setup-icon.ico",
+        "installerHooks": "windows/nsis-hooks.nsh"
+      },
+      "wix": {
+        "language": {
+          "en-US": {
+            "localePath": "windows/wix-en-us.wxl"
+          }
+        },
+        "bannerPath": "icons/installer/wix-banner.bmp",
+        "dialogImagePath": "icons/installer/wix-dialog.bmp"
+      }
+    }
   }
 }
