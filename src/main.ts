@@ -683,7 +683,7 @@ async function testDictation() {
         return;
       }
       testingDictation = true;
-      await invoke("start_recording");
+      await invoke("start_recording", { noInject: true });
       recording = true;
       testListening = true;
       testingDictation = false;
@@ -760,6 +760,14 @@ listen<string>("dictation-finished", async event => {
   await refreshHistory().catch(() => undefined);
   await refreshRuntime().catch(() => undefined);
   noticeText = event.payload ? `Inserted: ${event.payload}` : emptySpeechMessage();
+  render();
+}).catch(() => undefined);
+listen<string>("test-dictation-finished", async event => {
+  recording = false;
+  testListening = false;
+  await refreshHistory().catch(() => undefined);
+  await refreshRuntime().catch(() => undefined);
+  noticeText = event.payload ? `Test result: ${event.payload}` : emptySpeechMessage();
   render();
 }).catch(() => undefined);
 listen<string>("dictation-error", event => {

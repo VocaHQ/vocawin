@@ -739,11 +739,27 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
     sounds::play_if_enabled(sound, false);
     match transcribe_samples(&state, samples, sample_rate) {
         Ok(text) if !text.is_empty() => {
-            let _ = output::inject(&text);
-            let _ = app.emit("dictation-finished", text);
+            let inject = *state
+                .inject_on_auto_stop
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if inject {
+                let _ = output::inject(&text);
+                let _ = app.emit("dictation-finished", text);
+            } else {
+                let _ = app.emit("test-dictation-finished", text);
+            }
         }
         Ok(_) => {
-            let _ = app.emit("dictation-finished", String::new());
+            let inject = *state
+                .inject_on_auto_stop
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if inject {
+                let _ = app.emit("dictation-finished", String::new());
+            } else {
+                let _ = app.emit("test-dictation-finished", String::new());
+            }
         }
         Err(error) => {
             sounds::play_error_if_enabled(sound);
@@ -783,6 +799,8 @@ struct AppState {
     downloads: Mutex<HashMap<String, ModelInstallStatus>>,
     recorder: AudioRecorder,
     recording: Mutex<bool>,
+    /// When false, silence/max auto-stop must not inject (Test Dictation).
+    inject_on_auto_stop: Mutex<bool>,
     registered_hotkey: Mutex<String>,
     dictation_paused: Mutex<bool>,
     whisper_cache: whisper_cache::WhisperCache,
@@ -1523,10 +1541,11 @@ fn write_pcm_wav(path: &std::path::Path, pcm: &[f32]) -> Result<(), String> {
         .map_err(|error| format!("Could not finalize audio for transcription: {error}"))
 }
 
-/// Begins microphone capture. The UI should call `stop_and_transcribe` after
-/// push-to-talk is released (or when toggle mode is stopped).
-#[tauri::command]
-fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+/// Begins microphone capture. Claim the session before opening WASAPI so a
+/// PTT release cannot miss an in-flight start. `inject` is false for Test
+/// Dictation so silence/max auto-stop will not type into the front app.
+fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
+    let state = app.state::<AppState>();
     if *state
         .dictation_paused
         .lock()
@@ -1534,31 +1553,61 @@ fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
     {
         return Err("Dictation is paused while a watched app is running.".into());
     }
+    {
+        let mut recording = state
+            .recording
+            .lock()
+            .map_err(|_| "Recording lock was poisoned")?;
+        if *recording {
+            return Ok(());
+        }
+        *recording = true;
+    }
+    *state
+        .inject_on_auto_stop
+        .lock()
+        .map_err(|_| "Inject lock was poisoned")? = inject;
     let settings = state
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
     if !model_is_installed(&state.models_path, &settings.selected_model) {
+        *state
+            .recording
+            .lock()
+            .map_err(|_| "Recording lock was poisoned")? = false;
         return Err(format!(
             "No speech model is installed. Open Models and download {} first.",
             settings.selected_model
         ));
     }
-    state.recorder.start(
+    if let Err(error) = state.recorder.start(
         settings.silence_seconds,
         settings.max_recording_seconds,
         settings.input_device.clone(),
         settings.activation_mode == "toggle",
-    )?;
-    *state
-        .recording
-        .lock()
-        .map_err(|_| "Recording lock was poisoned")? = true;
+    ) {
+        *state
+            .recording
+            .lock()
+            .map_err(|_| "Recording lock was poisoned")? = false;
+        return Err(error);
+    }
     sounds::play_if_enabled(settings.sound_effects, true);
     let _ = app.emit("recording-changed", true);
-    set_tray_recording(&app, true);
+    set_tray_phase(app, TrayPhase::Listening);
     Ok(())
+}
+
+/// Begins microphone capture. The UI should call `stop_and_transcribe` after
+/// push-to-talk is released (or when toggle mode is stopped).
+#[tauri::command]
+fn start_recording(
+    app: AppHandle,
+    no_inject: Option<bool>,
+) -> Result<(), String> {
+    begin_voice_session(&app, !no_inject.unwrap_or(false))
 }
 
 fn transcribe_samples(
@@ -1865,6 +1914,7 @@ pub fn run() {
                 downloads: Mutex::new(HashMap::new()),
                 recorder: AudioRecorder::new(handle.clone()),
                 recording: Mutex::new(false),
+                inject_on_auto_stop: Mutex::new(true),
                 registered_hotkey: Mutex::new(settings.hotkey.clone()),
                 dictation_paused: Mutex::new(false),
                 whisper_cache,
@@ -1990,52 +2040,20 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                     }
                     let _ = handle.emit("recording-changed", false);
                     set_tray_phase(handle, TrayPhase::Idle);
-                } else if !model_is_installed(&state.models_path, &settings.selected_model) {
-                    let message = format!(
-                        "No speech model is installed. Open Models and download {} first.",
-                        settings.selected_model
-                    );
-                    sounds::play_error_if_enabled(settings.sound_effects);
-                    logbuf::push_and_emit(handle, message.clone());
-                    let _ = handle.emit("dictation-error", message);
-                } else if state
-                    .recorder
-                    .start(
-                        settings.silence_seconds,
-                        settings.max_recording_seconds,
-                        settings.input_device.clone(),
-                        true,
-                    )
-                    .is_ok()
-                {
-                    *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
-                    sounds::play_if_enabled(settings.sound_effects, true);
-                    let _ = handle.emit("recording-changed", true);
-                    set_tray_phase(handle, TrayPhase::Listening);
+                } else if let Err(error) = begin_voice_session(handle, true) {
+                    if error.contains("No speech model is installed") {
+                        sounds::play_error_if_enabled(settings.sound_effects);
+                        logbuf::push_and_emit(handle, error.clone());
+                        let _ = handle.emit("dictation-error", error);
+                    }
                 }
             } else if !recording {
-                if !model_is_installed(&state.models_path, &settings.selected_model) {
-                    let message = format!(
-                        "No speech model is installed. Open Models and download {} first.",
-                        settings.selected_model
-                    );
-                    sounds::play_error_if_enabled(settings.sound_effects);
-                    logbuf::push_and_emit(handle, message.clone());
-                    let _ = handle.emit("dictation-error", message);
-                } else if state
-                    .recorder
-                    .start(
-                        settings.silence_seconds,
-                        settings.max_recording_seconds,
-                        settings.input_device.clone(),
-                        false,
-                    )
-                    .is_ok()
-                {
-                    *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
-                    sounds::play_if_enabled(settings.sound_effects, true);
-                    let _ = handle.emit("recording-changed", true);
-                    set_tray_phase(handle, TrayPhase::Listening);
+                if let Err(error) = begin_voice_session(handle, true) {
+                    if error.contains("No speech model is installed") {
+                        sounds::play_error_if_enabled(settings.sound_effects);
+                        logbuf::push_and_emit(handle, error.clone());
+                        let _ = handle.emit("dictation-error", error);
+                    }
                 }
             }
         }
@@ -2276,46 +2294,7 @@ fn show_logs_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn tray_start_voice(app: &AppHandle) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    if *state
-        .dictation_paused
-        .lock()
-        .map_err(|_| "Pause lock was poisoned")?
-    {
-        return Err("Dictation is paused while a watched app is running.".into());
-    }
-    if *state
-        .recording
-        .lock()
-        .map_err(|_| "Recording lock was poisoned")?
-    {
-        return Ok(());
-    }
-    let settings = state
-        .settings
-        .lock()
-        .map_err(|_| "Settings lock was poisoned")?
-        .clone();
-    if !model_is_installed(&state.models_path, &settings.selected_model) {
-        return Err(format!(
-            "No speech model is installed. Open Models and download {} first.",
-            settings.selected_model
-        ));
-    }
-    state.recorder.start(
-        settings.silence_seconds,
-        settings.max_recording_seconds,
-        settings.input_device.clone(),
-        settings.activation_mode == "toggle",
-    )?;
-    *state
-        .recording
-        .lock()
-        .map_err(|_| "Recording lock was poisoned")? = true;
-    sounds::play_if_enabled(settings.sound_effects, true);
-    let _ = app.emit("recording-changed", true);
-    set_tray_phase(app, TrayPhase::Listening);
-    Ok(())
+    begin_voice_session(app, true)
 }
 
 fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {

@@ -8,6 +8,7 @@
 
 use crate::hotkey::HotkeySpec;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
 use tauri::AppHandle;
 
@@ -40,6 +41,7 @@ struct HookShared {
 
 static SHARED: OnceLock<Mutex<HookShared>> = OnceLock::new();
 static HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+static EVENT_TX: OnceLock<mpsc::Sender<HookEvent>> = OnceLock::new();
 
 fn shared() -> &'static Mutex<HookShared> {
     SHARED.get_or_init(|| {
@@ -56,11 +58,21 @@ fn shared() -> &'static Mutex<HookShared> {
 pub fn start(app: AppHandle) {
     {
         let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
-        guard.app = Some(app);
+        guard.app = Some(app.clone());
     }
     if HOOK_ACTIVE.swap(true, Ordering::SeqCst) {
         return;
     }
+    let (tx, rx) = mpsc::channel();
+    let _ = EVENT_TX.set(tx);
+    std::thread::Builder::new()
+        .name("vocawin-hotkey-actor".into())
+        .spawn(move || {
+            while let Ok(event) = rx.recv() {
+                crate::on_hotkey_event(&app, event);
+            }
+        })
+        .ok();
     std::thread::Builder::new()
         .name("vocawin-hotkey".into())
         .spawn(|| {
@@ -153,7 +165,7 @@ unsafe extern "system" fn low_level_proc(
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
-    let (should_handle, event, app) = {
+    let (should_handle, event) = {
         let guard = match shared().lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -172,14 +184,12 @@ unsafe extern "system" fn low_level_proc(
         } else {
             HookEvent::Released
         };
-        (true, event, guard.app.clone())
+        (true, event)
     };
 
     if should_handle {
-        if let Some(app) = app {
-            std::thread::spawn(move || {
-                crate::on_hotkey_event(&app, event);
-            });
+        if let Some(tx) = EVENT_TX.get() {
+            let _ = tx.send(event);
         }
         return LRESULT(1);
     }
