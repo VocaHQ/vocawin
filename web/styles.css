@@ -317,8 +317,27 @@ code {
   background: white;
 }
 
+.hero-quiet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: center;
+  margin: 14px 0 0;
+  color: #6b726e;
+  font-size: 13px;
+}
+
+.hero-quiet a {
+  color: var(--brand-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 .hero-note {
-  margin: 16px 0 0;
+  max-width: 42rem;
+  margin: 16px auto 0;
   color: #7c827e;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1450,6 +1469,20 @@ code {
 
 .status-card .button {
   width: 100%;
+}
+
+.status-quiet {
+  margin: 14px 0 0;
+  color: #6b726e;
+  font-size: 13px;
+  text-align: center;
+}
+
+.status-quiet a {
+  color: var(--brand-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
 
 .hq-callout {

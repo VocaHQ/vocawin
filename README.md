@@ -1,8 +1,8 @@
 # VocaWin
 
-**Voice-to-text for Windows** | Coming soon
+**Voice-to-text for Windows** | Developer alpha. Unsigned.
 
-VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC after you download a model. There is no stable public installer yet.
+VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text runs on this PC after you download a model. Testers can grab an unsigned developer alpha from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). The latest tagged build is [v0.1.0-alpha.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-alpha.1). This is not a signed store build and not a stable public release.
 
 [![Website](https://img.shields.io/badge/Website-vocawin.com-0F6B57?style=flat-square)](https://vocawin.com)
 [![Alpha](https://img.shields.io/badge/Status-Alpha-0F6B57?style=flat-square)](#development)
@@ -14,7 +14,7 @@ VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a
 
 ## What is VocaWin?
 
-VocaWin is being built as native Windows voice typing. After a Whisper or ONNX model is on disk, recording and speech-to-text are meant to stay on this PC. No Voca account, no hosted speech API.
+VocaWin is native Windows voice typing. After a Whisper or ONNX model is on disk, recording and speech-to-text stay on this PC. No Voca account, no hosted speech API.
 
 It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.com), and [VocaPhone](https://vocaphone.vocahq.com). The family directory is [vocahq.com](https://vocahq.com).
 
@@ -23,14 +23,14 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 - **On this PC** - After the model download, transcription is designed to run locally
 - **No Voca cloud** - There is no hosted speech service to sign up for
 - **Open source** - The repository is public
-- **No telemetry in the product** - The planned app does not phone home
+- **No telemetry in the product** - The app does not phone home
 - **Windows native** - Tray app, hotkey, WASAPI, text at the caret
-- **Honest status** - Coming soon means there is no shipping installer
+- **Honest status** - Developer alpha. Unsigned. Windows will likely say the publisher is unknown.
 
 ## Planned Features
 
 - **System-wide text injection** - Transcribed text appears wherever your cursor is
-- **Push-to-talk and toggle** - Hold a hotkey (planned default: Right Alt, like VocaLinux) or double-tap to toggle
+- **Push-to-talk and toggle** - Hold a hotkey (default: Right Alt, like VocaLinux) or double-tap to toggle
 - **GPU acceleration** - NVIDIA CUDA, AMD, and Intel paths via whisper.cpp
 - **Language support** - Follows the selected Whisper model
 - **Configurable settings** - Hotkeys, models, languages, silence detection
@@ -93,7 +93,7 @@ Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) 
 | Linux | **VocaLinux** | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available |
 | macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Beta / source build |
-| Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Coming soon |
+| Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Developer alpha |
 | Infrastructure | **VocaGateway** | | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
@@ -118,9 +118,9 @@ npm run check           # TypeScript build + Rust tests
 
 A macOS/Linux host can validate the frontend and Rust command layer, but Windows injection and installer artifacts must be exercised on Windows 10/11.
 
-Windows CI also builds an unsigned NSIS (and MSI) installer and uploads it as a GitHub Actions workflow artifact. That artifact is an alpha/dev build for trying the app, not a public release. It is not signed. Pull requests and pushes to main stay artifact-only. Testers can read [the setup guide](docs/setup.md) for SmartScreen, first-run model download, and tray colors.
+Windows CI also builds an unsigned NSIS (and MSI) installer and uploads it as a GitHub Actions workflow artifact. Pull requests and pushes to main stay artifact-only.
 
-Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same unsigned NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. That is for testers. It is not a signed store build, and vocawin.com stays Coming soon.
+Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same unsigned NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is not signed. Windows will likely say the publisher is unknown. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
 ## System Requirements (planned)
 
@@ -143,7 +143,7 @@ GitHub Actions publishes `web/` on pushes to `main`. The `web/CNAME` file maps `
 
 ## Contributing
 
-VocaWin is in early development. Star the repo to follow progress, or browse the family at [vocahq.com](https://vocahq.com).
+VocaWin is in early development. Download the unsigned alpha from [Releases](https://github.com/VocaHQ/vocawin/releases) if you want to try it. File bugs on [Issues](https://github.com/VocaHQ/vocawin/issues). The family directory is [vocahq.com](https://vocahq.com).
 
 ## Project references
 

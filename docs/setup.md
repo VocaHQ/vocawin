@@ -1,6 +1,6 @@
 # Setup guide
 
-This is the tester page for the unsigned VocaWin alpha. vocawin.com is still Coming soon. There is no Voca account and no hosted speech API.
+This is the tester page for the unsigned VocaWin alpha. [vocawin.com](https://vocawin.com) points testers at [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). There is no Voca account and no hosted speech API.
 
 Windows may warn you. SmartScreen and Unknown publisher are expected because this build is not signed. Use More info, then Run anyway, if you trust the GitHub artifact you downloaded.
 
