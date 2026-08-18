@@ -22,6 +22,8 @@
 .language-picker input,.language-picker select{width:205px}
 .mic-test{display:grid;gap:8px;justify-items:end;min-width:205px}
 .level-meter{width:205px;height:8px;border-radius:999px;background:#e3e9e5;overflow:hidden}
+.brand{flex-wrap:wrap}
+.brand-tag{display:inline-flex;align-items:center;height:18px;border-radius:999px;padding:0 7px;background:#f1f4f1;color:#53635d;font-size:9px;font-weight:700;letter-spacing:.35px;line-height:1;flex:none}
 .level-meter span{display:block;height:100%;width:0;background:#0f6b57;transition:width .08s linear}
 .status-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .model-meta .install-state.failed{color:#8a2f2f}
@@ -32,4 +34,4 @@
 .logs-main{width:100%;padding:36px 42px}
 .log-panel{background:#fff;border:1px solid #e3e9e5;border-radius:12px;padding:14px 16px;max-height:calc(100vh - 180px);overflow:auto;font-family:Consolas,"Segoe UI Mono",monospace;font-size:12px;line-height:1.45}
 .log-line{padding:4px 0;border-bottom:1px solid #f1f4f1;color:#28332e;white-space:pre-wrap}
-@media(prefers-color-scheme:dark){.settings-group,.recording-hint{color:#77d0b2}.gpu-readout span,.settings-status span{color:#c2c8c3}.settings-search input,.stacked-control textarea,.stacked-control input[type=number],.language-picker input,.language-picker select{background:#292c29;border-color:#3c403d;color:#e3e4e1}.settings-status{border-color:#3c403d}.hw-tip{background:#34463d;color:#c3f3e0}.level-meter{background:#3c403d}.level-meter span{background:#77d0b2}.welcome-card,.log-panel{background:#1f211f;border-color:#3c403d}.welcome-card p,.log-line{color:#c2c8c3}.log-line{border-color:#30332f}.model-meta .install-state.failed{color:#f0a0a0}}
+@media(prefers-color-scheme:dark){.brand-tag{background:#292c29;color:#c2c8c3}.settings-group,.recording-hint{color:#77d0b2}.gpu-readout span,.settings-status span{color:#c2c8c3}.settings-search input,.stacked-control textarea,.stacked-control input[type=number],.language-picker input,.language-picker select{background:#292c29;border-color:#3c403d;color:#e3e4e1}.settings-status{border-color:#3c403d}.hw-tip{background:#34463d;color:#c3f3e0}.level-meter{background:#3c403d}.level-meter span{background:#77d0b2}.welcome-card,.log-panel{background:#1f211f;border-color:#3c403d}.welcome-card p,.log-line{color:#c2c8c3}.log-line{border-color:#30332f}.model-meta .install-state.failed{color:#f0a0a0}}
