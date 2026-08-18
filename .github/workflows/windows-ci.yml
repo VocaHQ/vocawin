@@ -61,7 +61,9 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
   installer:
-    name: Unsigned Windows installer (alpha)
+    name: Windows installer (alpha)
+    # PRs only cargo test. Packaging NSIS/MSI is main + workflow_dispatch.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     env:
       CARGO_TARGET_DIR: C:\t
@@ -95,7 +97,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Install frontend dependencies
         run: npm ci
-      - name: Build unsigned NSIS and MSI installers
+      - name: Build NSIS and MSI installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -103,10 +105,22 @@ jobs:
           CMAKE_GENERATOR: Ninja
         with:
           # Build only. Do not set tagName. Tag Releases live in
-          # windows-alpha-release.yml so PR and main stay artifact-only.
+          # windows-alpha-release.yml so main stays artifact-only.
           args: --bundles nsis,msi
           includeUpdaterJson: false
-      - name: Upload unsigned alpha installers
+      # tauri-action with CARGO_TARGET_DIR=C:\t writes:
+      #   C:\t\release\bundle\nsis\VocaWin_*_x64-setup.exe
+      #   C:\t\release\bundle\msi\VocaWin_*_x64_en-US.msi
+      # Confirmed on the 2026-08-18 installer job (run 32196306136).
+      - name: Self-sign alpha installers
+        id: sign
+        shell: pwsh
+        env:
+          VOCAWIN_SELF_SIGN_PFX: ${{ secrets.VOCAWIN_SELF_SIGN_PFX }}
+          VOCAWIN_SELF_SIGN_PASSWORD: ${{ secrets.VOCAWIN_SELF_SIGN_PASSWORD }}
+        run: |
+          & "${{ github.workspace }}/.github/scripts/self-sign-alpha.ps1"
+      - name: Upload Windows alpha installers
         uses: actions/upload-artifact@v4
         with:
           name: VocaWin-windows-alpha
