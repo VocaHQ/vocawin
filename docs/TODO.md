@@ -35,8 +35,9 @@ This checklist tracks the path from the current local-recognition foundation to 
 
 - [x] Settings persistence and NSIS/MSI Tauri configuration
 - [x] Windows CI compilation job (Vulkan SDK + Ninja generator for whisper-rs)
-- [x] Unsigned NSIS/MSI installer artifact job (alpha/dev, no signing; PR/main stay artifact-only)
-- [x] Tag-triggered unsigned GitHub Release for testers (`v*` tags, always prerelease)
+- [x] NSIS/MSI installer artifact job (alpha/dev; PR/main stay artifact-only)
+- [x] Tag-triggered GitHub Release for testers (`v*` tags, always prerelease)
+- [x] CI self-sign for alpha NSIS/MSI (self-signed; SmartScreen still warns; forks stay unsigned)
 - [x] Official Voca mic app/tray icons (brand book §9 / §10)
 - [x] System tray menu: Start/Stop Voice Typing, Start on Login, Settings, View Logs, About, Quit
 - [x] Launch at login and single-instance focus (`--start-minimized` for login / CLI)
