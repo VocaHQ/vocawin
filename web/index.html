@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="VocaWin is Windows voice typing that is being built to run speech-to-text on this PC. There is no public installer yet. It is part of the Voca family at vocahq.com."
+      content="VocaWin is Windows voice typing that runs speech-to-text on this PC. Testers can grab an unsigned developer alpha from GitHub Releases. It is part of the Voca family at vocahq.com."
     />
     <meta name="theme-color" content="#f4f1e8" />
     <meta name="robots" content="index, follow" />
@@ -14,7 +14,7 @@
     <meta property="og:title" content="VocaWin: voice typing that stays on this PC" />
     <meta
       property="og:description"
-      content="A Windows project in the Voca family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text is designed to run on this PC. No public installer yet."
+      content="A Windows project in the Voca family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text runs on this PC after a one-time model download. Unsigned developer alpha for testers, not a store release."
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
@@ -27,18 +27,18 @@
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="VocaWin: Windows voice typing that stays on this PC. Coming soon. Part of VocaHQ."
+      content="VocaWin: Windows voice typing that stays on this PC. Developer alpha. Unsigned. Part of VocaHQ."
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="VocaWin: voice typing that stays on this PC" />
     <meta
       name="twitter:description"
-      content="Windows voice typing for the Voca family. Designed to run on this PC. No public installer yet."
+      content="Windows voice typing for the Voca family. Speech-to-text runs on this PC after a one-time model download. Unsigned developer alpha for testers."
     />
     <meta name="twitter:image" content="https://vocawin.com/assets/og-image.png" />
     <meta
       name="twitter:image:alt"
-      content="VocaWin: Windows voice typing that stays on this PC. Coming soon. Part of VocaHQ."
+      content="VocaWin: Windows voice typing that stays on this PC. Developer alpha. Unsigned. Part of VocaHQ."
     />
     <title>VocaWin: voice typing that stays on this PC</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -56,14 +56,17 @@
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Windows 10, Windows 11",
         "url": "https://vocawin.com/",
+        "downloadUrl": "https://github.com/VocaHQ/vocawin/releases",
+        "softwareVersion": "0.1.0-alpha.1",
         "isAccessibleForFree": true,
         "offers": {
           "@type": "Offer",
           "price": "0",
           "priceCurrency": "USD",
-          "availability": "https://schema.org/PreOrder"
+          "availability": "https://schema.org/LimitedAvailability",
+          "url": "https://github.com/VocaHQ/vocawin/releases"
         },
-        "description": "Windows voice typing being built so speech-to-text can run on this PC. No public installer yet.",
+        "description": "Unsigned developer alpha of Windows voice typing. Speech-to-text runs on this PC after a one-time model download. Not a Microsoft Store listing or signed public release.",
         "isPartOf": {
           "@type": "Organization",
           "name": "VocaHQ",
@@ -98,17 +101,17 @@
         <a href="#privacy">privacy</a>
         <a href="#family">family</a>
         <a href="#questions">questions</a>
-        <a class="nav-cta" href="https://github.com/VocaHQ/vocawin">follow the repo</a>
+        <a class="nav-cta" href="https://github.com/VocaHQ/vocawin/releases">download the alpha</a>
       </nav>
 
       <div class="system-strip" aria-hidden="true">
         <span class="signal">▣</span>
-        <span>coming soon</span>
+        <span>developer alpha · unsigned</span>
         <span data-local-time>10:09</span>
       </div>
 
-      <a class="header-cta" href="https://github.com/VocaHQ/vocawin">
-        follow the repo
+      <a class="header-cta" href="https://github.com/VocaHQ/vocawin/releases">
+        download the alpha
         <span aria-hidden="true">↗</span>
       </a>
     </header>
@@ -135,15 +138,15 @@
               <span class="status-dot"></span>
               <div>
                 <strong>VocaWin</strong>
-                <small>idle · planned default Right Ctrl</small>
+                <small>idle · default Right Alt</small>
               </div>
             </div>
           </div>
 
           <div class="floating-card status-note">
             <span>release status</span>
-            <b>coming soon</b>
-            <b>no installer</b>
+            <b>developer alpha</b>
+            <b>unsigned</b>
             <b>source public</b>
           </div>
 
@@ -162,7 +165,7 @@
 
           <div class="key-art">
             <img src="assets/art/keyboard.svg" alt="" width="140" height="58" />
-            <span>Right Ctrl</span>
+            <span>Right Alt</span>
           </div>
 
           <div class="floating-folder folder-one"><span></span><b>models</b></div>
@@ -178,22 +181,26 @@
           <h1 id="hero-title">vocawin</h1>
           <p class="hero-lede">voice typing that stays on this PC.</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin/releases">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
-                  d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.36 1.08 2.94.83.09-.66.35-1.08.64-1.33-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.66 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.8c.85 0 1.71.11 2.51.33 1.9-1.29 2.74-1.02 2.74-1.02.55 1.38.2 2.41.1 2.66.64.7 1.03 1.6 1.03 2.69 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"
+                  d="M12 3.75a.75.75 0 0 1 .75.75v9.19l2.72-2.72a.75.75 0 1 1 1.06 1.06l-4 4a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 0 1 1.06-1.06l2.72 2.72V4.5A.75.75 0 0 1 12 3.75ZM4.5 16.5A.75.75 0 0 1 5.25 15.75h13.5a.75.75 0 0 1 0 1.5H5.25A.75.75 0 0 1 4.5 16.5Z"
                 />
               </svg>
-              follow the repo
-            </a>
-            <a class="button button-secondary" href="https://vocahq.com/">
-              visit vocahq.com
-              <span aria-hidden="true">↗</span>
+              download the alpha
             </a>
           </div>
+          <p class="hero-quiet">
+            <a href="https://github.com/VocaHQ/vocawin/issues">file an issue</a>
+            <span aria-hidden="true">·</span>
+            <a href="https://github.com/VocaHQ/vocawin">source</a>
+          </p>
           <p class="hero-note">
-            coming soon · Windows 10/11 · no public installer · part of
-            <a href="https://vocahq.com/">vocahq.com</a>
+            Developer alpha. Unsigned. Windows will likely say the publisher is
+            unknown. More info, then Run anyway. Latest tagged build:
+            <a href="https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-alpha.1">v0.1.0-alpha.1</a>.
+            Newer tags stay on
+            <a href="https://github.com/VocaHQ/vocawin/releases">Releases</a>.
           </p>
           <ul class="hero-proof">
             <li>
@@ -225,7 +232,7 @@
               ><span class="text-caret"></span>
             </p>
           </div>
-          <div class="window-caption">hold Right Ctrl. text appears at the cursor.</div>
+          <div class="window-caption">hold Right Alt. text appears at the cursor.</div>
           <div class="local-sticker">transcribed on<br /><strong>this PC</strong></div>
         </div>
       </section>
@@ -268,10 +275,10 @@
             <p class="tiny-label">the intended gesture</p>
             <h3>text lands at the cursor.</h3>
             <p>
-              VocaWin is being built as a tray app for Windows 10 and 11. Hold
-              the hotkey (planned default: Right Ctrl), speak, and the app is
-              meant to inject text through SendInput. Browser, editor, chat,
-              terminal: wherever Windows will accept keystrokes.
+              VocaWin is a tray app for Windows 10 and 11. Hold the hotkey
+              (default: Right Alt), speak, and the app injects text through
+              SendInput. Browser, editor, chat, terminal: wherever Windows
+              will accept keystrokes.
             </p>
           </div>
           <div class="story-visual" aria-hidden="true">
@@ -304,13 +311,13 @@
             <h3>the model is meant to run here.</h3>
             <p>
               After you download a Whisper model, recording and speech-to-text
-              are designed to stay on this Windows machine. That is on-device
-              processing, not a Voca cloud. A network is needed for the first
-              model download, then dictation can work offline.
+              stay on this Windows machine. That is on-device processing, not a
+              Voca cloud. A network is needed for the first model download,
+              then dictation can work offline.
             </p>
             <ul class="clean-list">
               <li><span>✓</span> microphone captures audio on this PC</li>
-              <li><span>✓</span> speech-to-text model is planned to run locally</li>
+              <li><span>✓</span> speech-to-text model runs locally</li>
               <li><span>✓</span> no Voca account is required</li>
             </ul>
           </div>
@@ -363,7 +370,7 @@
                 <span>Linux · available</span>
                 <span>macOS · beta</span>
                 <span>phone · beta / source</span>
-                <span class="current">Windows · coming soon</span>
+                <span class="current">Windows · developer alpha</span>
                 <span>gateway · early</span>
               </div>
             </div>
@@ -374,11 +381,11 @@
       <section class="how-section dot-field" id="how" aria-labelledby="how-title">
         <div class="section-heading reveal">
           <span class="section-tag">how it works</span>
-          <h2 id="how-title">the planned path<br />on Windows.</h2>
+          <h2 id="how-title">the path<br />on this PC.</h2>
           <p>
-            This is the intended flow from the in-progress app. It is not a
-            shipping installer, and none of these steps are available as a
-            public download yet.
+            This is the flow in the unsigned alpha. Download a model once, hold
+            the hotkey, and text is meant to land at the caret. It is still
+            tester-only, not a store listing.
           </p>
         </div>
 
@@ -390,7 +397,7 @@
                 <div class="model-file-icon">W</div>
                 <div>
                   <strong>tiny.en</strong>
-                  <small>planned first model · ~75 MB</small>
+                  <small>first model · ~75 MB</small>
                 </div>
                 <div class="model-progress"><i></i></div>
                 <span>needs a network this once</span>
@@ -408,14 +415,14 @@
             <div class="step-topline"><span>2</span><b>speak</b></div>
             <div class="step-art" aria-hidden="true">
               <div class="hotkey-chip">
-                <kbd>Right Ctrl</kbd>
-                <small>planned default · push to talk</small>
+                <kbd>Right Alt</kbd>
+                <small>default · push to talk</small>
               </div>
             </div>
             <h3>hold and talk</h3>
             <p>
-              Hold Right Ctrl to record, or use the planned double-tap toggle.
-              The tray icon is meant to show idle, recording, and processing.
+              Hold Right Alt to record, or use the double-tap toggle. The tray
+              icon shows idle, recording, and processing.
             </p>
           </article>
 
@@ -431,17 +438,21 @@
             <h3>text is injected</h3>
             <p>
               The transcript is meant to appear in the focused field. Elevated
-              admin windows may refuse SendInput. That limitation will be
-              documented if it ships that way.
+              admin windows may refuse SendInput. That limitation is real in
+              this alpha.
             </p>
           </article>
         </div>
 
         <p class="platform-honesty reveal">
-          <span>honest status:</span> there is no MSI, Microsoft Store listing,
-          or public binary on this site. Follow
-          <a href="https://github.com/VocaHQ/vocawin">the VocaWin repository</a>
-          for the Windows foundation as it lands.
+          <span>honest status:</span> GitHub Releases has an NSIS current-user
+          <code>setup.exe</code> and an MSI. Both are unsigned. Windows will
+          likely say the publisher is unknown. More info, then Run anyway.
+          There is no Microsoft Store listing and no auto-update.
+          <a href="https://github.com/VocaHQ/vocawin/blob/main/docs/setup.md">Read the setup guide</a>
+          first, and
+          <a href="https://github.com/VocaHQ/vocawin/issues">file an issue</a>
+          if something breaks.
         </p>
       </section>
 
@@ -460,9 +471,9 @@
               <span class="section-tag">privacy is a route</span>
               <h2 id="privacy-title">on this Windows PC.<br />not a Voca cloud.</h2>
               <p>
-                The product being built records with WASAPI on this machine and
-                runs a local speech-to-text model. That is on-device. It is not
-                self-hosted gateway mode, and it is not a hosted speech API.
+                The alpha records with WASAPI on this machine and runs a local
+                speech-to-text model. That is on-device. It is not self-hosted
+                gateway mode, and it is not a hosted speech API.
               </p>
               <div class="gateway-paths">
                 <article class="gateway-path">
@@ -507,25 +518,32 @@
       <section class="status-section" id="status" aria-labelledby="status-title">
         <div class="section-heading reveal">
           <span class="section-tag">availability</span>
-          <h2 id="status-title">coming soon means<br />no download button.</h2>
+          <h2 id="status-title">an unsigned alpha,<br />not a store listing.</h2>
           <p>
-            VocaHQ lists VocaWin as in progress. Treat that literally. You
-            cannot install it from this page.
+            You can install a tester build from GitHub Releases. Treat it as
+            early. It is not signed, not on the Microsoft Store, and not a
+            stable public release.
           </p>
         </div>
         <div class="status-grid">
           <article class="status-card reveal">
             <p class="tiny-label">today</p>
-            <h3>Follow the source</h3>
+            <h3>Download the alpha</h3>
             <ul class="install-facts">
-              <li><b>Status</b><span>Coming soon, no shipping build</span></li>
-              <li><b>Requires</b><span>Windows 10 version 1809+ or Windows 11, when it ships</span></li>
+              <li><b>Status</b><span>Developer alpha. Unsigned.</span></li>
+              <li><b>Files</b><span>NSIS current-user setup.exe and MSI</span></li>
+              <li><b>Needs</b><span>Windows 10 version 1809+ or Windows 11</span></li>
               <li><b>License</b><span>AGPL-3.0-or-later</span></li>
-              <li><b>Code</b><span>github.com/VocaHQ/vocawin</span></li>
+              <li><b>Guide</b><span>docs/setup.md in the repo</span></li>
             </ul>
-            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
-              open the repository <span aria-hidden="true">↗</span>
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin/releases">
+              open GitHub Releases <span aria-hidden="true">↗</span>
             </a>
+            <p class="status-quiet">
+              <a href="https://github.com/VocaHQ/vocawin/issues">file an issue</a>
+              ·
+              <a href="https://github.com/VocaHQ/vocawin">source</a>
+            </p>
           </article>
           <article class="status-card reveal">
             <p class="tiny-label">known limits</p>
@@ -533,8 +551,9 @@
             <ul class="clean-list">
               <li><span>✓</span> first model download needs a network</li>
               <li><span>✓</span> elevated windows may block text injection</li>
-              <li><span>✓</span> GPU backends are planned, not a download you can try</li>
-              <li><span>✓</span> language coverage will follow the selected Whisper model</li>
+              <li><span>✓</span> Windows will likely warn about an unknown publisher</li>
+              <li><span>✓</span> no auto-update, and no signed publisher yet</li>
+              <li><span>✓</span> language coverage follows the selected Whisper model</li>
             </ul>
           </article>
         </div>
@@ -650,13 +669,14 @@
               <span class="section-tag">the whole point</span>
               <h2 id="open-title">Windows should get the same honest deal.</h2>
               <p>
-                VocaWin is being built in the open as a native Windows app: tray
-                icon, hotkey, local Whisper model, text at the caret. No Voca
-                account. No hosted speech service. When a release exists, this
-                page will say so in plain language.
+                VocaWin is a native Windows app built in the open: tray icon,
+                hotkey, local Whisper model, text at the caret. No Voca
+                account. No hosted speech service. The unsigned alpha lives on
+                GitHub Releases. This is still a tester build, not a signed
+                store ship.
               </p>
-              <a class="text-link" href="https://github.com/VocaHQ/vocawin">
-                read the repository on GitHub <span>↗</span>
+              <a class="text-link" href="https://github.com/VocaHQ/vocawin/releases">
+                download the alpha from Releases <span>↗</span>
               </a>
             </div>
             <div class="manifesto-aside" aria-hidden="true">
@@ -680,28 +700,36 @@
           <details open>
             <summary>Can I install VocaWin today?<span aria-hidden="true">＋</span></summary>
             <p>
-              No. There is no public installer, Microsoft Store listing, or
-              shipping release. Star or watch
-              <a href="https://github.com/VocaHQ/vocawin">the repository</a>
-              if you want to see a build land.
+              Yes. An unsigned developer alpha is on
+              <a href="https://github.com/VocaHQ/vocawin/releases">GitHub Releases</a>.
+              The latest tagged build is
+              <a href="https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-alpha.1">v0.1.0-alpha.1</a>.
+              Windows will likely warn that the publisher is unknown. That is
+              SmartScreen doing its job. More info, then Run anyway if you
+              trust the file. This is not a Microsoft Store listing and not a
+              signed public release. Read
+              <a href="https://github.com/VocaHQ/vocawin/blob/main/docs/setup.md">the setup guide</a>
+              first, and
+              <a href="https://github.com/VocaHQ/vocawin/issues">file an issue</a>
+              if something breaks.
             </p>
           </details>
           <details>
             <summary>Does my voice stay on this PC?<span aria-hidden="true">＋</span></summary>
             <p>
               That is the design. After a Whisper model is downloaded, recording
-              and speech-to-text are meant to run on this Windows machine with
-              no Voca cloud. The first model download does need a network.
-              Do not treat “coming soon” as a guarantee of the shipping build.
+              and speech-to-text run on this Windows machine. No Voca cloud, no
+              Voca account, no hosted speech API. The first model download does
+              need a network. Treat the alpha as early.
             </p>
           </details>
           <details>
             <summary>Do I need VocaGateway?<span aria-hidden="true">＋</span></summary>
             <p>
-              Not for VocaWin. VocaWin is being built as an on-device Windows
-              app. VocaGateway is optional self-hosted infrastructure for other
-              Voca clients. Gateway mode is not on-device: configured audio
-              travels to the host you chose.
+              Not for VocaWin. VocaWin is an on-device Windows app. VocaGateway
+              is optional self-hosted infrastructure for other Voca clients.
+              Gateway mode is not on-device: configured audio travels to the
+              host you chose.
             </p>
           </details>
           <details>
@@ -716,18 +744,18 @@
           <details>
             <summary>What hotkey will it use?<span aria-hidden="true">＋</span></summary>
             <p>
-              The in-progress settings default to Right Ctrl for push-to-talk,
-              with an optional double-tap toggle. That can still change before
-              a public release.
+              The alpha defaults to Right Alt for push-to-talk, with an
+              optional double-tap toggle. You can change the hotkey in Settings.
+              That default can still move.
             </p>
           </details>
           <details>
             <summary>Which languages will it support?<span aria-hidden="true">＋</span></summary>
             <p>
-              Support will follow the Whisper model you download. The planned
-              first-run default is the small English <code>tiny.en</code> model,
-              with language set to automatic. We will list only what the
-              selected model can actually transcribe.
+              Support follows the Whisper model you download. The first-run
+              default is the small English <code>tiny.en</code> model, with
+              language set to automatic. We list only what the selected model
+              can actually transcribe.
             </p>
           </details>
           <details>
@@ -744,18 +772,19 @@
       <section class="close-section dot-field" id="follow" aria-labelledby="follow-title">
         <div class="close-copy reveal">
           <img src="assets/brand/voca-logo.svg" alt="" width="88" height="88" />
-          <p class="eyebrow">when there is a build, it will be obvious</p>
-          <h2 id="follow-title">watch the repo.<br />use the family today.</h2>
+          <p class="eyebrow">unsigned developer alpha</p>
+          <h2 id="follow-title">try Windows if you<br />want the rough cut.</h2>
           <p>
-            Follow VocaWin for the Windows app. If you need dictation now,
-            start at vocahq.com and pick a machine that already ships.
+            Grab the alpha from GitHub Releases if you want to poke at this PC.
+            If you need a quieter desk, start at vocahq.com and pick a machine
+            that already ships.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin">
-              follow VocaWin <span>↗</span>
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocawin/releases">
+              download the alpha <span>↗</span>
             </a>
-            <a class="button button-secondary" href="https://vocahq.com/">
-              open vocahq.com <span>↗</span>
+            <a class="button button-secondary" href="https://github.com/VocaHQ/vocawin/issues">
+              file an issue <span>↗</span>
             </a>
           </div>
         </div>
@@ -776,6 +805,7 @@
           <a href="#how">how it works</a>
           <a href="#privacy">privacy</a>
           <a href="#status">availability</a>
+          <a href="https://github.com/VocaHQ/vocawin/releases">Releases</a>
           <a href="https://github.com/VocaHQ/vocawin">GitHub</a>
         </div>
         <div>
@@ -794,7 +824,7 @@
       </nav>
       <div class="footer-bottom">
         <span>© <span data-current-year>2026</span> VocaHQ</span>
-        <span>coming soon on Windows. the rest of the family lives at vocahq.com.</span>
+        <span>developer alpha on Windows. the rest of the family lives at vocahq.com.</span>
       </div>
     </footer>
   </body>

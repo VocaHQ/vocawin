@@ -30,9 +30,32 @@ test("document ids are unique", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("coming soon status is explicit and not oversold", () => {
-  assert.match(html, /no public installer/i);
-  assert.match(html, /coming soon/i);
+test("unsigned alpha download is explicit and not oversold", () => {
+  assert.match(
+    html,
+    /class="hero-copy"[\s\S]*class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases"/,
+  );
+  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases"/);
+  assert.match(
+    html,
+    /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases\/tag\/v0\.1\.0-alpha\.1"/,
+  );
+  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/issues"/);
+  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/blob\/main\/docs\/setup\.md"/);
+  assert.match(html, /unsigned/i);
+  assert.match(html, /SmartScreen|publisher is unknown/i);
+  assert.match(html, /More info, then Run anyway/i);
+  assert.match(html, /developer alpha/i);
+  assert.match(html, /Windows · developer alpha/);
+  assert.doesNotMatch(html, /href="\/setup"/);
+  assert.match(html, /download the alpha/i);
+  assert.match(html, /NSIS current-user setup\.exe and (an )?MSI/i);
+  assert.match(html, /LimitedAvailability/);
+  assert.doesNotMatch(html, /PreOrder/);
+  assert.doesNotMatch(html, /no public installer/i);
+  assert.doesNotMatch(html, /cannot install/i);
+  assert.doesNotMatch(html, /No\.\s*There is no public installer/i);
+  assert.doesNotMatch(html, /coming soon/i);
   assert.doesNotMatch(html, /100% offline/i);
   assert.doesNotMatch(html, /free forever/i);
   assert.doesNotMatch(html, /99\+\s*languages/i);
