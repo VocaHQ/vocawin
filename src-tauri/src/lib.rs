@@ -1187,7 +1187,30 @@ fn mark_progress(state: &AppState, model_id: &str, progress: u8, message: impl I
     );
 }
 
+fn url_host(url: &str) -> &str {
+    url.split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .filter(|host| !host.is_empty())
+        .unwrap_or(url)
+}
+
+/// Sibling staging file. `Path::with_extension("partial")` is a no-op when
+/// the destination already ends in `.partial`, which made TarGz downloads
+/// delete the archive they had just written and then fail rename with
+/// os error 2.
+fn download_staging_path(destination: &Path) -> PathBuf {
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("download");
+    destination.with_file_name(format!("{name}.part"))
+}
+
 async fn download_url_to_file(
+    app: &AppHandle,
     state: &AppState,
     model_id: &str,
     url: &str,
@@ -1198,16 +1221,25 @@ async fn download_url_to_file(
     use futures_util::StreamExt;
     use tokio::io::AsyncWriteExt;
 
+    logbuf::push_and_emit(
+        app,
+        format!("Download {model_id} from {}", url_host(url)),
+    );
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|error| format!("Could not create download directory: {error}"))?;
     }
-    let temporary = destination.with_extension("partial");
+    let temporary = download_staging_path(destination);
     let result = async {
         let response = reqwest::get(url)
             .await
-            .map_err(|error| format!("Could not start download: {error}"))?
+            .map_err(|error| format!("Could not start download: {error}"))?;
+        logbuf::push_and_emit(
+            app,
+            format!("Download {model_id} HTTP {}", response.status()),
+        );
+        let response = response
             .error_for_status()
             .map_err(|error| format!("Model download failed: {error}"))?;
         let total = response.content_length();
@@ -1345,7 +1377,11 @@ fn get_model_statuses(state: State<'_, AppState>) -> HashMap<String, ModelInstal
 }
 
 #[tauri::command]
-async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn download_model(
+    model_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let package = model_package(&model_id).ok_or_else(|| {
         "In-app download is not available for this model.".to_string()
     })?;
@@ -1380,13 +1416,11 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
         match package {
             ModelPackage::GgmlBin { url } => {
                 let destination = model_path(&state.models_path, &model_id);
-                download_url_to_file(&state, &model_id, url, &destination, 0, 99).await?;
+                download_url_to_file(&app, &state, &model_id, url, &destination, 0, 99).await?;
             }
             ModelPackage::TarGz { url } => {
-                let archive = state
-                    .models_path
-                    .join(format!("{model_id}.tar.gz.partial"));
-                download_url_to_file(&state, &model_id, url, &archive, 0, 85).await?;
+                let archive = state.models_path.join(format!("{model_id}.tar.gz"));
+                download_url_to_file(&app, &state, &model_id, url, &archive, 0, 85).await?;
                 mark_progress(&state, &model_id, 90, "Unpacking…");
                 let models_path = state.models_path.clone();
                 let model_id_for_blocking = model_id.clone();
@@ -1408,7 +1442,8 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
                     let start = (index as u8).saturating_mul(99 / count);
                     let end = ((index as u8 + 1).saturating_mul(99 / count)).min(99);
                     let file_path = destination.join(filename);
-                    download_url_to_file(&state, &model_id, url, &file_path, start, end).await?;
+                    download_url_to_file(&app, &state, &model_id, url, &file_path, start, end)
+                        .await?;
                 }
             }
         }
@@ -1431,14 +1466,17 @@ async fn download_model(model_id: String, state: State<'_, AppState>) -> Result<
             message: Some("Installed".into()),
             bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
         },
-        Err(error) => ModelInstallStatus {
-            installed: model_is_installed(&state.models_path, &model_id),
-            downloadable: true,
-            downloading: false,
-            progress: 0,
-            message: Some(error.clone()),
-            bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
-        },
+        Err(error) => {
+            logbuf::push_and_emit(&app, format!("Download {model_id} failed: {error}"));
+            ModelInstallStatus {
+                installed: model_is_installed(&state.models_path, &model_id),
+                downloadable: true,
+                downloading: false,
+                progress: 0,
+                message: Some(error.clone()),
+                bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
+            }
+        }
     };
     set_download_status(&state, &model_id, status);
     result
@@ -1455,9 +1493,14 @@ fn delete_model(model_id: String, state: State<'_, AppState>) -> Result<(), Stri
         return Ok(());
     }
     .map_err(|error| format!("Could not remove model: {error}"))?;
-    // Clean leftover partial downloads for this model.
-    let partial_archive = state.models_path.join(format!("{model_id}.tar.gz.partial"));
-    let _ = fs::remove_file(partial_archive);
+    // Clean leftover archive and staging files for this model.
+    for leftover in [
+        format!("{model_id}.tar.gz"),
+        format!("{model_id}.tar.gz.part"),
+        format!("{model_id}.tar.gz.partial"),
+    ] {
+        let _ = fs::remove_file(state.models_path.join(leftover));
+    }
     state
         .downloads
         .lock()
@@ -2484,6 +2527,31 @@ mod tests {
         fs::write(nested.join("a"), vec![0u8; 10]).unwrap();
         fs::write(nested.join("b"), vec![0u8; 15]).unwrap();
         assert_eq!(path_bytes(directory.path()), 65);
+    }
+
+    #[test]
+    fn download_staging_path_never_equals_a_partial_tar_dest() {
+        let dest = PathBuf::from("models/gigaam-v3.tar.gz.partial");
+        assert_eq!(dest.with_extension("partial"), dest);
+        let staging = download_staging_path(&dest);
+        assert_ne!(staging, dest);
+        assert_eq!(
+            staging.file_name().and_then(|name| name.to_str()),
+            Some("gigaam-v3.tar.gz.partial.part")
+        );
+        assert_eq!(
+            download_staging_path(Path::new("whisper-tiny.bin"))
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("whisper-tiny.bin.part")
+        );
+        assert_eq!(
+            download_staging_path(Path::new("moonshine-tiny/encoder_model.onnx"))
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("encoder_model.onnx.part")
+        );
+        assert_eq!(url_host("https://blob.handy.computer/giga-am-v3-int8.tar.gz"), "blob.handy.computer");
     }
 
     #[test]
