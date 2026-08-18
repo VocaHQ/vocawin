@@ -142,7 +142,7 @@ unsafe extern "system" fn low_level_proc(
     }
 
     let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
-    if info.flags & LLKHF_INJECTED != 0 {
+    if info.flags.0 & LLKHF_INJECTED != 0 {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
