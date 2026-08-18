@@ -28,6 +28,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: write
     env:
       CARGO_TARGET_DIR: C:\t
       CMAKE_GENERATOR: Ninja
@@ -38,6 +39,12 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      # Cache C:\t (CARGO_TARGET_DIR). Later v* tags reuse this job's artifacts.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-targets: false
+          cache-directories: C:/t
       - name: Install CMake, LLVM, Ninja, and Vulkan SDK
         shell: pwsh
         run: |

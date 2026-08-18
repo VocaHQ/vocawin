@@ -16,6 +16,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+      actions: write
     env:
       # Short target dir avoids MAX_PATH in whisper.cpp vulkan-shaders-gen nests.
       CARGO_TARGET_DIR: C:\t
@@ -28,6 +29,13 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      # rust-cache joins workspaces targets as relative paths, so C:\t has to
+      # go in cache-directories. Job-scoped key keeps debug and release apart.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-targets: false
+          cache-directories: C:/t
       - name: Install CMake, LLVM, Ninja, and Vulkan SDK
         shell: pwsh
         run: |
@@ -65,6 +73,12 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      # Same C:\t cache as the test job. Separate job key (debug vs release).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-targets: false
+          cache-directories: C:/t
       - name: Install CMake, LLVM, Ninja, and Vulkan SDK
         shell: pwsh
         run: |
