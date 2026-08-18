@@ -16,6 +16,11 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+    env:
+      # Short target dir avoids MAX_PATH in whisper.cpp vulkan-shaders-gen nests.
+      CARGO_TARGET_DIR: C:\t
+      # MSBuild ExternalProject races / FileTracker path limits; Ninja avoids both.
+      CMAKE_GENERATOR: Ninja
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,10 +28,10 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install CMake, LLVM, and Vulkan SDK
+      - name: Install CMake, LLVM, Ninja, and Vulkan SDK
         shell: pwsh
         run: |
-          choco install cmake llvm -y --no-progress
+          choco install cmake llvm ninja -y --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
           echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
@@ -36,6 +41,8 @@ jobs:
           Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
           echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
           echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
+      # Ninja does not load MSVC INCLUDE/LIB/PATH; vcvars must be exported.
+      - uses: ilammy/msvc-dev-cmd@v1
       - name: Install frontend dependencies
         run: npm ci
       - name: Build frontend
@@ -48,6 +55,9 @@ jobs:
   installer:
     name: Unsigned Windows installer (alpha)
     runs-on: windows-latest
+    env:
+      CARGO_TARGET_DIR: C:\t
+      CMAKE_GENERATOR: Ninja
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -55,10 +65,10 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install CMake, LLVM, and Vulkan SDK
+      - name: Install CMake, LLVM, Ninja, and Vulkan SDK
         shell: pwsh
         run: |
-          choco install cmake llvm -y --no-progress
+          choco install cmake llvm ninja -y --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
           echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
@@ -68,12 +78,15 @@ jobs:
           Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
           echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
           echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
+      - uses: ilammy/msvc-dev-cmd@v1
       - name: Install frontend dependencies
         run: npm ci
       - name: Build unsigned NSIS and MSI installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_TARGET_DIR: C:\t
+          CMAKE_GENERATOR: Ninja
         with:
           # Build only. Artifact upload is explicit below so we never create a Release.
           args: --bundles nsis,msi
@@ -82,7 +95,7 @@ jobs:
         with:
           name: VocaWin-windows-alpha
           path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/msi/*.msi
+            C:/t/release/bundle/nsis/*-setup.exe
+            C:/t/release/bundle/msi/*.msi
           if-no-files-found: error
           retention-days: 14

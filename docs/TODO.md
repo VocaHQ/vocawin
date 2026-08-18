@@ -27,7 +27,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 ## Windows product quality
 
 - [x] Settings persistence and NSIS/MSI Tauri configuration
-- [x] Windows CI compilation job (Vulkan SDK for whisper-rs)
+- [x] Windows CI compilation job (Vulkan SDK + Ninja generator for whisper-rs)
 - [x] Unsigned NSIS/MSI installer artifact job (alpha/dev, no signing or Release)
 - [x] Official Voca mic app/tray icons (brand book §9 / §10)
 - [x] System tray icon with Show/Quit and close-to-tray
