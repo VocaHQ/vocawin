@@ -1,4 +1,10 @@
-//! Sleep/wake recovery via WM_POWERBROADCAST on a message-only window.
+//! Sleep/wake recovery via WM_POWERBROADCAST.
+//!
+//! windows-rs 0.58 does not export `DEVICE_NOTIFY_CALLBACK` or
+//! `DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS`, so the callback form of
+//! RegisterSuspendResumeNotification cannot be used. A message-only HWND also
+//! misses power broadcasts. A hidden top-level window receives them; on resume
+//! we re-register the dictation hotkey.
 
 use tauri::AppHandle;
 
@@ -31,11 +37,12 @@ fn windows_power_loop(
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
-        TranslateMessage, CW_USEDEFAULT, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
-        WM_POWERBROADCAST, WNDCLASSW,
+        ShowWindow, TranslateMessage, CW_USEDEFAULT, MSG, SW_HIDE, WM_POWERBROADCAST, WNDCLASSW,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
     };
 
-    // winuser.h PBT_* values
+    // winuser.h PBT_* values (kept as literals so we do not depend on
+    // SystemServices extras that differ across windows-rs feature sets).
     const PBT_APMRESUMESUSPEND: usize = 0x0007;
     const PBT_APMRESUMEAUTOMATIC: usize = 0x0012;
 
@@ -76,23 +83,24 @@ fn windows_power_loop(
             ..Default::default()
         };
         let _ = RegisterClassW(&class);
+        // Top-level hidden window (not HWND_MESSAGE): power broadcasts are
+        // delivered to top-level windows only.
         let hwnd = CreateWindowExW(
-            WINDOW_EX_STYLE::default(),
+            WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
             PCWSTR(class_name.as_ptr()),
             PCWSTR(class_name.as_ptr()),
-            WINDOW_STYLE::default(),
+            WS_POPUP,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            HWND_MESSAGE,
+            0,
+            0,
+            HWND::default(),
             None,
             module,
             None,
         )
         .map_err(|error| error.to_string())?;
-        let _ = hwnd;
-
+        let _ = ShowWindow(hwnd, SW_HIDE);
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, HWND::default(), 0, 0).into() {
             let _ = TranslateMessage(&msg);
