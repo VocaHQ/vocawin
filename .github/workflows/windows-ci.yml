@@ -62,6 +62,8 @@ jobs:
 
   installer:
     name: Windows installer (alpha)
+    # PRs only cargo test. Packaging NSIS/MSI is main + workflow_dispatch.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     env:
       CARGO_TARGET_DIR: C:\t
@@ -103,7 +105,7 @@ jobs:
           CMAKE_GENERATOR: Ninja
         with:
           # Build only. Do not set tagName. Tag Releases live in
-          # windows-alpha-release.yml so PR and main stay artifact-only.
+          # windows-alpha-release.yml so main stays artifact-only.
           args: --bundles nsis,msi
           includeUpdaterJson: false
       # tauri-action with CARGO_TARGET_DIR=C:\t writes:
