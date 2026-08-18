@@ -20,7 +20,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] Microphone device picker (WASAPI / cpal list)
 - [x] Push-to-talk and toggle activation, with hotkey re-registration after save
 - [x] Hotkey presets + Record capture (Escape cancels); WH_KEYBOARD_LL for lone Right Ctrl/Alt/Shift; listener pauses while Record
-- [x] New-install default hotkey Right Ctrl (existing TROOPER Ctrl+Alt+Space settings kept until changed)
+- [x] New-install default hotkey Right Alt (VocaLinux hold-default; AltGr left alone). Existing TROOPER Ctrl+Alt+Space settings kept until changed
 - [x] Silence energy auto-stop in toggle mode only (PTT stops on key-up); `silence_seconds` wired
 - [x] Trailing space and auto-capitalize output polish
 - [x] Clipboard + paste inject with restore (SendInput fallback)

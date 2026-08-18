@@ -1,7 +1,8 @@
 //! Low-level keyboard hook for dictation hotkeys on Windows.
 //!
 //! RegisterHotKey cannot bind a lone modifier. This WH_KEYBOARD_LL hook can see
-//! VK_RCONTROL vs VK_LCONTROL and consumes matching keys so they do not leak.
+//! VK_RCONTROL vs VK_RMENU and consumes matching keys so they do not leak.
+//! Lone Right Alt is AltGr-safe: Ctrl+Right Alt (AltGr) is never consumed.
 
 #![allow(dead_code)] // Hook symbols are Windows-only; Linux CI still typechecks the module.
 
@@ -188,13 +189,36 @@ unsafe extern "system" fn low_level_proc(
 
 fn key_matches(binding: &HotkeySpec, vk: u32) -> bool {
     match binding {
-        HotkeySpec::Lone { vk: bound } => vk == *bound,
+        HotkeySpec::Lone { vk: bound } => {
+            if vk != *bound {
+                return false;
+            }
+            // AltGr is Left Ctrl + Right Alt on most Windows layouts. If we
+            // consumed VK_RMENU then, characters like @/€ would never type.
+            // Lone Right Alt (no Ctrl) is still a clean PTT, matching Linux.
+            if *bound == crate::hotkey::VK_RMENU && ctrl_is_down() {
+                return false;
+            }
+            true
+        }
         HotkeySpec::Combo {
             ctrl,
             alt,
             shift,
             vk: bound,
         } => vk == *bound && mods_match(*ctrl, *alt, *shift),
+    }
+}
+
+fn ctrl_is_down() -> bool {
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        (unsafe { GetAsyncKeyState(VK_CONTROL) } as u16) & 0x8000 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
     }
 }
 

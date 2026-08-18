@@ -30,7 +30,7 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 ## Planned Features
 
 - **System-wide text injection** - Transcribed text appears wherever your cursor is
-- **Push-to-talk and toggle** - Hold a hotkey (planned default: Right Ctrl) or double-tap to toggle
+- **Push-to-talk and toggle** - Hold a hotkey (planned default: Right Alt, like VocaLinux) or double-tap to toggle
 - **GPU acceleration** - NVIDIA CUDA, AMD, and Intel paths via whisper.cpp
 - **Language support** - Follows the selected Whisper model
 - **Configurable settings** - Hotkeys, models, languages, silence detection

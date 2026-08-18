@@ -5,9 +5,11 @@
 //! WH_KEYBOARD_LL hook in `hook`.
 
 /// Built-in presets shown in Settings. Values are stored in settings.json.
+/// Right Alt is first: it matches VocaLinux hold-default (PTT). The hook leaves
+/// AltGr (Ctrl+Right Alt) alone so layout characters still type.
 pub const PRESETS: &[(&str, &str)] = &[
-    ("ControlRight", "Right Ctrl"),
     ("AltRight", "Right Alt"),
+    ("ControlRight", "Right Ctrl"),
     ("ShiftRight", "Right Shift"),
     ("F8", "F8"),
     ("F9", "F9"),
@@ -84,7 +86,7 @@ fn parse_combo(spec: &str) -> Result<HotkeySpec, String> {
             "shift" | "shiftleft" | "shiftright" | "lshift" | "rshift" => shift = true,
             "meta" | "win" | "super" | "cmd" | "command" | "windows" => {
                 return Err(
-                    "Win/Super shortcuts are reserved on Windows. Pick Right Ctrl, a function key, or another combo."
+                    "Win/Super shortcuts are reserved on Windows. Pick Right Alt, Right Ctrl, a function key, or another combo."
                         .into(),
                 );
             }
@@ -201,6 +203,15 @@ mod tests {
         for (id, _) in PRESETS {
             parse_hotkey(id).unwrap_or_else(|error| panic!("{id}: {error}"));
         }
+    }
+
+    #[test]
+    fn right_alt_is_lone_rmenu() {
+        assert_eq!(
+            parse_hotkey("AltRight").unwrap(),
+            HotkeySpec::Lone { vk: VK_RMENU }
+        );
+        assert_eq!(canonicalize("Right Alt").unwrap(), "AltRight");
     }
 
     #[test]

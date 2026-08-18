@@ -244,7 +244,7 @@ fn default_idle_unload_seconds() -> u32 {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            hotkey: "ControlRight".into(),
+            hotkey: "AltRight".into(),
             activation_mode: "pushToTalk".into(),
             language: "Auto-detect".into(),
             silence_seconds: 1.5,
@@ -1838,7 +1838,7 @@ pub fn run() {
                     .registered_hotkey
                     .lock()
                     .map(|value| value.clone())
-                    .unwrap_or_else(|_| "ControlRight".into());
+                    .unwrap_or_else(|_| "AltRight".into());
                 if let Err(error) = register_dictation_hotkey(&app, &hotkey) {
                     eprintln!("VocaWin hotkey re-register after wake failed: {error}");
                 } else {

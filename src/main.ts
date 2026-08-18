@@ -238,8 +238,8 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Dictation",
       title: "Activation hotkey",
-      subtitle: "Pick a preset or press Record. New installs default to Right Ctrl (low-level hook). Escape cancels. The live listener pauses while recording.",
-      keywords: "hotkey shortcut keyboard record preset right ctrl",
+      subtitle: "Pick a preset or press Record. New installs default to Right Alt (same hold-default as VocaLinux). AltGr (Ctrl+Right Alt) is not consumed, so layout characters still type. Escape cancels. The live listener pauses while recording.",
+      keywords: "hotkey shortcut keyboard record preset right alt altright",
       html: `<div class="hotkey-controls"><select id="hotkey-preset">${hotkeyOptions()}</select>
     <button type="button" class="quiet-button" id="record-hotkey">${recordingHotkey ? "Cancel" : "Record"}</button></div>`,
     },
@@ -376,7 +376,7 @@ function welcomeOverlay() {
     <div class="welcome-card">
       <p class="overline">WELCOME</p>
       <h2 id="welcome-title">VocaWin is in your tray</h2>
-      <p>Hold your hotkey (Right Ctrl by default) to dictate into any app. Optional: turn on Start on Login from the tray menu or Settings.</p>
+      <p>Hold your hotkey (Right Alt by default, like VocaLinux) to dictate into any app. Optional: turn on Start on Login from the tray menu or Settings.</p>
       <button class="primary" id="welcome-dismiss">Got it</button>
     </div>
   </div>`;
