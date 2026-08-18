@@ -1,6 +1,10 @@
 //! VocaWin's platform shell. Recognition engines are deliberately behind a small
 //! catalog/adapter boundary so model downloads never require a cloud account.
 
+mod gpu;
+mod hotkey;
+mod output;
+
 #[cfg(windows)]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::{Deserialize, Serialize};
@@ -14,7 +18,7 @@ use std::{
 };
 #[cfg(windows)]
 use std::sync::mpsc;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use transcribe_rs::SpeechModel;
 
 #[derive(Clone, Debug, Serialize)]
@@ -160,9 +164,23 @@ struct Settings {
     activation_mode: String,
     language: String,
     silence_seconds: f32,
+    #[serde(default = "default_max_recording_seconds")]
+    max_recording_seconds: f32,
     launch_at_login: bool,
     sound_effects: bool,
+    #[serde(default = "default_true")]
+    append_trailing_space: bool,
+    #[serde(default = "default_true")]
+    auto_capitalize: bool,
     selected_model: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_recording_seconds() -> f32 {
+    60.0
 }
 
 impl Default for Settings {
@@ -172,8 +190,11 @@ impl Default for Settings {
             activation_mode: "pushToTalk".into(),
             language: "Auto-detect".into(),
             silence_seconds: 1.5,
+            max_recording_seconds: 60.0,
             launch_at_login: false,
             sound_effects: true,
+            append_trailing_space: true,
+            auto_capitalize: true,
             selected_model: "whisper-tiny".into(),
         }
     }
@@ -185,6 +206,8 @@ impl Default for Settings {
 #[cfg(windows)]
 enum AudioCommand {
     Start {
+        silence_seconds: f32,
+        max_seconds: f32,
         reply: mpsc::Sender<Result<(), String>>,
     },
     Stop {
@@ -198,8 +221,29 @@ struct AudioRecorder {
 }
 
 #[cfg(windows)]
+fn note_audio_sample(
+    mono: f32,
+    samples: &Arc<Mutex<Vec<f32>>>,
+    last_voice_ms: &Arc<Mutex<u128>>,
+    heard_speech: &Arc<Mutex<bool>>,
+) {
+    const VOICE_THRESHOLD: f32 = 0.015;
+    if mono.abs() >= VOICE_THRESHOLD {
+        if let Ok(mut heard) = heard_speech.lock() {
+            *heard = true;
+        }
+        if let Ok(mut last) = last_voice_ms.lock() {
+            *last = now_ms();
+        }
+    }
+    samples.lock().unwrap().push(mono);
+}
+
+#[cfg(windows)]
 fn open_input_stream(
     samples: Arc<Mutex<Vec<f32>>>,
+    last_voice_ms: Arc<Mutex<u128>>,
+    heard_speech: Arc<Mutex<bool>>,
 ) -> Result<(cpal::Stream, u32), String> {
     let device = cpal::default_host()
         .default_input_device()
@@ -216,51 +260,62 @@ fn open_input_stream(
     let error_callback = |error| eprintln!("VocaWin audio input error: {error}");
     let config: cpal::StreamConfig = supported.clone().into();
     let stream = match supported.sample_format() {
-        cpal::SampleFormat::F32 => device.build_input_stream(
-            &config,
-            move |data: &[f32], _| {
-                samples.lock().unwrap().extend(
-                    data.chunks(channels)
-                        .map(|frame| frame.iter().sum::<f32>() / frame.len() as f32),
-                )
-            },
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::I16 => device.build_input_stream(
-            &config,
-            move |data: &[i16], _| {
-                samples
-                    .lock()
-                    .unwrap()
-                    .extend(data.chunks(channels).map(|frame| {
-                        frame
+        cpal::SampleFormat::F32 => {
+            let samples = Arc::clone(&samples);
+            let last_voice_ms = Arc::clone(&last_voice_ms);
+            let heard_speech = Arc::clone(&heard_speech);
+            device.build_input_stream(
+                &config,
+                move |data: &[f32], _| {
+                    for frame in data.chunks(channels) {
+                        let mono = frame.iter().sum::<f32>() / frame.len() as f32;
+                        note_audio_sample(mono, &samples, &last_voice_ms, &heard_speech);
+                    }
+                },
+                error_callback,
+                None,
+            )
+        }
+        cpal::SampleFormat::I16 => {
+            let samples = Arc::clone(&samples);
+            let last_voice_ms = Arc::clone(&last_voice_ms);
+            let heard_speech = Arc::clone(&heard_speech);
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _| {
+                    for frame in data.chunks(channels) {
+                        let mono = frame
                             .iter()
                             .map(|sample| *sample as f32 / i16::MAX as f32)
                             .sum::<f32>()
-                            / frame.len() as f32
-                    }))
-            },
-            error_callback,
-            None,
-        ),
-        cpal::SampleFormat::U16 => device.build_input_stream(
-            &config,
-            move |data: &[u16], _| {
-                samples
-                    .lock()
-                    .unwrap()
-                    .extend(data.chunks(channels).map(|frame| {
-                        frame
+                            / frame.len() as f32;
+                        note_audio_sample(mono, &samples, &last_voice_ms, &heard_speech);
+                    }
+                },
+                error_callback,
+                None,
+            )
+        }
+        cpal::SampleFormat::U16 => {
+            let samples = Arc::clone(&samples);
+            let last_voice_ms = Arc::clone(&last_voice_ms);
+            let heard_speech = Arc::clone(&heard_speech);
+            device.build_input_stream(
+                &config,
+                move |data: &[u16], _| {
+                    for frame in data.chunks(channels) {
+                        let mono = frame
                             .iter()
                             .map(|sample| (*sample as f32 / u16::MAX as f32) * 2.0 - 1.0)
                             .sum::<f32>()
-                            / frame.len() as f32
-                    }))
-            },
-            error_callback,
-            None,
-        ),
+                            / frame.len() as f32;
+                        note_audio_sample(mono, &samples, &last_voice_ms, &heard_speech);
+                    }
+                },
+                error_callback,
+                None,
+            )
+        }
         format => return Err(format!("Unsupported microphone sample format: {format:?}")),
     }
     .map_err(|error| format!("Could not open microphone: {error}"))?;
@@ -271,66 +326,146 @@ fn open_input_stream(
 }
 
 #[cfg(windows)]
-fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>) {
+fn now_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+#[cfg(windows)]
+fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
     let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
+    let last_voice_ms = Arc::new(Mutex::new(now_ms()));
+    let heard_speech = Arc::new(Mutex::new(false));
     let mut stream: Option<cpal::Stream> = None;
     let mut sample_rate: Option<u32> = None;
+    let mut started_ms: Option<u128> = None;
+    let mut silence_seconds = 1.5_f32;
+    let mut max_seconds = 60.0_f32;
 
-    while let Ok(command) = commands.recv() {
-        match command {
-            AudioCommand::Start { reply } => {
-                let result = if stream.is_some() {
-                    Err("A recording is already in progress".into())
-                } else {
-                    match open_input_stream(Arc::clone(&samples)) {
-                        Ok((next_stream, rate)) => {
-                            sample_rate = Some(rate);
-                            stream = Some(next_stream);
-                            Ok(())
-                        }
-                        Err(error) => Err(error),
-                    }
-                };
-                let _ = reply.send(result);
-            }
-            AudioCommand::Stop { reply } => {
-                let result = if stream.take().is_none() {
-                    Err("No recording is in progress".into())
-                } else {
-                    let rate = sample_rate.take().unwrap_or(16_000);
-                    match samples.lock() {
-                        Ok(mut buffer) => {
-                            let captured = std::mem::take(&mut *buffer);
-                            if captured.is_empty() {
-                                Err("No microphone audio was captured".into())
-                            } else {
-                                Ok((captured, rate))
+    loop {
+        let timed_out = match commands.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(command) => {
+                match command {
+                    AudioCommand::Start {
+                        silence_seconds: silence,
+                        max_seconds: max,
+                        reply,
+                    } => {
+                        silence_seconds = silence.clamp(0.3, 10.0);
+                        max_seconds = max.clamp(3.0, 300.0);
+                        let result = if stream.is_some() {
+                            Err("A recording is already in progress".into())
+                        } else {
+                            match open_input_stream(
+                                Arc::clone(&samples),
+                                Arc::clone(&last_voice_ms),
+                                Arc::clone(&heard_speech),
+                            ) {
+                                Ok((next_stream, rate)) => {
+                                    sample_rate = Some(rate);
+                                    stream = Some(next_stream);
+                                    started_ms = Some(now_ms());
+                                    *last_voice_ms.lock().unwrap() = now_ms();
+                                    *heard_speech.lock().unwrap() = false;
+                                    let _ = app.emit("recording-changed", true);
+                                    set_tray_recording(&app, true);
+                                    Ok(())
+                                }
+                                Err(error) => Err(error),
                             }
-                        }
-                        Err(_) => Err("Audio lock was poisoned".into()),
+                        };
+                        let _ = reply.send(result);
                     }
-                };
-                let _ = reply.send(result);
+                    AudioCommand::Stop { reply } => {
+                        let result = take_recording(
+                            &mut stream,
+                            &mut sample_rate,
+                            &mut started_ms,
+                            &samples,
+                        );
+                        if result.is_ok() {
+                            let _ = app.emit("recording-changed", false);
+                            set_tray_recording(&app, false);
+                        }
+                        let _ = reply.send(result);
+                    }
+                }
+                false
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => true,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+
+        if timed_out && stream.is_some() {
+            let started = started_ms.unwrap_or_else(now_ms);
+            let elapsed = (now_ms().saturating_sub(started)) as f32 / 1000.0;
+            let last_voice = *last_voice_ms.lock().unwrap_or_else(|e| e.into_inner());
+            let quiet_for = (now_ms().saturating_sub(last_voice)) as f32 / 1000.0;
+            let heard = *heard_speech.lock().unwrap_or_else(|e| e.into_inner());
+            let silence_hit = heard && quiet_for >= silence_seconds;
+            let max_hit = elapsed >= max_seconds;
+            if silence_hit || max_hit {
+                if let Ok((pcm, rate)) =
+                    take_recording(&mut stream, &mut sample_rate, &mut started_ms, &samples)
+                {
+                    let _ = app.emit("recording-changed", false);
+                    set_tray_recording(&app, false);
+                    let app_for_finish = app.clone();
+                    std::thread::spawn(move || {
+                        finish_captured_audio(&app_for_finish, pcm, rate);
+                    });
+                }
             }
         }
     }
 }
 
 #[cfg(windows)]
+fn take_recording(
+    stream: &mut Option<cpal::Stream>,
+    sample_rate: &mut Option<u32>,
+    started_ms: &mut Option<u128>,
+    samples: &Arc<Mutex<Vec<f32>>>,
+) -> Result<(Vec<f32>, u32), String> {
+    if stream.take().is_none() {
+        return Err("No recording is in progress".into());
+    }
+    *started_ms = None;
+    let rate = sample_rate.take().unwrap_or(16_000);
+    match samples.lock() {
+        Ok(mut buffer) => {
+            let captured = std::mem::take(&mut *buffer);
+            if captured.is_empty() {
+                Err("No microphone audio was captured".into())
+            } else {
+                Ok((captured, rate))
+            }
+        }
+        Err(_) => Err("Audio lock was poisoned".into()),
+    }
+}
+
+#[cfg(windows)]
 impl AudioRecorder {
-    fn new() -> Self {
+    fn new(app: AppHandle) -> Self {
         let (commands, receiver) = mpsc::channel();
         std::thread::Builder::new()
             .name("vocawin-audio".into())
-            .spawn(move || audio_thread_main(receiver))
+            .spawn(move || audio_thread_main(receiver, app))
             .expect("Could not start VocaWin audio thread");
         Self { commands }
     }
 
-    fn start(&self) -> Result<(), String> {
+    fn start(&self, silence_seconds: f32, max_seconds: f32) -> Result<(), String> {
         let (reply, response) = mpsc::channel();
         self.commands
-            .send(AudioCommand::Start { reply })
+            .send(AudioCommand::Start {
+                silence_seconds,
+                max_seconds,
+                reply,
+            })
             .map_err(|_| "Audio thread is not running".to_string())?;
         response
             .recv()
@@ -354,14 +489,46 @@ impl AudioRecorder {
 struct AudioRecorder;
 #[cfg(not(windows))]
 impl AudioRecorder {
-    fn new() -> Self {
+    fn new(_: AppHandle) -> Self {
         Self
     }
-    fn start(&self) -> Result<(), String> {
+    fn start(&self, _: f32, _: f32) -> Result<(), String> {
         Err("Microphone capture is available in Windows builds only.".into())
     }
     fn stop(&self) -> Result<(Vec<f32>, u32), String> {
         Err("Microphone capture is available in Windows builds only.".into())
+    }
+}
+
+fn set_tray_recording(app: &AppHandle, recording: bool) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let tip = if recording {
+            "VocaWin - Recording"
+        } else {
+            "VocaWin"
+        };
+        let _ = tray.set_tooltip(Some(tip));
+    }
+}
+
+#[cfg(windows)]
+fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
+    let state = app.state::<AppState>();
+    {
+        let mut flag = state.recording.lock().unwrap_or_else(|e| e.into_inner());
+        *flag = false;
+    }
+    match transcribe_samples(&state, samples, sample_rate) {
+        Ok(text) if !text.is_empty() => {
+            let _ = output::inject(&text);
+            let _ = app.emit("dictation-finished", text);
+        }
+        Ok(_) => {
+            let _ = app.emit("dictation-finished", String::new());
+        }
+        Err(error) => {
+            let _ = app.emit("dictation-error", error);
+        }
     }
 }
 
@@ -391,6 +558,8 @@ struct AppState {
     models_path: PathBuf,
     downloads: Mutex<HashMap<String, ModelInstallStatus>>,
     recorder: AudioRecorder,
+    recording: Mutex<bool>,
+    registered_hotkey: Mutex<String>,
 }
 
 /// A malformed or partially-written settings file must never prevent dictation
@@ -468,7 +637,11 @@ fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-fn save_settings(mut settings: Settings, state: State<'_, AppState>) -> Result<(), String> {
+fn save_settings(
+    mut settings: Settings,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     if !model_catalog()
         .iter()
         .any(|model| model.id == settings.selected_model)
@@ -478,16 +651,39 @@ fn save_settings(mut settings: Settings, state: State<'_, AppState>) -> Result<(
     if !(0.3..=10.0).contains(&settings.silence_seconds) {
         return Err("Silence timeout must be between 0.3 and 10 seconds".into());
     }
-    // Toggle activation and launch-at-login are not implemented yet. Keep the
-    // persisted values honest so the UI cannot claim they do something.
-    settings.activation_mode = "pushToTalk".into();
-    settings.launch_at_login = false;
+    if !(3.0..=300.0).contains(&settings.max_recording_seconds) {
+        return Err("Max recording duration must be between 3 and 300 seconds".into());
+    }
+    if settings.activation_mode != "pushToTalk" && settings.activation_mode != "toggle" {
+        return Err("Activation mode must be pushToTalk or toggle".into());
+    }
+    settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
     persist_settings(&state.settings_path, &settings)?;
+    apply_launch_at_login(&app, settings.launch_at_login)?;
+    register_dictation_hotkey(&app, &settings.hotkey)?;
+    *state
+        .registered_hotkey
+        .lock()
+        .map_err(|_| "Hotkey lock was poisoned")? = settings.hotkey.clone();
     *state
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")? = settings;
     Ok(())
+}
+
+fn apply_launch_at_login(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autolaunch = app.autolaunch();
+    if enabled {
+        autolaunch
+            .enable()
+            .map_err(|error| format!("Could not enable launch at login: {error}"))
+    } else {
+        autolaunch
+            .disable()
+            .map_err(|error| format!("Could not disable launch at login: {error}"))
+    }
 }
 
 #[tauri::command]
@@ -1047,12 +1243,29 @@ fn write_pcm_wav(path: &std::path::Path, pcm: &[f32]) -> Result<(), String> {
 /// Begins microphone capture. The UI should call `stop_and_transcribe` after
 /// push-to-talk is released (or when toggle mode is stopped).
 #[tauri::command]
-fn start_recording(state: State<'_, AppState>) -> Result<(), String> {
-    state.recorder.start()
+fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")?
+        .clone();
+    state
+        .recorder
+        .start(settings.silence_seconds, settings.max_recording_seconds)?;
+    *state
+        .recording
+        .lock()
+        .map_err(|_| "Recording lock was poisoned")? = true;
+    let _ = app.emit("recording-changed", true);
+    set_tray_recording(&app, true);
+    Ok(())
 }
 
-fn transcribe_recording(state: &AppState) -> Result<String, String> {
-    let (samples, sample_rate) = state.recorder.stop()?;
+fn transcribe_samples(
+    state: &AppState,
+    samples: Vec<f32>,
+    sample_rate: u32,
+) -> Result<String, String> {
     let settings = state
         .settings
         .lock()
@@ -1071,77 +1284,110 @@ fn transcribe_recording(state: &AppState) -> Result<String, String> {
         "Chinese" => Some("zh"),
         _ => None,
     };
-    if !settings.selected_model.starts_with("whisper-")
+    let raw = if !settings.selected_model.starts_with("whisper-")
         && !settings.selected_model.starts_with("distil-whisper-")
     {
-        let text = transcribe_onnx(
+        transcribe_onnx(
             &settings.selected_model,
             &state.models_path,
             &pcm,
             language_code,
-        )?;
-        if !text.is_empty() {
-            append_history(&state.history_path, text.clone(), settings.selected_model)?;
+        )?
+    } else {
+        let model_path = state
+            .models_path
+            .join(format!("{}.bin", settings.selected_model));
+        if !model_path.exists() {
+            return Err(format!(
+                "Model is not installed: {}. Put its whisper.cpp GGML .bin file at {}.",
+                settings.selected_model,
+                model_path.display()
+            ));
         }
-        return Ok(text);
-    }
-    let model_path = state
-        .models_path
-        .join(format!("{}.bin", settings.selected_model));
-    if !model_path.exists() {
-        return Err(format!(
-            "Model is not installed: {}. Put its whisper.cpp GGML .bin file at {}.",
+        let gpu = gpu::detect_gpu();
+        let mut context_params = whisper_rs::WhisperContextParameters::default();
+        context_params.use_gpu(gpu.available);
+        context_params.gpu_device(0);
+        let context = whisper_rs::WhisperContext::new_with_params(&model_path, context_params)
+            .map_err(|error| format!("Could not load Whisper model: {error}"))?;
+        let mut session = context
+            .create_state()
+            .map_err(|error| format!("Could not create Whisper session: {error}"))?;
+        let mut parameters =
+            whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        parameters.set_translate(false);
+        parameters.set_language(language_code);
+        parameters.set_print_special(false);
+        parameters.set_print_progress(false);
+        parameters.set_print_realtime(false);
+        parameters.set_print_timestamps(false);
+        session
+            .full(parameters, &pcm)
+            .map_err(|error| format!("Transcription failed: {error}"))?;
+        (0..session.full_n_segments())
+            .filter_map(|index| {
+                session
+                    .get_segment(index)
+                    .and_then(|segment| segment.to_str().ok().map(str::to_owned))
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let text = output::apply_output_polish(
+        &raw,
+        settings.auto_capitalize,
+        settings.append_trailing_space,
+    );
+    if !text.trim().is_empty() {
+        append_history(
+            &state.history_path,
+            text.trim().to_string(),
             settings.selected_model,
-            model_path.display()
-        ));
-    }
-    let context = whisper_rs::WhisperContext::new_with_params(
-        &model_path,
-        whisper_rs::WhisperContextParameters::default(),
-    )
-    .map_err(|error| format!("Could not load Whisper model: {error}"))?;
-    let mut session = context
-        .create_state()
-        .map_err(|error| format!("Could not create Whisper session: {error}"))?;
-    let mut parameters =
-        whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
-    parameters.set_translate(false);
-    parameters.set_language(language_code);
-    parameters.set_print_special(false);
-    parameters.set_print_progress(false);
-    parameters.set_print_realtime(false);
-    parameters.set_print_timestamps(false);
-    session
-        .full(parameters, &pcm)
-        .map_err(|error| format!("Transcription failed: {error}"))?;
-    let text = (0..session.full_n_segments())
-        .filter_map(|index| {
-            session
-                .get_segment(index)
-                .and_then(|segment| segment.to_str().ok().map(str::to_owned))
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    let text = text.trim().to_string();
-    if !text.is_empty() {
-        append_history(&state.history_path, text.clone(), settings.selected_model)?;
+        )?;
     }
     Ok(text)
 }
 
+fn transcribe_recording(state: &AppState) -> Result<String, String> {
+    let (samples, sample_rate) = state.recorder.stop()?;
+    *state
+        .recording
+        .lock()
+        .map_err(|_| "Recording lock was poisoned")? = false;
+    transcribe_samples(state, samples, sample_rate)
+}
+
 #[tauri::command]
-fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, String> {
-    transcribe_recording(&state)
+fn stop_and_transcribe(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    let text = transcribe_recording(&state)?;
+    let _ = app.emit("recording-changed", false);
+    set_tray_recording(&app, false);
+    Ok(text)
 }
 
 #[tauri::command]
 fn system_summary() -> serde_json::Value {
+    let gpu = gpu::detect_gpu();
     serde_json::json!({
         "platform": "Windows 10/11",
         "runtime": "Rust + Tauri",
         "privacy": "Audio and transcription remain on this device",
-        "gpuBackends": ["Vulkan (whisper.cpp)", "DirectML (ONNX Runtime)", "CPU fallback"]
+        "gpuBackends": ["Vulkan (whisper.cpp)", "DirectML (ONNX Runtime)", "CPU fallback"],
+        "gpu": gpu
     })
+}
+
+#[tauri::command]
+fn get_gpu_status() -> gpu::GpuStatus {
+    gpu::detect_gpu()
+}
+
+#[tauri::command]
+fn get_hotkey_presets() -> Vec<serde_json::Value> {
+    hotkey::PRESETS
+        .iter()
+        .map(|(id, label)| serde_json::json!({ "id": id, "label": label }))
+        .collect()
 }
 
 /// On Windows this is the final platform boundary: the recognizer gives us
@@ -1152,64 +1398,19 @@ fn inject_text(text: String) -> Result<(), String> {
     if text.trim().is_empty() {
         return Ok(());
     }
-    platform::inject(&text)
-}
-
-#[cfg(windows)]
-mod platform {
-    pub fn inject(text: &str) -> Result<(), String> {
-        use windows::Win32::UI::Input::KeyboardAndMouse::{
-            SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_UNICODE, VIRTUAL_KEY,
-        };
-        let inputs: Vec<INPUT> = text
-            .encode_utf16()
-            .flat_map(|unit| {
-                [
-                    INPUT {
-                        r#type: INPUT_KEYBOARD,
-                        Anonymous: INPUT_0 {
-                            ki: KEYBDINPUT {
-                                wVk: VIRTUAL_KEY(0),
-                                wScan: unit,
-                                dwFlags: KEYEVENTF_UNICODE,
-                                time: 0,
-                                dwExtraInfo: 0,
-                            },
-                        },
-                    },
-                    INPUT {
-                        r#type: INPUT_KEYBOARD,
-                        Anonymous: INPUT_0 {
-                            ki: KEYBDINPUT {
-                                wVk: VIRTUAL_KEY(0),
-                                wScan: unit,
-                                dwFlags: KEYEVENTF_UNICODE
-                                    | windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP,
-                                time: 0,
-                                dwExtraInfo: 0,
-                            },
-                        },
-                    },
-                ]
-            })
-            .collect();
-        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-        if sent as usize == inputs.len() {
-            Ok(())
-        } else {
-            Err("Windows rejected text injection; try running VocaWin at the same privilege level as the target app.".into())
-        }
-    }
-}
-#[cfg(not(windows))]
-mod platform {
-    pub fn inject(_: &str) -> Result<(), String> {
-        Err("Text injection is available in Windows builds only.".into())
-    }
+    output::inject(&text)
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+    builder
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
@@ -1218,31 +1419,20 @@ pub fn run() {
             let models_path = app_data.join("models");
             fs::create_dir_all(&models_path)?;
             let settings = load_settings(&settings_path);
+            let handle = app.handle().clone();
             app.manage(AppState {
                 settings: Mutex::new(settings.clone()),
                 settings_path,
                 history_path,
                 models_path,
                 downloads: Mutex::new(HashMap::new()),
-                recorder: AudioRecorder::new(),
+                recorder: AudioRecorder::new(handle.clone()),
+                recording: Mutex::new(false),
+                registered_hotkey: Mutex::new(settings.hotkey.clone()),
             });
-            #[cfg(windows)]
-            {
-                use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-                if let Ok(shortcut) = settings.hotkey.parse::<Shortcut>() {
-                    let shortcut_for_handler = shortcut;
-                    app.global_shortcut().on_shortcut(shortcut, move |handle, _, event| {
-                        let state = handle.state::<AppState>();
-                        match event.state {
-                            ShortcutState::Pressed => { let _ = state.recorder.start(); }
-                            ShortcutState::Released => {
-                                if let Ok(text) = transcribe_recording(&state) {
-                                    let _ = platform::inject(&text);
-                                }
-                            }
-                        }
-                    }).map_err(|error| format!("Could not register global shortcut {shortcut_for_handler:?}: {error}"))?;
-                }
+            let _ = apply_launch_at_login(&handle, settings.launch_at_login);
+            if let Err(error) = register_dictation_hotkey(&handle, &settings.hotkey) {
+                eprintln!("VocaWin hotkey registration failed: {error}");
             }
             setup_tray(app)?;
             if let Some(window) = app.get_webview_window("main") {
@@ -1266,12 +1456,84 @@ pub fn run() {
             download_model,
             delete_model,
             system_summary,
+            get_gpu_status,
+            get_hotkey_presets,
             start_recording,
             stop_and_transcribe,
             inject_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running VocaWin");
+}
+
+fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+        let shortcut = hotkey::parse_hotkey(hotkey_spec)?;
+        let gs = app.global_shortcut();
+        let _ = gs.unregister_all();
+        gs.on_shortcut(shortcut, move |handle, _, event| {
+            let state = handle.state::<AppState>();
+            let settings = state
+                .settings
+                .lock()
+                .map(|s| s.clone())
+                .unwrap_or_default();
+            let toggle = settings.activation_mode == "toggle";
+            match event.state {
+                ShortcutState::Pressed => {
+                    let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
+                    if toggle {
+                        if recording {
+                            if let Ok(text) = transcribe_recording(&state) {
+                                let _ = output::inject(&text);
+                            }
+                            let _ = handle.emit("recording-changed", false);
+                            set_tray_recording(handle, false);
+                        } else if state
+                            .recorder
+                            .start(settings.silence_seconds, settings.max_recording_seconds)
+                            .is_ok()
+                        {
+                            *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                            let _ = handle.emit("recording-changed", true);
+                            set_tray_recording(handle, true);
+                        }
+                    } else if !recording
+                        && state
+                            .recorder
+                            .start(settings.silence_seconds, settings.max_recording_seconds)
+                            .is_ok()
+                    {
+                        *state.recording.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                        let _ = handle.emit("recording-changed", true);
+                        set_tray_recording(handle, true);
+                    }
+                }
+                ShortcutState::Released => {
+                    if toggle {
+                        return;
+                    }
+                    let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
+                    if recording {
+                        if let Ok(text) = transcribe_recording(&state) {
+                            let _ = output::inject(&text);
+                        }
+                        let _ = handle.emit("recording-changed", false);
+                        set_tray_recording(handle, false);
+                    }
+                }
+            }
+        })
+        .map_err(|error| format!("Could not register global shortcut: {error}"))?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, hotkey_spec);
+        Ok(())
+    }
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -1286,7 +1548,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("VocaWin is missing its default window icon for the tray")?
         .clone();
 
-    TrayIconBuilder::new()
+    TrayIconBuilder::with_id("main")
         .icon(icon)
         .tooltip("VocaWin")
         .menu(&menu)

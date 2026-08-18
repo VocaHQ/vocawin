@@ -18,6 +18,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 cpal = "0.15"
 whisper-rs = "0.16"
 transcribe-rs = { version = "0.3.8", features = ["onnx"] }
@@ -29,10 +31,14 @@ tar = "0.4"
 flate2 = "1"
 thiserror = "2"
 
+# Vulkan for whisper.cpp on Windows (NVIDIA/AMD/Intel). CUDA skipped to keep
+# windows-latest CI free of the CUDA toolkit; Vulkan covers TROOPER's RTX path.
 [target.'cfg(windows)'.dependencies]
+whisper-rs = { version = "0.16", features = ["vulkan"] }
 transcribe-rs = { version = "0.3.8", features = ["onnx", "ort-directml"] }
 windows = { version = "0.58", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dxgi",
   "Win32_System_DataExchange",
   "Win32_System_Memory",
   "Win32_UI_Input_KeyboardAndMouse",

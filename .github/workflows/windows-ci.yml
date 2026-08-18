@@ -23,12 +23,25 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install CMake, LLVM, and Vulkan SDK
+        shell: pwsh
+        run: |
+          choco install cmake llvm -y --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          $ver = "1.3.290.0"
+          $installer = "$env:RUNNER_TEMP\VulkanSDK.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+          echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
+          echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
       - name: Install frontend dependencies
         run: npm ci
       - name: Build frontend
         run: npm run build
-      # This compiles the cfg(windows) injection implementation as well as the
-      # Tauri command layer; it does not require a microphone or display.
+      # Compiles cfg(windows) injection, Vulkan-enabled whisper-rs, and the
+      # Tauri command layer. Does not require a physical GPU or microphone.
       - name: Test Rust command layer
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
@@ -42,12 +55,19 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install CMake and LLVM
+      - name: Install CMake, LLVM, and Vulkan SDK
+        shell: pwsh
         run: |
           choco install cmake llvm -y --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
           echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          $ver = "1.3.290.0"
+          $installer = "$env:RUNNER_TEMP\VulkanSDK.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+          echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
+          echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
       - name: Install frontend dependencies
         run: npm ci
       - name: Build unsigned NSIS and MSI installers

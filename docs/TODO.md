@@ -15,20 +15,24 @@ This checklist tracks the path from the current local-recognition foundation to 
 ## Dictation experience
 
 - [x] Microphone capture, mono conversion, 16 kHz resampling
-- [x] Push-to-talk global shortcut and Windows text injection
-- [ ] Toggle activation mode and hotkey re-registration after settings changes
-- [ ] Silence/VAD auto-stop, maximum duration, microphone device picker
-- [ ] Recording/transcribing tray icon states, audio level meter, start/stop sound
+- [x] Push-to-talk and toggle activation, with hotkey re-registration after save
+- [x] Hotkey presets + Record capture (Escape cancels)
+- [x] Silence energy auto-stop and max recording duration
+- [x] Trailing space and auto-capitalize output polish
+- [x] Clipboard-preserving paste fallback when SendInput fails
+- [ ] Microphone device picker and start/stop sound cues
 - [x] Local transcription history with clear-history control
-- [ ] Clipboard-preserving paste fallback
+- [x] Recording tray tooltip state
 
 ## Windows product quality
 
 - [x] Settings persistence and NSIS/MSI Tauri configuration
-- [x] Windows CI compilation job
+- [x] Windows CI compilation job (Vulkan SDK for whisper-rs)
 - [x] Unsigned NSIS/MSI installer artifact job (alpha/dev, no signing or Release)
+- [x] Official Voca mic app/tray icons (brand book §9 / §10)
 - [x] System tray icon with Show/Quit and close-to-tray
-- [ ] Launch at login and single-instance behavior
+- [x] Launch at login and single-instance focus
+- [x] Whisper Vulkan GPU path + Settings GPU readout (DirectML kept for ONNX)
 - [ ] Onboarding, microphone diagnostics, accessible error states
 - [ ] Signed release workflow, updater, crash-free upgrade migration
 
