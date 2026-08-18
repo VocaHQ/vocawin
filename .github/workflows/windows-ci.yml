@@ -1,0 +1,29 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build frontend
+        run: npm run build
+      # This compiles the cfg(windows) injection implementation as well as the
+      # Tauri command layer; it does not require a microphone or display.
+      - name: Test Rust command layer
+        run: cargo test --manifest-path src-tauri/Cargo.toml

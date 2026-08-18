@@ -1,0 +1,48 @@
+[package]
+name = "vocawin"
+version = "0.1.0"
+description = "Private, offline voice dictation for Windows"
+authors = ["VocaHQ"]
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[lib]
+name = "vocawin_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+cpal = "0.15"
+whisper-rs = "0.16"
+transcribe-rs = { version = "0.3.8", features = ["onnx"] }
+hound = "3.5"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["fs", "io-util"] }
+tar = "0.4"
+flate2 = "1"
+thiserror = "2"
+
+[target.'cfg(windows)'.dependencies]
+transcribe-rs = { version = "0.3.8", features = ["onnx", "ort-directml"] }
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging"
+] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

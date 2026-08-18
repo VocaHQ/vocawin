@@ -36,6 +36,50 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 - **Visual feedback** - Tray icon states for idle, recording, and processing
 - **Clipboard preservation** - Save and restore the clipboard after injection
 
+## Foundation in progress
+
+The repo already contains an early Rust + Tauri 2 shell used for local development. This is not a public release.
+
+- Privacy-first settings model (no account, telemetry, or transcription endpoint)
+- Local model catalog covering Whisper/whisper.cpp, Distil-Whisper, Parakeet, Moonshine, SenseVoice, GigaAM, Canary, and Vosk
+- Microphone capture, sample-rate conversion, and offline Whisper transcription through `whisper-rs` / whisper.cpp
+- ONNX Runtime adapters for Parakeet TDT, Moonshine, SenseVoice, GigaAM, and Canary; DirectML is enabled in Windows builds
+- Native Unicode text injection for Windows (`SendInput`), isolated from recognition engines
+- Settings dashboard built with TypeScript and Vite
+
+The recognizer is intentionally not stubbed as a cloud API: VocaWin will only invoke a locally installed/downloaded engine. Model downloads may use the network once, but audio and transcription never do.
+
+### Architecture (development)
+
+```text
+Tauri UI (TypeScript)
+  └─ Rust command layer
+      ├─ Settings + model catalog
+      ├─ Global push-to-talk shortcut + UI recording coordinator
+      ├─ CPAL microphone capture + 16 kHz resampling
+      ├─ whisper.cpp adapter (Whisper-family models)
+      ├─ ONNX / Vosk adapter boundary                (next)
+      └─ Windows text injector (SendInput)
+```
+
+| Engine | Initial models | Windows acceleration |
+| --- | --- | --- |
+| whisper.cpp | Tiny through Large v3 Turbo, Distil-Whisper | Vulkan, CPU fallback |
+| ONNX Runtime | Parakeet, Moonshine, SenseVoice, GigaAM, Canary | DirectML, CPU fallback |
+| Vosk | compact language models | CPU |
+
+### Local model setup (developers)
+
+The development build does not bundle a large model. For Whisper testing, download a whisper.cpp GGML model into VocaWin's local model folder:
+
+```powershell
+$models = Join-Path $env:APPDATA "com.vocahq.vocawin\models"
+New-Item -ItemType Directory -Force $models
+Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin" -OutFile (Join-Path $models "whisper-tiny.bin")
+```
+
+See [the ONNX model guide](docs/MODELS.md) for Parakeet, Moonshine, SenseVoice, GigaAM, and Canary layouts.
+
 ## The Voca ecosystem
 
 Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) for the map.
@@ -58,7 +102,20 @@ VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does
 - **GPU Support**: NVIDIA CUDA, AMD, Intel
 - **Languages**: determined by the downloaded Whisper model
 
-## System Requirements (Expected)
+## Development
+
+Prerequisites: Node.js 20+, Rust stable, and the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/) (Microsoft C++ Build Tools and WebView2) for a Windows build.
+
+```bash
+npm install
+npm run tauri dev       # desktop development
+npm run tauri build     # creates NSIS and MSI artifacts on Windows
+npm run check           # TypeScript build + Rust tests
+```
+
+A macOS/Linux host can validate the frontend and Rust command layer, but Windows injection and installer artifacts must be exercised on Windows 10/11.
+
+## System Requirements (planned)
 
 - Windows 10 version 1809 or later, or Windows 11
 - 4 GB RAM (8 GB+ recommended for larger models)
@@ -80,6 +137,10 @@ GitHub Actions publishes `web/` on pushes to `main`. The `web/CNAME` file maps `
 ## Contributing
 
 VocaWin is in early development. Star the repo to follow progress, or browse the family at [vocahq.com](https://vocahq.com).
+
+## Project references
+
+The product design and model support are informed by [VocaMac](https://github.com/VocaHQ/vocamac), [VocaLinux](https://github.com/VocaHQ/vocalinux), [VocaPhone](https://github.com/VocaHQ/vocaphone), [VocaGateway](https://github.com/VocaHQ/vocagateway), [Handy](https://github.com/cjpais/Handy), and [Dictus](https://github.com/getdictus/dictus-desktop).
 
 ## Author
 
