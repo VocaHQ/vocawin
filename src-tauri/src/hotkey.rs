@@ -1,6 +1,6 @@
 //! Hotkey preset parsing for VocaWin. Maps friendly IDs to global-hotkey Shortcuts.
 
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+use tauri_plugin_global_shortcut::{Code, Shortcut};
 
 /// Built-in presets shown in Settings. Values are stored in settings.json.
 pub const PRESETS: &[(&str, &str)] = &[
@@ -77,6 +77,7 @@ pub fn canonicalize(spec: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri_plugin_global_shortcut::Modifiers;
 
     #[test]
     fn presets_all_parse() {

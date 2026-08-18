@@ -114,17 +114,17 @@ fn inject_send_input(text: &str) -> Result<(), String> {
 }
 
 #[cfg(windows)]
+const CF_UNICODETEXT: u32 = 13;
+
+#[cfg(windows)]
 fn inject_via_clipboard(text: &str) -> Result<(), String> {
     use windows::core::HSTRING;
     use windows::Win32::Foundation::{HANDLE, HWND};
     use windows::Win32::System::DataExchange::{
-        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData, CF_UNICODETEXT,
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
-        VK_CONTROL, VK_V,
-    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, VK_CONTROL, VK_V};
 
     // Preserve prior clipboard text when possible.
     let previous = read_clipboard_unicode().ok();
@@ -142,7 +142,7 @@ fn inject_via_clipboard(text: &str) -> Result<(), String> {
         OpenClipboard(HWND::default()).map_err(|error| format!("OpenClipboard: {error}"))?;
         let result = (|| {
             EmptyClipboard().map_err(|error| format!("EmptyClipboard: {error}"))?;
-            SetClipboardData(CF_UNICODETEXT.0 as u32, HANDLE(mem.0))
+            SetClipboardData(CF_UNICODETEXT, HANDLE(mem.0))
                 .map_err(|error| format!("SetClipboardData: {error}"))?;
             Ok::<(), String>(())
         })();
@@ -208,15 +208,15 @@ fn key_up(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> windo
 fn read_clipboard_unicode() -> Result<String, String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::DataExchange::{
-        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, CF_UNICODETEXT,
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
     };
     use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
     unsafe {
-        if IsClipboardFormatAvailable(CF_UNICODETEXT.0 as u32).is_err() {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT).is_err() {
             return Err("no unicode clipboard".into());
         }
         OpenClipboard(HWND::default()).map_err(|error| format!("OpenClipboard: {error}"))?;
-        let handle = GetClipboardData(CF_UNICODETEXT.0 as u32)
+        let handle = GetClipboardData(CF_UNICODETEXT)
             .map_err(|error| format!("GetClipboardData: {error}"))?;
         let ptr = GlobalLock(windows::Win32::Foundation::HGLOBAL(handle.0)) as *const u16;
         if ptr.is_null() {
@@ -240,7 +240,7 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
     use windows::core::HSTRING;
     use windows::Win32::Foundation::{HANDLE, HWND};
     use windows::Win32::System::DataExchange::{
-        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData, CF_UNICODETEXT,
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     let encoded: Vec<u16> = HSTRING::from(text).as_wide().iter().copied().chain([0]).collect();
@@ -257,7 +257,7 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
         OpenClipboard(HWND::default()).map_err(|error| format!("OpenClipboard: {error}"))?;
         let result = (|| {
             EmptyClipboard().map_err(|error| format!("EmptyClipboard: {error}"))?;
-            SetClipboardData(CF_UNICODETEXT.0 as u32, HANDLE(mem.0))
+            SetClipboardData(CF_UNICODETEXT, HANDLE(mem.0))
                 .map_err(|error| format!("SetClipboardData: {error}"))?;
             Ok::<(), String>(())
         })();
