@@ -1,10 +1,12 @@
+<p align="center">
+  <img src="web/assets/brand/voca-logo-512.png" alt="VocaWin" width="128" height="128">
+</p>
+
+<h1 align="center">VocaWin</h1>
+
+<p align="center"><strong>Voice-to-text for Windows.</strong></p>
+
 <div align="center">
-
-<img src="web/assets/brand/voca-logo-512.png" width="120" height="120" alt="VocaWin">
-
-# VocaWin
-
-**Voice-to-text for Windows.**
 
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases)](https://github.com/VocaHQ/vocawin/releases)
 [![Status](https://img.shields.io/badge/status-developer%20alpha-yellow)](#development)
