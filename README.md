@@ -1,15 +1,24 @@
+<div align="center">
+
+<img src="web/assets/brand/voca-logo-512.png" width="120" height="120" alt="VocaWin">
+
 # VocaWin
 
-**Voice-to-text for Windows** | Developer alpha. Unsigned.
+**Voice-to-text for Windows.**
 
-VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text runs on this PC after you download a model. Testers can grab an unsigned developer alpha from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). This is not a signed store build and not a stable public release.
+[![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases)](https://github.com/VocaHQ/vocawin/releases)
+[![Status](https://img.shields.io/badge/status-developer%20alpha-yellow)](#development)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)](#system-requirements)
+[![Privacy](https://img.shields.io/badge/privacy-on%20this%20PC-success)](#key-principles)
 
-[![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases&style=flat-square&color=0F6B57)](https://github.com/VocaHQ/vocawin/releases)
-[![Website](https://img.shields.io/badge/Website-vocawin.com-0F6B57?style=flat-square)](https://vocawin.com)
-[![Alpha](https://img.shields.io/badge/Status-Alpha-0F6B57?style=flat-square)](#development)
-[![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-0F6B57?style=flat-square)](LICENSE)
-[![Discord](https://img.shields.io/discord/1538633755877580810?style=flat-square&logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
-[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e?style=flat-square)](https://vocahq.com)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-vocawin.com-informational)](https://vocawin.com)
+[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
+[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
+
+Developer alpha. Unsigned. Testers can grab a build from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). This is not a signed store build and not a stable public release.
+
+</div>
 
 ---
 
