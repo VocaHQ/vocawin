@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./style.css";
+import sidebarMark from "./assets/voca-logo.svg";
+import dictateIdle from "./assets/vocawin-dictate-idle.svg";
+import dictateListening from "./assets/vocawin-dictate-listening.svg";
 
 type Model = { id: string; name: string; engine: string; size: string; languages: string; acceleration: string; description: string };
 type Settings = {
@@ -244,7 +247,7 @@ function languageOptions() {
 }
 
 function dictateMark(kind: "idle" | "listening") {
-  return `<img src="/src/assets/vocawin-dictate-${kind}.svg" alt="" width="78" height="78"/>`;
+  return `<img src="${kind === "listening" ? dictateListening : dictateIdle}" alt="" width="78" height="78"/>`;
 }
 
 function dictationPage() {
@@ -453,7 +456,7 @@ function render() {
   }
 
   const pages: Record<View, () => string> = { dictation: dictationPage, models: modelsPage, history: historyPage, settings: settingsPage };
-  app.innerHTML = `<aside><div class="brand"><span class="mark"><img src="/src/assets/voca-logo.svg" alt="Voca"/></span><span>VocaWin</span><span class="brand-tag" title="Developer-only build">Alpha</span></div><p class="brand-subtitle">Voice dictation, kept private.</p><nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}</nav><div class="privacy"><i>✓</i><div><b>Private by default</b><small>Your audio stays here</small></div></div></aside><main>${pages[view]()}${welcomeOverlay()}${aboutOverlay()}<p class="notice" role="status">${escape(noticeText)}</p></main>`;
+  app.innerHTML = `<aside><div class="brand"><span class="mark"><img src="${sidebarMark}" alt="Voca"/></span><span>VocaWin</span><span class="brand-tag" title="Developer-only build">Alpha</span></div><p class="brand-subtitle">Voice dictation, kept private.</p><nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}</nav><div class="privacy"><i>✓</i><div><b>Private by default</b><small>Your audio stays here</small></div></div></aside><main>${pages[view]()}${welcomeOverlay()}${aboutOverlay()}<p class="notice" role="status">${escape(noticeText)}</p></main>`;
   document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(button => button.addEventListener("click", () => { view = button.dataset.view as View; render(); }));
   document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach(button => button.addEventListener("click", () => { view = button.dataset.go as View; render(); }));
   document.querySelector("#record")?.addEventListener("click", toggleRecording);
