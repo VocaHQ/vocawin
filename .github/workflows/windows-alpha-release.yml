@@ -1,4 +1,4 @@
-# Windows alpha for testers. Self-signed in CI when secrets exist.
+# Windows alpha for testers. Unsigned installers.
 # Not a purchased CA / store build. vocawin.com points at GitHub Releases.
 #
 # Tag push is the only trigger. windows-ci.yml must never set tagName.
@@ -6,7 +6,6 @@
 # Always prerelease: a GitHub Release here is not a public ship.
 # No workflow_dispatch, so a branch click cannot publish.
 # includeUpdaterJson is off so we do not upload latest.json.
-# Forks without VOCAWIN_SELF_SIGN_* secrets still publish unsigned.
 
 name: Windows alpha release
 
@@ -74,31 +73,9 @@ jobs:
           releaseBody: |
             This is a Windows alpha for testers. vocawin.com points at GitHub Releases. It is not a store build and not a stable public ship.
 
-            CI self-signs with CN=VocaWin Alpha (self-signed) when the VocaHQ secrets are present. That puts a publisher name on the file. It is not a purchased CA cert. SmartScreen can still warn on other PCs. A machine that trusts docs/certs/vocawin-alpha.cer can skip the unknown-publisher nag.
-
-            If this build is unsigned (a fork, or the secrets were missing), Windows will say the publisher is unknown. That is expected.
+            The installers are unsigned. Windows will say the publisher is unknown. That is expected. More info, then Run anyway if you trust the file.
           releaseDraft: false
           prerelease: true
           includeUpdaterJson: false
           releaseCommitish: ${{ github.sha }}
           args: --bundles nsis,msi
-      # Same bundle paths as windows-ci.yml (C:\t\release\bundle\...).
-      - name: Self-sign alpha installers
-        id: sign
-        shell: pwsh
-        env:
-          VOCAWIN_SELF_SIGN_PFX: ${{ secrets.VOCAWIN_SELF_SIGN_PFX }}
-          VOCAWIN_SELF_SIGN_PASSWORD: ${{ secrets.VOCAWIN_SELF_SIGN_PASSWORD }}
-        run: |
-          & "${{ github.workspace }}/.github/scripts/self-sign-alpha.ps1"
-      - name: Replace Release assets with signed installers
-        if: steps.sign.outputs.signed == 'true'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $files = @(
-            Get-ChildItem -Path "C:\t\release\bundle\nsis\*-setup.exe" -ErrorAction Stop
-            Get-ChildItem -Path "C:\t\release\bundle\msi\*.msi" -ErrorAction Stop
-          )
-          gh release upload "${{ github.ref_name }}" @($files.FullName) --clobber
