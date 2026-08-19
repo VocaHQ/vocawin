@@ -2,8 +2,9 @@
 
 **Voice-to-text for Windows** | Developer alpha. Unsigned.
 
-VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text runs on this PC after you download a model. Testers can grab an unsigned developer alpha from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). The latest tagged build is [v0.1.0-alpha.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-alpha.1). This is not a signed store build and not a stable public release.
+VocaWin is the Windows project in the [Voca](https://vocahq.com/) family. Hold a hotkey, speak, and text is meant to land at your cursor. Speech-to-text runs on this PC after you download a model. Testers can grab an unsigned developer alpha from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). This is not a signed store build and not a stable public release.
 
+[![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases&style=flat-square&color=0F6B57)](https://github.com/VocaHQ/vocawin/releases)
 [![Website](https://img.shields.io/badge/Website-vocawin.com-0F6B57?style=flat-square)](https://vocawin.com)
 [![Alpha](https://img.shields.io/badge/Status-Alpha-0F6B57?style=flat-square)](#development)
 [![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-0F6B57?style=flat-square)](LICENSE)
@@ -29,7 +30,7 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 
 ## Try it
 
-Testers can install an unsigned developer alpha today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). The latest tagged build is [v0.1.0-alpha.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-alpha.1). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
+Testers can install an unsigned developer alpha today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
 
 This is a tester build you can run today. It is not a store listing and not a stable public release.
 
@@ -120,7 +121,7 @@ A macOS/Linux host can validate the frontend and Rust command layer, but Windows
 
 Windows CI builds an NSIS (and MSI) installer on pushes to main and on workflow_dispatch, then uploads it as a GitHub Actions artifact. Pull requests only run cargo test, so a docs change does not package the setup wizards. The installers stay unsigned. SmartScreen can still warn.
 
-Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
+Pushing a `v*` tag builds the same NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
 ## System Requirements
 
