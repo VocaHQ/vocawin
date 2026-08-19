@@ -11,6 +11,7 @@ type Settings = {
   maxRecordingSeconds: number;
   launchAtLogin: boolean;
   soundEffects: boolean;
+  soundTheme: string;
   appendTrailingSpace: boolean;
   autoCapitalize: boolean;
   selectedModel: string;
@@ -54,6 +55,20 @@ type SettingsItem = {
   keywords: string;
   html: string;
 };
+
+const SOUND_THEMES: Array<[string, string]> = [
+  ["lift", "Lift"],
+  ["flick", "Flick"],
+  ["ember", "Ember"],
+  ["step", "Step"],
+  ["voca", "Voca"],
+  ["soft", "Soft"],
+  ["chirp", "Chirp"],
+  ["scale", "Scale"],
+  ["drop", "Drop"],
+  ["glass", "Glass"],
+  ["off", "Off"],
+];
 
 const LANGUAGES = [
   "Auto-detect",
@@ -128,6 +143,7 @@ let view: View = "dictation";
 let noticeText = "";
 let showAbout = false;
 let logLines: string[] = [];
+let previewStartNext = true;
 
 const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const selected = () => models.find(model => model.id === settings.selectedModel);
@@ -192,6 +208,15 @@ function hotkeyOptions() {
   const options = presets.map(preset => `<option value="${escape(preset.id)}" ${settings.hotkey === preset.id ? "selected" : ""}>${escape(preset.label)}</option>`).join("");
   const custom = known.has(settings.hotkey) ? "" : `<option value="${escape(settings.hotkey)}" selected>Custom: ${escape(settings.hotkey)}</option>`;
   return options + custom;
+}
+
+function soundThemeOptions() {
+  const selectedTheme = SOUND_THEMES.some(([id]) => id === settings.soundTheme)
+    ? settings.soundTheme
+    : "voca";
+  return SOUND_THEMES.map(([id, label]) =>
+    `<option value="${id}" ${id === selectedTheme ? "selected" : ""}>${label}</option>`
+  ).join("");
 }
 
 function deviceOptions() {
@@ -311,10 +336,11 @@ function settingsItems(): SettingsItem[] {
     },
     {
       group: "Audio",
-      title: "Sound feedback",
-      subtitle: "Play start, stop, and error cues through the default playback device.",
+      title: "Dictation sounds",
+      subtitle: "These play when listening starts and stops.",
       keywords: "sound beep audio cue",
-      html: `<label class="switch"><input id="sound" type="checkbox" ${settings.soundEffects ? "checked" : ""}/><span></span></label>`,
+      html: `<div class="sound-theme-controls"><select id="sound-theme">${soundThemeOptions()}</select>
+      <button type="button" class="quiet-button" id="preview-sound" ${settings.soundTheme === "off" ? "disabled" : ""}>Preview</button></div>`,
     },
     {
       group: "Application",
@@ -460,6 +486,23 @@ function render() {
   });
   document.querySelector("#record-hotkey")?.addEventListener("click", () => {
     void toggleHotkeyRecording();
+  });
+  const soundTheme = document.querySelector<HTMLSelectElement>("#sound-theme");
+  const previewSound = document.querySelector<HTMLButtonElement>("#preview-sound");
+  soundTheme?.addEventListener("change", () => {
+    previewStartNext = true;
+    if (previewSound) previewSound.disabled = soundTheme.value === "off";
+  });
+  previewSound?.addEventListener("click", async () => {
+    const theme = soundTheme?.value ?? settings.soundTheme;
+    if (theme === "off") return;
+    try {
+      await invoke("preview_sound", { theme, start: previewStartNext });
+      previewStartNext = !previewStartNext;
+    } catch (error) {
+      noticeText = String(error);
+      render();
+    }
   });
   const language = document.querySelector<HTMLSelectElement>("#language"); if (language) language.value = settings.language;
   const activation = document.querySelector<HTMLSelectElement>("#activation"); if (activation) activation.value = settings.activationMode;
@@ -720,8 +763,11 @@ async function save() {
   if (silence) settings.silenceSeconds = Number(silence.value) || 1.5;
   const maxRecording = document.querySelector<HTMLInputElement>("#max-recording");
   if (maxRecording) settings.maxRecordingSeconds = Number(maxRecording.value) || 60;
-  const sound = document.querySelector<HTMLInputElement>("#sound");
-  if (sound) settings.soundEffects = sound.checked;
+  const soundTheme = document.querySelector<HTMLSelectElement>("#sound-theme");
+  if (soundTheme) {
+    settings.soundTheme = soundTheme.value;
+    settings.soundEffects = soundTheme.value !== "off";
+  }
   const autoCap = document.querySelector<HTMLInputElement>("#auto-cap");
   if (autoCap) settings.autoCapitalize = autoCap.checked;
   const trailing = document.querySelector<HTMLInputElement>("#trailing-space");
@@ -815,6 +861,8 @@ if (isLogsWindow) {
     models = catalog;
     settings = {
       ...saved,
+      soundTheme: saved.soundTheme || (saved.soundEffects === false ? "off" : "voca"),
+      soundEffects: saved.soundEffects ?? true,
       maxRecordingSeconds: saved.maxRecordingSeconds ?? 60,
       appendTrailingSpace: saved.appendTrailingSpace ?? true,
       autoCapitalize: saved.autoCapitalize ?? true,

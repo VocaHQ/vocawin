@@ -5,6 +5,9 @@
 .settings-card{margin-bottom:14px}
 .hotkey-controls{display:flex;gap:8px;align-items:center}
 .hotkey-controls select{width:180px}
+.sound-theme-controls{display:flex;gap:8px;align-items:center}
+.sound-theme-controls select{width:148px}
+.sound-theme-controls .quiet-button:disabled{opacity:.45;cursor:default}
 .gpu-readout{text-align:right;max-width:240px}
 .gpu-readout strong,.gpu-readout span{display:block}
 .gpu-readout span{margin-top:4px;color:#5a615d;font-size:11px;font-weight:400}
