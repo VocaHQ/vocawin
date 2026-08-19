@@ -27,32 +27,32 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 - **Windows native** - Tray app, hotkey, WASAPI, text at the caret
 - **Honest status** - Developer alpha. Unsigned. Windows will likely say the publisher is unknown.
 
-## Planned Features
+## Try it
 
-- **System-wide text injection** - Transcribed text appears wherever your cursor is
-- **Push-to-talk and toggle** - Hold a hotkey (default: Right Alt, like VocaLinux) or double-tap to toggle
-- **GPU acceleration** - NVIDIA CUDA, AMD, and Intel paths via whisper.cpp
-- **Language support** - Follows the selected Whisper model
-- **Configurable settings** - Hotkeys, models, languages, silence detection
-- **Visual feedback** - Tray icon states for idle, recording, and processing
-- **Clipboard preservation** - Save and restore the clipboard after injection
+Testers can install an unsigned developer alpha today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). The latest tagged build is [v0.1.0-alpha.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-alpha.1). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
 
-## Foundation in progress
+This is a tester build you can run today. It is not a store listing and not a stable public release.
 
-The repo already contains an early Rust + Tauri 2 shell used for local development. This is not a public release.
+### What works
 
-- Privacy-first settings model (no account, telemetry, or transcription endpoint)
-- Local model catalog covering Whisper/whisper.cpp, Distil-Whisper, Parakeet, Moonshine, SenseVoice, GigaAM, and Canary
-- One-click in-app model Download into the layout each recognizer expects
-- Microphone capture, sample-rate conversion, and offline Whisper transcription through `whisper-rs` / whisper.cpp
-- ONNX Runtime adapters for Parakeet TDT, Moonshine, SenseVoice, GigaAM, and Canary; DirectML is enabled in Windows builds
-- Native Unicode text injection for Windows (`SendInput`), isolated from recognition engines
-- System tray with Show window / Quit, and close-to-tray
-- Settings dashboard built with TypeScript and Vite
+- **Hold a hotkey, speak, text at the caret** - Default is Right Alt, the same hold as VocaLinux. Double-tap toggles. You can change the hotkey in Settings.
+- **Tray** - Idle, recording, and processing icon states. Close goes to the tray. Show window / Quit.
+- **Settings** - Hotkeys, models, languages, silence detection, sounds, start on login.
+- **Local models** - In-app Download for Whisper/whisper.cpp, Distil-Whisper, Parakeet, Moonshine, SenseVoice, GigaAM, and Canary.
+- **GPU** - whisper.cpp on Vulkan with CPU fallback. ONNX Runtime on DirectML with CPU fallback.
+- **Clipboard restore** after injection.
 
-The recognizer is intentionally not stubbed as a cloud API: VocaWin will only invoke a locally installed/downloaded engine. Model downloads may use the network once, but audio and transcription never do.
+### Still rough
 
-### Architecture (development)
+- Unsigned / self-signed. SmartScreen is expected. There is no purchased CA signature and no Microsoft Store listing.
+- The installer does not bundle a speech model. First run needs a network once to download one.
+- Elevated windows can block text injection.
+- Parakeet CTC and Vosk stay out of the catalog until they work.
+- No auto-update. Expect bugs. [File an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks.
+
+The recognizer is not a cloud API. VocaWin only invokes a locally installed or downloaded engine. Model downloads may use the network once. Audio and transcription do not.
+
+### Architecture
 
 ```text
 Tauri UI (TypeScript)
@@ -98,12 +98,12 @@ Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) 
 
 VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
 
-## Tech Stack (Planned)
+## Tech Stack
 
-- **Speech Engine**: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) with GPU acceleration
+- **Speech Engine**: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and ONNX Runtime, both local
 - **Platform**: Windows 10/11
-- **GPU Support**: NVIDIA CUDA, AMD, Intel
-- **Languages**: determined by the downloaded Whisper model
+- **GPU**: Vulkan for Whisper, DirectML for ONNX, CPU fallback for both
+- **Languages**: determined by the downloaded model
 
 ## Development
 
@@ -122,7 +122,7 @@ Windows CI builds an NSIS (and MSI) installer on pushes to main and on workflow_
 
 Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is self-signed, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
-## System Requirements (planned)
+## System Requirements
 
 - Windows 10 version 1809 or later, or Windows 11
 - 4 GB RAM (8 GB+ recommended for larger models)
