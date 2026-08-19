@@ -9,10 +9,52 @@ on:
 permissions:
   contents: read
   actions: write
+  pull-requests: read
+
+# Do not use on.pull_request.paths. That can skip the whole workflow
+# and leave a required check pending. Filter in a cheap ubuntu job
+# instead, then skip the Windows VMs when only docs changed.
 
 jobs:
+  changes:
+    name: Check source changes
+    runs-on: ubuntu-latest
+    outputs:
+      source: ${{ steps.report.outputs.source }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name != 'workflow_dispatch'
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            source:
+              - 'src/**'
+              - 'src-tauri/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'index.html'
+              - 'vite.config.*'
+              - 'tsconfig*.json'
+              - '.github/workflows/windows-ci.yml'
+              - '.github/scripts/**'
+      - id: report
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "source=true"
+            echo "source=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "source=${{ steps.filter.outputs.source }}"
+            echo "source=${{ steps.filter.outputs.source }}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+
   test:
     name: Build and test on Windows
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.source == 'true'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -62,8 +104,10 @@ jobs:
 
   installer:
     name: Windows installer (alpha)
-    # PRs only cargo test. Packaging NSIS/MSI is main + workflow_dispatch.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    # PRs never package. Main packages only when app/workflow source
+    # changed. workflow_dispatch still builds test + installer.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.changes.outputs.source == 'true')
     runs-on: windows-latest
     env:
       CARGO_TARGET_DIR: C:\t
