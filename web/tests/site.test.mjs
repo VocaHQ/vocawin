@@ -36,10 +36,8 @@ test("unsigned alpha download is explicit and not oversold", () => {
     /class="hero-copy"[\s\S]*class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases"/,
   );
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases"/);
-  assert.match(
-    html,
-    /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases\/tag\/v0\.1\.0-alpha\.1"/,
-  );
+  assert.doesNotMatch(html, /\/releases\/tag\//);
+  assert.doesNotMatch(html, /softwareVersion/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/issues"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/blob\/main\/docs\/setup\.md"/);
   assert.match(html, /unsigned/i);
