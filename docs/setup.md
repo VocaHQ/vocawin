@@ -10,8 +10,8 @@ The first run asks you to download a speech-to-text model. That uses the network
 
 Hold Right Alt to dictate, the same hold-default as VocaLinux. AltGr is left alone. You can change the hotkey later in Settings.
 
-The tray mic is teal when idle, red while you speak, and amber while a take is processing.
+The tray mic is teal when idle, red while you speak, amber while a take is processing, and slate when the model is unloaded or paused.
 
 The window title and the sidebar pill say Alpha. That means this is a tester build, not a store ship.
 
-Logs live in the app. Open View Logs from the tray. They are this session's lines, not a file on disk. Settings and models sit under `%APPDATA%\com.vocahq.vocawin`.
+Logs live in the Debug page, also available from the tray. Warning and error show by default. Debug logging is off until you turn it on. Copy and Clear work on the in-memory buffer. Clear does not delete files on disk. Settings and models sit under `%APPDATA%\com.vocahq.vocawin`.

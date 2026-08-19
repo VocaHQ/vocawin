@@ -1,10 +1,17 @@
 //! Opt-in auto-pause: while listed processes run, dictation hotkey is unloaded.
 
+use serde::Serialize;
+
 /// Returns true when any running process image name matches an entry
 /// (case-insensitive). Entries are exe names like `fortnite.exe` or `obs64`.
 pub fn matching_process_running(watch_list: &[String]) -> bool {
+    matching_process_name(watch_list).is_some()
+}
+
+/// First watched process that is currently running, if any.
+pub fn matching_process_name(watch_list: &[String]) -> Option<String> {
     if watch_list.is_empty() {
-        return false;
+        return None;
     }
     let wanted: Vec<String> = watch_list
         .iter()
@@ -12,11 +19,72 @@ pub fn matching_process_running(watch_list: &[String]) -> bool {
         .filter(|entry| !entry.is_empty())
         .collect();
     if wanted.is_empty() {
-        return false;
+        return None;
     }
-    running_process_names()
+    running_process_names().into_iter().find(|name| {
+        wanted
+            .iter()
+            .any(|watch| name == watch || name.starts_with(watch))
+    })
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningApp {
+    pub name: String,
+    pub label: String,
+}
+
+/// Deduped running image names for the Settings task picker.
+pub fn list_running_apps() -> Vec<RunningApp> {
+    let mut names = running_process_names();
+    names.sort();
+    names.dedup();
+    names
         .into_iter()
-        .any(|name| wanted.iter().any(|watch| name == *watch || name.starts_with(watch)))
+        .filter(|name| !is_noise_process(name))
+        .map(|name| {
+            let label = name
+                .strip_suffix(".exe")
+                .unwrap_or(name.as_str())
+                .to_string();
+            RunningApp { name, label }
+        })
+        .collect()
+}
+
+fn is_noise_process(name: &str) -> bool {
+    const SKIP: &[&str] = &[
+        "svchost.exe",
+        "csrss.exe",
+        "smss.exe",
+        "wininit.exe",
+        "services.exe",
+        "lsass.exe",
+        "winlogon.exe",
+        "dwm.exe",
+        "fontdrvhost.exe",
+        "conhost.exe",
+        "runtimebroker.exe",
+        "searchhost.exe",
+        "startmenuexperiencehost.exe",
+        "textinputhost.exe",
+        "sihost.exe",
+        "taskhostw.exe",
+        "ctfmon.exe",
+        "securityhealthservice.exe",
+        "securityhealthsystray.exe",
+        "systemsettings.exe",
+        "applicationframehost.exe",
+        "shellexperiencehost.exe",
+        "widgetservice.exe",
+        "widgets.exe",
+        "idle.exe",
+        "registry.exe",
+        "memory compression",
+        "vocawin.exe",
+    ];
+    SKIP.contains(&name)
 }
 
 pub fn parse_app_list(raw: &str) -> Vec<String> {
@@ -112,5 +180,19 @@ mod tests {
                 "steam.exe".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn matching_name_needs_a_running_hit() {
+        assert!(matching_process_name(&[]).is_none());
+        assert!(matching_process_name(&["definitely-not-a-real-vocawin-task.exe".into()]).is_none());
+    }
+
+    #[test]
+    fn noise_filter_skips_system_hosts() {
+        assert!(is_noise_process("svchost.exe"));
+        assert!(is_noise_process("vocawin.exe"));
+        assert!(!is_noise_process("obs64.exe"));
+        assert!(!is_noise_process("fortnite.exe"));
     }
 }

@@ -231,6 +231,11 @@ struct Settings {
     /// First-run welcome was dismissed.
     #[serde(default)]
     welcome_dismissed: bool,
+    #[serde(default = "default_true")]
+    history_enabled: bool,
+    /// When false, Debug shows error and warning only.
+    #[serde(default)]
+    debug_logging: bool,
 }
 
 fn default_true() -> bool {
@@ -265,6 +270,8 @@ impl Default for Settings {
             idle_unload_enabled: false,
             idle_unload_seconds: 300,
             welcome_dismissed: false,
+            history_enabled: true,
+            debug_logging: false,
         }
     }
 }
@@ -521,7 +528,7 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                                     started_ms = Some(now_ms());
                                     *last_voice_ms.lock().unwrap() = now_ms();
                                     *heard_speech.lock().unwrap() = false;
-                                    logbuf::push("Microphone opened.");
+                                    logbuf::debug("Microphone opened.");
                                     Ok(())
                                 }
                                 Err(error) => Err(error),
@@ -636,7 +643,7 @@ impl AudioRecorder {
         match recv_audio_reply(response, AUDIO_REPLY_TIMEOUT, "start") {
             Ok(result) => result,
             Err(error) => {
-                logbuf::push(error.clone());
+                logbuf::error(error.clone());
                 let (stop_reply, stop_rx) = mpsc::channel();
                 let _ = self.commands.send(AudioCommand::Stop { reply: stop_reply });
                 let _ = stop_rx.recv_timeout(std::time::Duration::from_millis(400));
@@ -660,7 +667,7 @@ impl AudioRecorder {
         match recv_audio_reply(response, AUDIO_REPLY_TIMEOUT, "start") {
             Ok(result) => result,
             Err(error) => {
-                logbuf::push(error.clone());
+                logbuf::error(error.clone());
                 let (stop_reply, stop_rx) = mpsc::channel();
                 let _ = self.commands.send(AudioCommand::Stop { reply: stop_reply });
                 let _ = stop_rx.recv_timeout(std::time::Duration::from_millis(400));
@@ -711,32 +718,85 @@ impl AudioRecorder {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+enum ParkReason {
+    #[default]
+    None,
+    IdleTimeout,
+    AutoPause(String),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TrayPhase {
     Idle,
     Listening,
     Processing,
+    Parked,
+}
+
+fn tray_park_tooltip(reason: &ParkReason) -> String {
+    match reason {
+        ParkReason::IdleTimeout => {
+            "VocaWin - Unloaded to save RAM (idle timeout)".into()
+        }
+        ParkReason::AutoPause(app) => {
+            format!("VocaWin - Paused because {app} is running")
+        }
+        ParkReason::None => "VocaWin".into(),
+    }
 }
 
 fn set_tray_phase(app: &AppHandle, phase: TrayPhase) {
     if let Some(tray) = app.tray_by_id("main") {
+        let park = app
+            .try_state::<AppState>()
+            .and_then(|state| state.park_reason.lock().ok().map(|guard| guard.clone()))
+            .unwrap_or_default();
         let (tip, bytes) = match phase {
-            TrayPhase::Idle => ("VocaWin", include_bytes!("../icons/tray-idle.png").as_slice()),
+            TrayPhase::Idle => ("VocaWin".into(), include_bytes!("../icons/tray-idle.png").as_slice()),
             TrayPhase::Listening => (
-                "VocaWin - Listening",
+                "VocaWin - Listening".into(),
                 include_bytes!("../icons/tray-listening.png").as_slice(),
             ),
             TrayPhase::Processing => (
-                "VocaWin - Processing",
+                "VocaWin - Processing".into(),
                 include_bytes!("../icons/tray-processing.png").as_slice(),
             ),
+            TrayPhase::Parked => (
+                tray_park_tooltip(&park),
+                include_bytes!("../icons/tray-parked.png").as_slice(),
+            ),
         };
-        let _ = tray.set_tooltip(Some(tip));
+        let _ = tray.set_tooltip(Some(tip.as_str()));
         if let Ok(icon) = tauri::image::Image::from_bytes(bytes) {
             let _ = tray.set_icon(Some(icon));
         }
+        if let (Some(window), Ok(icon)) = (
+            app.get_webview_window("main"),
+            tauri::image::Image::from_bytes(bytes),
+        ) {
+            let _ = window.set_icon(icon);
+        }
     }
     let _ = refresh_tray_menu(app);
+}
+
+fn apply_ready_or_parked_tray(app: &AppHandle) {
+    let parked = app
+        .try_state::<AppState>()
+        .and_then(|state| {
+            let reason = state.park_reason.lock().ok()?.clone();
+            Some(reason != ParkReason::None)
+        })
+        .unwrap_or(false);
+    set_tray_phase(
+        app,
+        if parked {
+            TrayPhase::Parked
+        } else {
+            TrayPhase::Idle
+        },
+    );
 }
 
 #[cfg(windows)]
@@ -780,11 +840,11 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
         }
         Err(error) => {
             sounds::play_error_if_enabled(&sound);
-            logbuf::push_and_emit(app, format!("Dictation error: {error}"));
+            logbuf::error_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error);
         }
     }
-    set_tray_phase(app, TrayPhase::Idle);
+    apply_ready_or_parked_tray(app);
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -820,6 +880,9 @@ struct AppState {
     inject_on_auto_stop: Mutex<bool>,
     registered_hotkey: Mutex<String>,
     dictation_paused: Mutex<bool>,
+    park_reason: Mutex<ParkReason>,
+    /// Last poll of Whisper residency, used to spot idle unload.
+    saw_model_loaded: Mutex<bool>,
     whisper_cache: whisper_cache::WhisperCache,
 }
 
@@ -937,7 +1000,15 @@ fn save_settings(
         .configure_idle(settings.idle_unload_enabled, settings.idle_unload_seconds);
     if !settings.idle_unload_enabled {
         state.whisper_cache.unload();
+        let mut park = state
+            .park_reason
+            .lock()
+            .map_err(|_| "Park lock was poisoned")?;
+        if *park == ParkReason::IdleTimeout {
+            *park = ParkReason::None;
+        }
     }
+    logbuf::set_debug_enabled(settings.debug_logging);
     let paused = *state
         .dictation_paused
         .lock()
@@ -949,7 +1020,8 @@ fn save_settings(
         .registered_hotkey
         .lock()
         .map_err(|_| "Hotkey lock was poisoned")? = settings.hotkey.clone();
-    let _ = refresh_tray_menu(&app);
+    emit_runtime(&app);
+    apply_ready_or_parked_tray(&app);
     Ok(())
 }
 
@@ -1227,7 +1299,7 @@ async fn download_url_to_file(
     use futures_util::StreamExt;
     use tokio::io::AsyncWriteExt;
 
-    logbuf::push_and_emit(
+    logbuf::debug_and_emit(
         app,
         format!("Download {model_id} from {}", url_host(url)),
     );
@@ -1241,7 +1313,7 @@ async fn download_url_to_file(
         let response = reqwest::get(url)
             .await
             .map_err(|error| format!("Could not start download: {error}"))?;
-        logbuf::push_and_emit(
+        logbuf::debug_and_emit(
             app,
             format!("Download {model_id} HTTP {}", response.status()),
         );
@@ -1473,7 +1545,7 @@ async fn download_model(
             bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
         },
         Err(error) => {
-            logbuf::push_and_emit(&app, format!("Download {model_id} failed: {error}"));
+            logbuf::error_and_emit(&app, format!("Download {model_id} failed: {error}"));
             ModelInstallStatus {
                 installed: model_is_installed(&state.models_path, &model_id),
                 downloadable: true,
@@ -1666,7 +1738,7 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
-    logbuf::push_and_emit(
+    logbuf::debug_and_emit(
         app,
         format!("Start dictation ({})", settings.selected_model),
     );
@@ -1679,7 +1751,7 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
             "No speech model is installed. Open Models and download {} first.",
             settings.selected_model
         );
-        logbuf::push_and_emit(app, error.clone());
+        logbuf::error_and_emit(app, error.clone());
         return Err(error);
     }
     if let Err(error) = state.recorder.start(
@@ -1692,7 +1764,7 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
             .recording
             .lock()
             .map_err(|_| "Recording lock was poisoned")? = false;
-        logbuf::push_and_emit(app, format!("Start dictation failed: {error}"));
+        logbuf::error_and_emit(app, format!("Start dictation failed: {error}"));
         return Err(error);
     }
     sounds::play_if_enabled(&settings.sound_theme, true);
@@ -1794,7 +1866,7 @@ fn transcribe_samples(
         settings.auto_capitalize,
         settings.append_trailing_space,
     );
-    if !text.trim().is_empty() {
+    if !text.trim().is_empty() && settings.history_enabled {
         append_history(
             &state.history_path,
             text.trim().to_string(),
@@ -1826,14 +1898,14 @@ async fn stop_and_transcribe(app: AppHandle) -> Result<String, String> {
         let text = match transcribe_recording(&state) {
             Ok(text) => text,
             Err(error) => {
-                set_tray_phase(&app, TrayPhase::Idle);
+                apply_ready_or_parked_tray(&app);
                 sounds::play_error_if_enabled(&sound);
                 return Err(error);
             }
         };
         sounds::play_if_enabled(&sound, false);
         let _ = app.emit("recording-changed", false);
-        set_tray_phase(&app, TrayPhase::Idle);
+        apply_ready_or_parked_tray(&app);
         Ok(text)
     })
     .await
@@ -1859,7 +1931,7 @@ fn get_gpu_status() -> gpu::GpuStatus {
 }
 
 #[tauri::command]
-fn get_log_lines() -> Vec<String> {
+fn get_log_lines() -> Vec<logbuf::LogLine> {
     logbuf::snapshot()
 }
 
@@ -1950,8 +2022,32 @@ fn recommend_model() -> hardware::ModelRecommendation {
     hardware::recommend_starting_model()
 }
 
-#[tauri::command]
-fn get_runtime_status(state: State<'_, AppState>) -> serde_json::Value {
+fn park_kind(reason: &ParkReason) -> &'static str {
+    match reason {
+        ParkReason::None => "",
+        ParkReason::IdleTimeout => "idle",
+        ParkReason::AutoPause(_) => "autopause",
+    }
+}
+
+fn park_detail(reason: &ParkReason, idle_seconds: u32) -> String {
+    match reason {
+        ParkReason::None => String::new(),
+        ParkReason::IdleTimeout => {
+            let minutes = idle_seconds / 60;
+            if minutes >= 2 && idle_seconds % 60 == 0 {
+                format!("Unloaded to save RAM after {minutes} minutes idle.")
+            } else {
+                format!("Unloaded to save RAM after {idle_seconds} seconds idle.")
+            }
+        }
+        ParkReason::AutoPause(app) => {
+            format!("Paused because {app} launched.")
+        }
+    }
+}
+
+fn runtime_status_value(state: &AppState) -> serde_json::Value {
     let settings = state
         .settings
         .lock()
@@ -1962,18 +2058,29 @@ fn get_runtime_status(state: State<'_, AppState>) -> serde_json::Value {
         .dictation_paused
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let park = state
+        .park_reason
+        .lock()
+        .map(|reason| reason.clone())
+        .unwrap_or_default();
+    let model_loaded = state.whisper_cache.is_loaded();
     let gpu = gpu::detect_gpu();
     let status = if recording {
         "Recording"
-    } else if paused {
+    } else if matches!(park, ParkReason::AutoPause(_)) || paused {
         "Paused"
+    } else if matches!(park, ParkReason::IdleTimeout) {
+        "Unloaded"
     } else {
         "Ready"
     };
     serde_json::json!({
         "status": status,
         "recording": recording,
-        "paused": paused,
+        "paused": paused || matches!(park, ParkReason::AutoPause(_)),
+        "modelLoaded": model_loaded,
+        "parkKind": park_kind(&park),
+        "parkDetail": park_detail(&park, settings.idle_unload_seconds),
         "hotkey": settings.hotkey,
         "inputDevice": if settings.input_device.is_empty() { "Default microphone".into() } else { settings.input_device },
         "gpuName": gpu.name,
@@ -1982,6 +2089,22 @@ fn get_runtime_status(state: State<'_, AppState>) -> serde_json::Value {
         "gpuDiscrete": gpu.discrete,
         "gpuVramMb": gpu.vram_mb,
     })
+}
+
+fn emit_runtime(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        let _ = app.emit("runtime-status", runtime_status_value(&state));
+    }
+}
+
+#[tauri::command]
+fn get_runtime_status(state: State<'_, AppState>) -> serde_json::Value {
+    runtime_status_value(&state)
+}
+
+#[tauri::command]
+fn list_running_apps() -> Vec<autopause::RunningApp> {
+    autopause::list_running_apps()
 }
 
 /// On Windows this is the final platform boundary: the recognizer gives us
@@ -1998,6 +2121,48 @@ fn inject_text(text: String) -> Result<(), String> {
 #[tauri::command]
 fn preview_sound(theme: String, start: bool) -> Result<(), String> {
     sounds::preview_theme(&theme, start)
+}
+
+fn allowed_external_url(url: &str) -> bool {
+    const ALLOWED: &[&str] = &[
+        "https://vocawin.com",
+        "https://vocahq.com",
+        "https://vocalinux.com",
+        "https://vocamac.com",
+        "https://vocaphone.vocahq.com",
+        "https://vocagateway.vocahq.com",
+        "https://discord.gg/UMJduhcqn",
+        "https://x.com/vocahq",
+        "https://github.com/VocaHQ/vocawin",
+        "https://github.com/VocaHQ/vocawin/issues/new/choose",
+        "mailto:hello@vocahq.com",
+    ];
+    ALLOWED.contains(&url)
+}
+
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !allowed_external_url(&url) {
+        return Err("That link is not on the VocaWin allow list.".into());
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|error| format!("Could not open link: {error}"))?;
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let opener = if url.starts_with("mailto:") {
+            "xdg-open"
+        } else {
+            "xdg-open"
+        };
+        let _ = std::process::Command::new(opener).arg(&url).spawn();
+        Ok(())
+    }
 }
 
 pub fn run() {
@@ -2033,6 +2198,7 @@ pub fn run() {
                 settings.idle_unload_enabled,
                 settings.idle_unload_seconds,
             );
+            logbuf::set_debug_enabled(settings.debug_logging);
             app.manage(AppState {
                 settings: Mutex::new(settings.clone()),
                 settings_path,
@@ -2044,13 +2210,15 @@ pub fn run() {
                 inject_on_auto_stop: Mutex::new(true),
                 registered_hotkey: Mutex::new(settings.hotkey.clone()),
                 dictation_paused: Mutex::new(false),
+                park_reason: Mutex::new(ParkReason::None),
+                saw_model_loaded: Mutex::new(false),
                 whisper_cache,
             });
             let _ = apply_launch_at_login(&handle, settings.launch_at_login);
             hook::start(handle.clone());
             if let Err(error) = register_dictation_hotkey(&handle, &settings.hotkey) {
                 eprintln!("VocaWin hotkey registration failed: {error}");
-                logbuf::push(format!("Hotkey registration failed: {error}"));
+                logbuf::error(format!("Hotkey registration failed: {error}"));
             }
             setup_tray(app)?;
             start_auto_pause_watcher(handle.clone());
@@ -2068,7 +2236,7 @@ pub fn run() {
                 if let Err(error) = register_dictation_hotkey(&app, &hotkey) {
                     eprintln!("VocaWin hotkey re-register after wake failed: {error}");
                 } else {
-                    let _ = app.emit("runtime-status", "Ready");
+                    emit_runtime(&app);
                 }
             });
             if let Some(window) = app.get_webview_window("main") {
@@ -2110,10 +2278,12 @@ pub fn run() {
             list_input_devices,
             recommend_model,
             get_runtime_status,
+            list_running_apps,
             start_recording,
             stop_and_transcribe,
             preview_sound,
-            inject_text
+            inject_text,
+            open_external
         ])
         .run(tauri::generate_context!())
         .expect("error while running VocaWin");
@@ -2162,16 +2332,16 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                         }
                         Err(error) => {
                             sounds::play_error_if_enabled(&settings.sound_theme);
-                            logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
+                            logbuf::error_and_emit(handle, format!("Dictation error: {error}"));
                             let _ = handle.emit("dictation-error", error);
                         }
                     }
                     let _ = handle.emit("recording-changed", false);
-                    set_tray_phase(handle, TrayPhase::Idle);
+                    apply_ready_or_parked_tray(handle);
                 } else if let Err(error) = begin_voice_session(handle, true) {
                     if error.contains("No speech model is installed") {
                         sounds::play_error_if_enabled(&settings.sound_theme);
-                        logbuf::push_and_emit(handle, error.clone());
+                        logbuf::error_and_emit(handle, error.clone());
                         let _ = handle.emit("dictation-error", error);
                     }
                 }
@@ -2179,7 +2349,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                 if let Err(error) = begin_voice_session(handle, true) {
                     if error.contains("No speech model is installed") {
                         sounds::play_error_if_enabled(&settings.sound_theme);
-                        logbuf::push_and_emit(handle, error.clone());
+                        logbuf::error_and_emit(handle, error.clone());
                         let _ = handle.emit("dictation-error", error);
                     }
                 }
@@ -2200,12 +2370,12 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
                     }
                     Err(error) => {
                         sounds::play_error_if_enabled(&settings.sound_theme);
-                        logbuf::push_and_emit(handle, format!("Dictation error: {error}"));
+                        logbuf::error_and_emit(handle, format!("Dictation error: {error}"));
                         let _ = handle.emit("dictation-error", error);
                     }
                 }
                 let _ = handle.emit("recording-changed", false);
-                set_tray_phase(handle, TrayPhase::Idle);
+                apply_ready_or_parked_tray(handle);
             }
         }
     }
@@ -2221,27 +2391,73 @@ fn start_auto_pause_watcher(app: AppHandle) {
                 Ok(settings) => settings.clone(),
                 Err(_) => continue,
             };
-            let should_pause = settings.auto_pause_enabled
-                && autopause::matching_process_running(&autopause::parse_app_list(
-                    &settings.auto_pause_apps,
-                ));
+            let watched = autopause::parse_app_list(&settings.auto_pause_apps);
+            let hit = if settings.auto_pause_enabled {
+                autopause::matching_process_name(&watched)
+            } else {
+                None
+            };
+            let should_pause = hit.is_some();
             let mut paused = match state.dictation_paused.lock() {
                 Ok(guard) => guard,
                 Err(_) => continue,
             };
+            let mut tray_dirty = false;
             if should_pause && !*paused {
                 *paused = true;
                 drop(paused);
                 hook::set_dictation_paused(true);
-                let _ = app.emit("runtime-status", "Paused");
+                state.whisper_cache.unload();
+                if let Ok(mut park) = state.park_reason.lock() {
+                    *park = ParkReason::AutoPause(hit.unwrap_or_else(|| "a watched app".into()));
+                }
+                tray_dirty = true;
             } else if !should_pause && *paused {
                 *paused = false;
                 drop(paused);
                 hook::set_dictation_paused(false);
+                if let Ok(mut park) = state.park_reason.lock() {
+                    if matches!(*park, ParkReason::AutoPause(_)) {
+                        *park = ParkReason::None;
+                    }
+                }
                 if let Err(error) = register_dictation_hotkey(&app, &settings.hotkey) {
                     eprintln!("VocaWin hotkey restore after auto-pause failed: {error}");
                 }
-                let _ = app.emit("runtime-status", "Ready");
+                tray_dirty = true;
+            } else {
+                drop(paused);
+            }
+
+            let loaded = state.whisper_cache.is_loaded();
+            let mut prev_loaded = match state.saw_model_loaded.lock() {
+                Ok(guard) => guard,
+                Err(_) => continue,
+            };
+            let was_loaded = *prev_loaded;
+            *prev_loaded = loaded;
+            drop(prev_loaded);
+            if !should_pause && settings.idle_unload_enabled {
+                if was_loaded && !loaded {
+                    if let Ok(mut park) = state.park_reason.lock() {
+                        if *park == ParkReason::None {
+                            *park = ParkReason::IdleTimeout;
+                            tray_dirty = true;
+                        }
+                    }
+                } else if loaded {
+                    if let Ok(mut park) = state.park_reason.lock() {
+                        if *park == ParkReason::IdleTimeout {
+                            *park = ParkReason::None;
+                            tray_dirty = true;
+                        }
+                    }
+                }
+            }
+
+            if tray_dirty {
+                emit_runtime(&app);
+                apply_ready_or_parked_tray(&app);
             }
         })
         .ok();
@@ -2267,31 +2483,30 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "start_voice" => {
                 if let Err(error) = tray_start_voice(app) {
-                    logbuf::push_and_emit(app, format!("Start Voice Typing failed: {error}"));
+                    logbuf::error_and_emit(app, format!("Start Voice Typing failed: {error}"));
                 }
             }
             "stop_voice" => {
                 if let Err(error) = tray_stop_voice(app) {
-                    logbuf::push_and_emit(app, format!("Stop Voice Typing failed: {error}"));
+                    logbuf::error_and_emit(app, format!("Stop Voice Typing failed: {error}"));
                 }
             }
             "start_on_login" => {
                 if let Err(error) = tray_toggle_login(app) {
-                    logbuf::push_and_emit(app, format!("Start on Login failed: {error}"));
+                    logbuf::error_and_emit(app, format!("Start on Login failed: {error}"));
                 }
             }
             "settings" => {
                 show_main_window(app);
                 let _ = app.emit("navigate", "settings");
             }
-            "view_logs" => {
-                if let Err(error) = show_logs_window(app) {
-                    logbuf::push_and_emit(app, format!("View Logs failed: {error}"));
-                }
+            "debug" => {
+                show_main_window(app);
+                let _ = app.emit("navigate", "debug");
             }
             "about" => {
                 show_main_window(app);
-                let _ = app.emit("show-about", ());
+                let _ = app.emit("navigate", "about");
             }
             "quit" => {
                 app.exit(0);
@@ -2360,7 +2575,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Str
     .map_err(|error| error.to_string())?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)
         .map_err(|error| error.to_string())?;
-    let logs = MenuItem::with_id(app, "view_logs", "View Logs", true, None::<&str>)
+    let debug = MenuItem::with_id(app, "debug", "Debug", true, None::<&str>)
         .map_err(|error| error.to_string())?;
     let about = MenuItem::with_id(app, "about", "About", true, None::<&str>)
         .map_err(|error| error.to_string())?;
@@ -2373,7 +2588,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Str
     Menu::with_items(
         app,
         &[
-            &start, &stop, &sep1, &login, &sep2, &settings, &logs, &about, &sep3, &quit,
+            &start, &stop, &sep1, &login, &sep2, &settings, &debug, &about, &sep3, &quit,
         ],
     )
     .map_err(|error| error.to_string())
@@ -2395,31 +2610,6 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-fn show_logs_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(existing) = app.get_webview_window("logs") {
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        return Ok(());
-    }
-    let window = tauri::WebviewWindowBuilder::new(
-        app,
-        "logs",
-        tauri::WebviewUrl::App("index.html#logs".into()),
-    )
-    .title("VocaWin Logs")
-    .inner_size(720.0, 480.0)
-    .min_inner_size(480.0, 320.0)
-    .build()
-    .map_err(|error| format!("Could not open Logs window: {error}"))?;
-    let window_for_close = window.clone();
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = window_for_close.hide();
-        }
-    });
-    Ok(())
-}
 
 fn tray_start_voice(app: &AppHandle) -> Result<(), String> {
     begin_voice_session(app, true)
@@ -2448,14 +2638,14 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
             }
             let _ = app.emit("dictation-finished", text);
             let _ = app.emit("recording-changed", false);
-            set_tray_phase(app, TrayPhase::Idle);
+            apply_ready_or_parked_tray(app);
             Ok(())
         }
         Err(error) => {
             let _ = app.emit("recording-changed", false);
-            set_tray_phase(app, TrayPhase::Idle);
+            apply_ready_or_parked_tray(app);
             sounds::play_error_if_enabled(&sound);
-            logbuf::push_and_emit(app, format!("Dictation error: {error}"));
+            logbuf::error_and_emit(app, format!("Dictation error: {error}"));
             let _ = app.emit("dictation-error", error.clone());
             Err(error)
         }
@@ -2593,6 +2783,8 @@ mod tests {
         let on = load_settings(&on_path);
         assert_eq!(on.sound_theme, "voca");
         assert!(on.sound_effects);
+        assert!(on.history_enabled);
+        assert!(!on.debug_logging);
 
         let off_path = directory.path().join("off.json");
         fs::write(
@@ -2624,6 +2816,34 @@ mod tests {
     #[test]
     fn default_selected_model_is_whisper_tiny() {
         assert_eq!(Settings::default().selected_model, "whisper-tiny");
+    }
+
+    #[test]
+    fn history_stays_on_and_debug_logs_stay_off() {
+        let settings = Settings::default();
+        assert!(settings.history_enabled);
+        assert!(!settings.debug_logging);
+    }
+
+    #[test]
+    fn park_copy_names_idle_and_app() {
+        assert!(park_detail(&ParkReason::IdleTimeout, 300).contains("5 minutes"));
+        assert!(
+            park_detail(&ParkReason::AutoPause("obs64.exe".into()), 60).contains("obs64.exe")
+        );
+        assert_eq!(park_kind(&ParkReason::IdleTimeout), "idle");
+        assert_eq!(park_kind(&ParkReason::AutoPause("x".into())), "autopause");
+    }
+
+    #[test]
+    fn about_links_are_allowlisted() {
+        assert!(allowed_external_url("https://vocawin.com"));
+        assert!(allowed_external_url(
+            "https://github.com/VocaHQ/vocawin/issues/new/choose"
+        ));
+        assert!(allowed_external_url("https://x.com/vocahq"));
+        assert!(!allowed_external_url("https://x.com/jatinkrmalik"));
+        assert!(!allowed_external_url("https://example.com"));
     }
 
     #[test]

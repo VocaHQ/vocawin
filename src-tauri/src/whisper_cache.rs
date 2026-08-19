@@ -1,11 +1,13 @@
 //! Whisper keep-alive cache with optional idle unload (opt-in).
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 pub struct WhisperCache {
     commands: mpsc::Sender<CacheCommand>,
+    loaded: Arc<AtomicBool>,
 }
 
 enum CacheCommand {
@@ -28,11 +30,17 @@ enum CacheCommand {
 impl WhisperCache {
     pub fn new() -> Self {
         let (commands, receiver) = mpsc::channel();
+        let loaded = Arc::new(AtomicBool::new(false));
+        let loaded_for_thread = loaded.clone();
         std::thread::Builder::new()
             .name("vocawin-whisper".into())
-            .spawn(move || cache_thread_main(receiver))
+            .spawn(move || cache_thread_main(receiver, loaded_for_thread))
             .expect("Could not start Whisper cache thread");
-        Self { commands }
+        Self { commands, loaded }
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        self.loaded.load(Ordering::Relaxed)
     }
 
     pub fn transcribe(
@@ -72,7 +80,7 @@ impl WhisperCache {
     }
 }
 
-fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
+fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicBool>) {
     let mut loaded_path: Option<PathBuf> = None;
     let mut context: Option<whisper_rs::WhisperContext> = None;
     let mut last_used = Instant::now();
@@ -100,6 +108,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
                     gpu_device,
                     keep_alive,
                 );
+                loaded.store(context.is_some(), Ordering::Relaxed);
                 if result.is_ok() {
                     last_used = Instant::now();
                 }
@@ -109,6 +118,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
             Ok(CacheCommand::Unload) => {
                 loaded_path = None;
                 context = None;
+                loaded.store(false, Ordering::Relaxed);
                 false
             }
             Ok(CacheCommand::ConfigureIdle { enabled, seconds }) => {
@@ -127,6 +137,9 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
         {
             loaded_path = None;
             context = None;
+            loaded.store(false, Ordering::Relaxed);
+        } else {
+            loaded.store(context.is_some(), Ordering::Relaxed);
         }
     }
 }

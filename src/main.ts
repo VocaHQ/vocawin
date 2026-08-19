@@ -4,6 +4,7 @@ import "./style.css";
 import sidebarMark from "./assets/voca-logo.svg?raw";
 import dictateIdle from "./assets/vocawin-dictate-idle.svg?raw";
 import dictateListening from "./assets/vocawin-dictate-listening.svg?raw";
+import familyLogo from "../web/assets/brand/voca-logo-512.png";
 
 type Model = { id: string; name: string; engine: string; size: string; languages: string; acceleration: string; description: string };
 type Settings = {
@@ -24,8 +25,10 @@ type Settings = {
   idleUnloadEnabled: boolean;
   idleUnloadSeconds: number;
   welcomeDismissed: boolean;
+  historyEnabled: boolean;
+  debugLogging: boolean;
 };
-type View = "dictation" | "models" | "history" | "settings";
+type View = "dictation" | "models" | "history" | "settings" | "debug" | "about";
 type HistoryEntry = { id: number; text: string; modelId: string; createdAtMs: number };
 type ModelStatus = { installed: boolean; downloadable: boolean; downloading: boolean; progress: number; message?: string; bytesOnDisk?: number };
 type HotkeyPreset = { id: string; label: string };
@@ -44,12 +47,19 @@ type RuntimeStatus = {
   status: string;
   recording: boolean;
   paused: boolean;
+  modelLoaded: boolean;
+  parkKind: string;
+  parkDetail: string;
   hotkey: string;
   inputDevice: string;
   gpuName: string;
   gpuBackend: string;
   gpuDetail?: string;
 };
+type LogLine = { level: string; text: string };
+type RunningApp = { name: string; label: string };
+type EngineFilter = "all" | "whisper" | "onnx";
+type LanguageFilter = "any" | "english" | "multilingual";
 
 type SettingsItem = {
   group: "Dictation" | "Audio" | "Application";
@@ -73,9 +83,7 @@ const SOUND_THEMES: Array<[string, string]> = [
   ["off", "Off"],
 ];
 
-const LANGUAGES = [
-  "Auto-detect",
-  "English",
+const LANGUAGE_CORE = [
   "Spanish",
   "French",
   "German",
@@ -106,8 +114,13 @@ const LANGUAGES = [
   "Catalan",
 ];
 
+const LANGUAGE_CHOICES = ["Auto-detect", "English", ...[...LANGUAGE_CORE].sort((a, b) => a.localeCompare(b))];
+
+const ICON_DOWNLOAD = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a.75.75 0 0 1 .75.75v6.19l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V2.25A.75.75 0 0 1 8 1.5Zm-4.5 9a.75.75 0 0 1 .75.75v1.5h7.5v-1.5a.75.75 0 0 1 1.5 0v2.25c0 .41-.34.75-.75.75h-9a.75.75 0 0 1-.75-.75V11.25A.75.75 0 0 1 3.5 10.5Z"/></svg>`;
+const ICON_TRASH = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.2 1.75A1.25 1.25 0 0 1 7.4.75h1.2c.55 0 1.03.36 1.2.88l.2.62h2.7a.75.75 0 0 1 0 1.5h-.3l-.55 8.08A1.75 1.75 0 0 1 10.11 13.5H5.89A1.75 1.75 0 0 1 4.15 11.83L3.6 3.75h-.35a.75.75 0 0 1 0-1.5h2.7l.2-.62c.17-.52.65-.88 1.2-.88Zm.55 1.5-.1.37h2.7l-.1-.37-.05-.13H6.8l-.05.13ZM5.1 3.75l.54 8.02a.25.25 0 0 0 .25.23h4.22a.25.25 0 0 0 .25-.23l.54-8.02H5.1Z"/></svg>`;
+const ICON_CHECK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.4 10.3 3.85 7.74a.75.75 0 0 0-1.06 1.06l3.1 3.1a.75.75 0 0 0 1.08-.02l6.2-6.6A.75.75 0 0 0 12.1 4.2l-5.7 6.1Z"/></svg>`;
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
-const isLogsWindow = location.hash === "#logs";
 let models: Model[] = [];
 let statuses: Record<string, ModelStatus> = {};
 let history: HistoryEntry[] = [];
@@ -128,6 +141,9 @@ let runtime: RuntimeStatus = {
   status: "Ready",
   recording: false,
   paused: false,
+  modelLoaded: false,
+  parkKind: "",
+  parkDetail: "",
   hotkey: "",
   inputDevice: "Default microphone",
   gpuName: "",
@@ -137,16 +153,22 @@ let recording = false;
 let recordingHotkey = false;
 let testingDictation = false;
 let testListening = false;
+let testResult = "";
 let micTesting = false;
 let micLevel = 0;
 let micMeterTimer: number | null = null;
 let settingsQuery = "";
-let languageQuery = "";
+let modelQuery = "";
+let engineFilter: EngineFilter = "all";
+let languageFilter: LanguageFilter = "any";
 let view: View = "dictation";
-let noticeText = "";
-let showAbout = false;
-let logLines: string[] = [];
+let toastText = "";
+let toastTimer: number | null = null;
+let logLines: LogLine[] = [];
 let previewStartNext = true;
+let runningApps: RunningApp[] = [];
+let pickerApp = "";
+let focusRestore: { id: string; start: number; end: number } | null = null;
 
 const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const selected = () => models.find(model => model.id === settings.selectedModel);
@@ -165,18 +187,79 @@ function emptySpeechMessage() {
     : "Install a speech model first (Models tab).";
 }
 
+function modelIsEnglishOnly(model: Model) {
+  return model.languages.trim().toLowerCase() === "english";
+}
+
+function matchesEngine(model: Model, filter: EngineFilter) {
+  if (filter === "all") return true;
+  if (filter === "whisper") return model.engine === "whisper.cpp";
+  return model.engine === "ONNX Runtime";
+}
+
+function matchesLanguage(model: Model, filter: LanguageFilter) {
+  if (filter === "any") return true;
+  if (filter === "english") return modelIsEnglishOnly(model);
+  return !modelIsEnglishOnly(model);
+}
+
+function matchesModelQuery(model: Model, query: string) {
+  if (!query) return true;
+  const hay = `${model.name} ${model.id} ${model.engine} ${model.languages} ${model.description}`.toLowerCase();
+  return hay.includes(query);
+}
+
+function filteredModels() {
+  const query = modelQuery.trim().toLowerCase();
+  return models.filter(model =>
+    matchesEngine(model, engineFilter)
+    && matchesLanguage(model, languageFilter)
+    && matchesModelQuery(model, query)
+  );
+}
+
+function showToast(text: string) {
+  toastText = text;
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toastText = "";
+    toastTimer = null;
+    render();
+  }, 1800);
+}
+
+function visibleLogs() {
+  if (settings?.debugLogging) return logLines;
+  return logLines.filter(line => line.level === "warn" || line.level === "error");
+}
+
+function watchedApps() {
+  return settings.autoPauseApps
+    .split(/[\n,;]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+}
+
+function iconButton(action: string, id: string, label: string, icon: string, extra = "") {
+  return `<button type="button" class="icon-button ${extra}" data-${action}="${escape(id)}" title="${escape(label)}" aria-label="${escape(label)}">${icon}</button>`;
+}
+
 function modelAction(model: Model, status?: ModelStatus) {
   if (status?.downloading) {
-    return `<button class="model-action brand-action" data-download="${model.id}" disabled>Downloading ${status.progress}%</button>`;
+    return `<span class="model-progress">Downloading ${status.progress}%</span>`;
   }
   if (status?.installed) {
-    return `<button class="model-action" data-delete="${model.id}">Remove</button>`;
+    return iconButton("delete", model.id, "Remove model", ICON_TRASH, "danger");
   }
-  return `<button class="model-action brand-action" data-download="${model.id}">Download</button>`;
+  return iconButton("download", model.id, "Download model", ICON_DOWNLOAD, "brand");
 }
 
 function modelCards() {
-  return models.map(model => {
+  const list = filteredModels();
+  if (!list.length) {
+    return `<div class="empty-history">No models match. Clear the search or a filter.</div>`;
+  }
+  return list.map(model => {
     const status = statuses[model.id];
     const failed = !status?.installed && !status?.downloading && !!status?.message
       && status.message !== "Installed";
@@ -184,23 +267,27 @@ function modelCards() {
       ? `Downloading ${status.progress}%`
       : status?.installed
         ? status.bytesOnDisk
-          ? `Installed · ${formatBytes(status.bytesOnDisk)}`
-          : "Installed"
+          ? `Downloaded · ${formatBytes(status.bytesOnDisk)}`
+          : "Downloaded"
         : failed
           ? `Failed: ${status?.message}`
-          : "Not installed";
+          : "Not on this PC";
     const isSelected = model.id === settings.selectedModel;
     const recommended = recommendation?.modelId === model.id;
-    return `<article class="model-card ${isSelected ? "selected" : ""}" data-model="${model.id}" role="button" tabindex="0" aria-pressed="${isSelected}">
-      <span class="check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
-      <b>${escape(model.name)}</b>
-      <span class="engine">${escape(model.engine)}${recommended ? " · Suggested start" : ""}</span>
-      <small>${escape(model.description)}</small>
-      <ul class="model-meta">
-        <li>${escape(model.size)}</li>
-        <li>${escape(model.languages)}</li>
-        <li class="install-state ${failed ? "failed" : ""}">${escape(state)}</li>
-      </ul>
+    return `<article class="model-card compact ${isSelected ? "selected" : ""}" data-model="${model.id}">
+      <label class="model-activate">
+        <input type="checkbox" data-activate="${model.id}" ${isSelected ? "checked" : ""} />
+        <span class="model-check" aria-hidden="true">${isSelected ? ICON_CHECK : ""}</span>
+      </label>
+      <div class="model-copy">
+        <b>${escape(model.name)}</b>
+        <span class="engine">${escape(model.engine)}${recommended ? " · Suggested start" : ""}</span>
+        <ul class="model-meta">
+          <li>${escape(model.size)}</li>
+          <li>${escape(model.languages)}</li>
+          <li class="install-state ${failed ? "failed" : ""}">${escape(state)}</li>
+        </ul>
+      </div>
       <div class="model-actions">${modelAction(model, status)}</div>
     </article>`;
   }).join("");
@@ -234,13 +321,11 @@ function deviceOptions() {
 }
 
 function languageOptions() {
-  const query = languageQuery.trim().toLowerCase();
-  const list = LANGUAGES.filter(language => !query || language.toLowerCase().includes(query));
   const selectedLanguage = settings.language || "Auto-detect";
-  const options = list.map(language =>
+  const options = LANGUAGE_CHOICES.map(language =>
     `<option value="${escape(language)}" ${language === selectedLanguage ? "selected" : ""}>${escape(language)}</option>`
   );
-  if (selectedLanguage && !list.includes(selectedLanguage)) {
+  if (selectedLanguage && !LANGUAGE_CHOICES.includes(selectedLanguage)) {
     options.unshift(`<option value="${escape(selectedLanguage)}" selected>${escape(selectedLanguage)}</option>`);
   }
   return options.join("");
@@ -250,30 +335,90 @@ function dictateMark(kind: "idle" | "listening") {
   return kind === "listening" ? dictateListening : dictateIdle;
 }
 
+function dictationParkBanner() {
+  if (recording) return "";
+  if (!runtime.parkKind || !runtime.parkDetail) return "";
+  const label = runtime.parkKind === "idle" ? "Model unloaded" : "Dictation paused";
+  return `<div class="park-banner ${runtime.parkKind}"><strong>${label}</strong><p>${escape(runtime.parkDetail)}</p></div>`;
+}
+
 function dictationPage() {
   const model = selected();
+  const installed = modelInstalled();
   const modeLabel = settings.activationMode === "toggle" ? "Toggle on and off" : "Press and hold to dictate";
-  return `<header><div><p class="overline">VOICE DICTATION</p><h1>Speak naturally.<br><em>Keep it private.</em></h1><p class="lede">VocaWin turns your voice into text on your own computer, never in the cloud.</p></div><span class="state"><i></i>${recording ? "Listening" : runtime.paused ? "Paused" : "Ready"}</span></header>
-  <section class="record-panel"><div class="mic ${recording ? "listening" : ""}">${dictateMark(recording ? "listening" : "idle")}</div><h2>${recording ? "Listening…" : runtime.paused ? "Paused for a watched app" : "Ready to dictate"}</h2><p>${recording ? "Speak now, then stop when you are finished." : `Use ${escape(settings.hotkey)} or start below.`}</p><button class="primary" id="record" ${runtime.paused && !recording ? "disabled" : ""}>${recording ? "Stop & transcribe" : "Start dictation"}</button><small>Everything is processed locally on this device.</small></section>
-  <section class="overview"><div class="info-card"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${escape(model?.engine ?? "")} · ${escape(model?.languages ?? "")}</span><button class="text-button" data-go="models">Change model →</button></div><div class="info-card"><p class="card-label">ACTIVATION</p><strong>${escape(settings.hotkey)}</strong><span>${modeLabel}</span><button class="text-button" data-go="settings">Edit shortcut →</button></div></section>`;
+  const parked = !!runtime.parkKind;
+  const heading = recording
+    ? "Listening…"
+    : runtime.parkKind === "autopause"
+      ? "Paused for a watched app"
+      : runtime.parkKind === "idle"
+        ? "Model unloaded to save RAM"
+        : "Ready to dictate";
+  const modelState = installed
+    ? `${escape(model?.engine ?? "")} · ${escape(model?.languages ?? "")} · On this PC`
+    : "Not on this PC yet. Open Models to download it.";
+  const modelAction = installed ? "Change model" : "Download this model";
+  const stateLabel = recording ? "Listening" : parked ? (runtime.parkKind === "idle" ? "Unloaded" : "Paused") : "Ready";
+  return `<header><div><p class="overline">VOICE DICTATION</p><h1>Speak naturally.<br><em>Keep it private.</em></h1><p class="lede">VocaWin turns your voice into text on your own computer, never in the cloud.</p></div><span class="state ${parked ? "parked" : ""}"><i></i>${stateLabel}</span></header>
+  ${dictationParkBanner()}
+  <section class="record-panel"><div class="mic ${recording ? "listening" : parked ? "parked" : ""}">${dictateMark(recording ? "listening" : "idle")}</div><h2>${heading}</h2><p>${recording ? "Speak now, then stop when you are finished." : `Use ${escape(settings.hotkey)} or start below.`}</p><button class="primary" id="record" ${runtime.paused && !recording ? "disabled" : ""}>${recording ? "Stop & transcribe" : "Start dictation"}</button><small>Everything is processed locally on this device.</small></section>
+  <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button><div class="info-card"><p class="card-label">ACTIVATION</p><strong>${escape(settings.hotkey)}</strong><span>${modeLabel}</span><button class="text-button" data-go="settings">Edit shortcut</button></div></section>`;
+}
+
+function filterChip(name: string, value: string, current: string, label: string) {
+  return `<button type="button" class="chip ${current === value ? "active" : ""}" data-filter="${name}" data-value="${value}">${escape(label)}</button>`;
 }
 
 function modelsPage() {
   const tip = recommendation
     ? `<p class="hw-tip"><strong>Starting size:</strong> ${escape(recommendation.modelName)}. ${escape(recommendation.reason)}</p>`
     : "";
-  return `<header><div><p class="overline">ON-DEVICE MODELS</p><h1>Choose your <em>engine.</em></h1><p class="lede">Models stay on your PC. Pick the trade-off between speed, accuracy, and language coverage. Click a card to select it.</p></div></header>
+  return `<header><div><p class="overline">ON-DEVICE MODELS</p><h1>Choose your <em>engine.</em></h1><p class="lede">Models stay on your PC. Pick the trade-off between speed, accuracy, and language coverage.</p></div></header>
   ${tip}
-  <div class="model-grid">${modelCards()}</div>`;
+  <div class="model-toolbar">
+    <input id="model-search" type="search" placeholder="Search models" value="${escape(modelQuery)}" />
+    <div class="chip-row" role="group" aria-label="Runtime">
+      ${filterChip("engine", "all", engineFilter, "All engines")}
+      ${filterChip("engine", "whisper", engineFilter, "Whisper")}
+      ${filterChip("engine", "onnx", engineFilter, "ONNX")}
+    </div>
+    <div class="chip-row" role="group" aria-label="Language">
+      ${filterChip("language", "any", languageFilter, "Any language")}
+      ${filterChip("language", "english", languageFilter, "English")}
+      ${filterChip("language", "multilingual", languageFilter, "Multilingual")}
+    </div>
+  </div>
+  <div class="model-grid compact">${modelCards()}</div>`;
 }
 
 function historyPage() {
+  if (!settings.historyEnabled) {
+    return `<header><div><p class="overline">LOCAL HISTORY</p><h1>Your recent <em>dictation.</em></h1><p class="lede">History is turned off. Turn it back on in Settings if you want VocaWin to keep recent dictation on this PC.</p></div></header><section class="history-list"><div class="empty-history">Nothing is being saved. Older entries stay on disk until you clear them.</div></section>`;
+  }
   const entries = history.length ? history.map(entry => `<article class="history-entry"><p>${escape(entry.text)}</p><footer>${escape(models.find(model => model.id === entry.modelId)?.name ?? entry.modelId)} · ${new Date(entry.createdAtMs).toLocaleString()}</footer></article>`).join("") : `<div class="empty-history">Your local transcription history will appear here.</div>`;
   return `<header><div><p class="overline">LOCAL HISTORY</p><h1>Your recent <em>dictation.</em></h1><p class="lede">History is stored only on this computer and can be cleared at any time.</p></div>${history.length ? `<button class="quiet-button" id="clear-history">Clear history</button>` : ""}</header><section class="history-list">${entries}</section>`;
 }
 
+function runningAppOptions() {
+  const watched = new Set(watchedApps().map(name => name.toLowerCase()));
+  const options = runningApps
+    .filter(appName => !watched.has(appName.name.toLowerCase()))
+    .map(appName => `<option value="${escape(appName.name)}" ${pickerApp === appName.name ? "selected" : ""}>${escape(appName.label)}</option>`);
+  if (!options.length) {
+    return `<option value="">No other running apps right now</option>`;
+  }
+  return `<option value="">Pick a running app</option>${options.join("")}`;
+}
+
+function watchedAppChips() {
+  const apps = watchedApps();
+  if (!apps.length) return `<p class="picker-empty">Nothing watched yet. Pick a running app and add it.</p>`;
+  return `<ul class="watch-list">${apps.map(name => `<li><span>${escape(name)}</span><button type="button" class="icon-button danger" data-unwatch="${escape(name)}" title="Remove ${escape(name)}" aria-label="Remove ${escape(name)}">${ICON_TRASH}</button></li>`).join("")}</ul>`;
+}
+
 function settingsItems(): SettingsItem[] {
   const levelPct = Math.min(100, Math.round(micLevel * 140));
+  const previewLabel = previewStartNext ? "Preview start" : "Preview end";
   return [
     {
       group: "Dictation",
@@ -293,10 +438,9 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Dictation",
       title: "Dictation language",
-      subtitle: "Search the list. Auto-detect is best for multilingual speech.",
-      keywords: "language locale english auto detect search",
-      html: `<div class="language-picker"><input id="language-filter" type="search" placeholder="Search languages" value="${escape(languageQuery)}" />
-      <select id="language">${languageOptions()}</select></div>`,
+      subtitle: "One list. Auto-detect is first, then English, then A to Z.",
+      keywords: "language locale english auto detect",
+      html: `<select id="language">${languageOptions()}</select>`,
     },
     {
       group: "Dictation",
@@ -344,10 +488,10 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Audio",
       title: "Dictation sounds",
-      subtitle: "These play when listening starts and stops.",
+      subtitle: "These play when listening starts and stops. Preview is two clicks: start tone, then end tone.",
       keywords: "sound beep audio cue",
       html: `<div class="sound-theme-controls"><select id="sound-theme">${soundThemeOptions()}</select>
-      <button type="button" class="quiet-button" id="preview-sound" ${settings.soundTheme === "off" ? "disabled" : ""}>Preview</button></div>`,
+      <button type="button" class="quiet-button preview-sound" id="preview-sound" ${settings.soundTheme === "off" ? "disabled" : ""}>${settings.soundTheme === "off" ? "Preview" : previewLabel}</button></div>`,
     },
     {
       group: "Application",
@@ -358,26 +502,39 @@ function settingsItems(): SettingsItem[] {
     },
     {
       group: "Application",
+      title: "Keep dictation history",
+      subtitle: "When this is off, new takes are not added to History. Older entries stay until you clear them.",
+      keywords: "history transcript save local",
+      html: `<label class="switch"><input id="history-enabled" type="checkbox" ${settings.historyEnabled ? "checked" : ""}/><span></span></label>`,
+    },
+    {
+      group: "Application",
       title: "Auto-pause apps",
-      subtitle: "While these processes run, unload the hotkey so games and capture tools keep their keys. One name per line.",
-      keywords: "pause game fortnite obs process",
-      html: `<div class="stacked-control"><label class="switch"><input id="auto-pause" type="checkbox" ${settings.autoPauseEnabled ? "checked" : ""}/><span></span></label>
-      <textarea id="auto-pause-apps" rows="3" placeholder="obs64.exe&#10;fortnite.exe">${escape(settings.autoPauseApps)}</textarea></div>`,
+      subtitle: "While a watched app is running, VocaWin unloads the hotkey and the model so games and capture tools keep their keys.",
+      keywords: "pause game fortnite obs process task picker",
+      html: `<div class="pause-picker">
+        <label class="switch"><input id="auto-pause" type="checkbox" ${settings.autoPauseEnabled ? "checked" : ""}/><span></span></label>
+        <div class="task-picker">
+          <select id="running-apps">${runningAppOptions()}</select>
+          <button type="button" class="quiet-button" id="add-watched-app">Add</button>
+        </div>
+        ${watchedAppChips()}
+      </div>`,
     },
     {
       group: "Application",
       title: "Idle model unload",
-      subtitle: "Keep Whisper loaded between takes, then unload after idle seconds. Off loads per utterance.",
+      subtitle: settings.idleUnloadEnabled
+        ? "Keep Whisper in RAM between takes, then unload after this many quiet seconds."
+        : "Off loads the model for each take, then unloads it. Turn this on if you want it to stay warm.",
       keywords: "idle unload keepalive memory model",
-      html: `<div class="stacked-control"><label class="switch"><input id="idle-unload" type="checkbox" ${settings.idleUnloadEnabled ? "checked" : ""}/><span></span></label>
-      <input id="idle-unload-seconds" type="number" min="30" max="3600" step="30" value="${settings.idleUnloadSeconds}" /></div>`,
-    },
-    {
-      group: "Application",
-      title: "GPU",
-      subtitle: gpu.detail || gpu.backend,
-      keywords: "gpu vulkan directml cuda hardware discrete",
-      html: `<div class="gpu-readout"><strong>${escape(gpu.name)}</strong><span>${escape(gpu.backend)}${gpu.discrete ? " · discrete" : ""}${gpu.vramMb ? ` · ~${gpu.vramMb} MB` : ""}</span></div>`,
+      html: `<div class="idle-control">
+        <label class="switch"><input id="idle-unload" type="checkbox" ${settings.idleUnloadEnabled ? "checked" : ""}/><span></span></label>
+        <label class="idle-seconds ${settings.idleUnloadEnabled ? "" : "is-disabled"}">Unload after
+          <input id="idle-unload-seconds" type="number" min="30" max="3600" step="30" value="${settings.idleUnloadSeconds}" ${settings.idleUnloadEnabled ? "" : "disabled"} />
+          seconds
+        </label>
+      </div>`,
     },
   ];
 }
@@ -397,22 +554,78 @@ function settingsPage() {
       ${rows.map(item => `<div class="setting-row"><div><strong>${escape(item.title)}</strong><p>${escape(item.subtitle)}</p></div>${item.html}</div>`).join("")}
       </section>`;
   }).join("");
-  return `<header><div><p class="overline">PREFERENCES</p><h1>Make it <em>yours.</em></h1><p class="lede">VocaWin only stores these choices locally on this PC.</p></div></header>
+  return `<header><div><p class="overline">PREFERENCES</p><h1>Make it <em>yours.</em></h1><p class="lede">VocaWin only stores these choices locally on this PC. Each change is saved as you make it.</p></div></header>
   <div class="settings-search"><input id="settings-search" type="search" placeholder="Search settings" value="${escape(settingsQuery)}" /></div>
   ${cards || `<div class="empty-history">No settings match “${escape(settingsQuery)}”.</div>`}
-  <div class="settings-save"><button class="primary" id="save">Save changes</button></div>
-  <footer class="settings-status">
-    <div><strong>${escape(runtime.status)}</strong><span>${escape(runtime.inputDevice)} · ${escape(runtime.gpuName || gpu.name)}</span></div>
-    <div class="status-actions">
-      <button type="button" class="quiet-button" id="mic-test-footer" ${recording || testListening ? "disabled" : ""}>${micTesting ? "Stop Mic Test" : "Mic Test"}</button>
-      <button type="button" class="quiet-button" id="test-dictation" ${runtime.paused || micTesting ? "disabled" : ""}>${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test Dictation"}</button>
-    </div>
-  </footer>
-  ${recordingHotkey ? `<p class="notice recording-hint">Press a key combo, or Escape to cancel.</p>` : ""}`;
+  ${recordingHotkey ? `<p class="recording-hint">Press a key combo, or Escape to cancel.</p>` : ""}`;
+}
+
+function debugPage() {
+  const lines = visibleLogs();
+  const body = lines.length
+    ? lines.map(line => `<div class="log-line level-${escape(line.level)}"><span class="log-level">${escape(line.level)}</span>${escape(line.text)}</div>`).join("")
+    : `<div class="empty-history">No warning or error lines yet.${settings.debugLogging ? "" : " Turn on debug logging to see the quieter chatter."}</div>`;
+  return `<header><div><p class="overline">DEBUG</p><h1>GPU and <em>logs.</em></h1><p class="lede">This is for testers. Debug logging stays off unless you turn it on. Clear only wipes the in-memory buffer, not files on disk.</p></div></header>
+    <section class="settings-card"><p class="settings-group">GPU</p>
+      <div class="setting-row"><div><strong>${escape(gpu.name)}</strong><p>${escape(gpu.detail || gpu.backend)}</p></div>
+      <div class="gpu-readout"><span>${escape(gpu.backend)}${gpu.discrete ? " · discrete" : ""}${gpu.vramMb ? ` · ~${gpu.vramMb} MB` : ""}</span></div></div>
+    </section>
+    <section class="settings-card"><p class="settings-group">Logs</p>
+      <div class="setting-row"><div><strong>Debug logging</strong><p>Off shows warning and error. On also shows debug and info.</p></div>
+        <label class="switch"><input id="debug-logging" type="checkbox" ${settings.debugLogging ? "checked" : ""}/><span></span></label>
+      </div>
+      <div class="log-toolbar">
+        <button type="button" class="quiet-button" id="copy-logs">Copy</button>
+        <button type="button" class="quiet-button" id="clear-logs">Clear</button>
+      </div>
+      <section class="log-panel">${body}</section>
+    </section>`;
+}
+
+function aboutPage() {
+  return `<header><div><p class="overline">ABOUT</p><h1>VocaWin <em>alpha.</em></h1></div></header>
+    <section class="about-hero">
+      <img class="about-logo" src="${familyLogo}" width="96" height="96" alt="Voca" />
+      <h2>VocaWin</h2>
+      <p class="about-tagline">Voice-to-text for Windows, kept on this PC.</p>
+      <button type="button" class="text-button" data-open="https://vocawin.com">vocawin.com</button>
+    </section>
+    <section class="settings-card">
+      <p class="settings-group">This build</p>
+      <div class="about-copy">
+        <p>This is an unsigned developer alpha. It is not a store listing and not a stable public release. Windows will likely say the publisher is unknown. That is SmartScreen. Use More info, then Run anyway, only if you trust the GitHub Release you downloaded.</p>
+        <p>The community is expected to help improve it. If something breaks, file an issue.</p>
+      </div>
+    </section>
+    <section class="settings-card">
+      <p class="settings-group">Part of VocaHQ</p>
+      <div class="about-copy">
+        <p>VocaWin is one of the VocaHQ apps. The same private dictation already runs on Linux as VocaLinux, on macOS as VocaMac, and on phones as VocaPhone. VocaGateway is optional self-hosted compute for other Voca clients.</p>
+        <ul class="about-links">
+          <li><button type="button" class="text-button" data-open="https://vocahq.com">vocahq.com</button></li>
+          <li><button type="button" class="text-button" data-open="https://vocalinux.com">vocalinux.com</button></li>
+          <li><button type="button" class="text-button" data-open="https://vocamac.com">vocamac.com</button></li>
+          <li><button type="button" class="text-button" data-open="https://vocaphone.vocahq.com">vocaphone.vocahq.com</button></li>
+          <li><button type="button" class="text-button" data-open="https://vocagateway.vocahq.com">vocagateway.vocahq.com</button></li>
+        </ul>
+      </div>
+    </section>
+    <section class="settings-card">
+      <p class="settings-group">Talk to us</p>
+      <div class="about-copy">
+        <p>Bugs, feedback, and feature ideas open a new GitHub issue. You pick the template on the next screen.</p>
+        <button type="button" class="primary about-report" data-open="https://github.com/VocaHQ/vocawin/issues/new/choose">Report a bug or idea</button>
+        <ul class="about-links">
+          <li><button type="button" class="text-button" data-open="https://discord.gg/UMJduhcqn">Discord</button></li>
+          <li><button type="button" class="text-button" data-open="https://x.com/vocahq">X @vocahq</button></li>
+          <li><button type="button" class="text-button" data-open="mailto:hello@vocahq.com">hello@vocahq.com</button></li>
+        </ul>
+      </div>
+    </section>`;
 }
 
 function welcomeOverlay() {
-  if (settings.welcomeDismissed || isLogsWindow) return "";
+  if (settings.welcomeDismissed) return "";
   return `<div class="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <div class="welcome-card">
       <p class="overline">WELCOME</p>
@@ -423,106 +636,125 @@ function welcomeOverlay() {
   </div>`;
 }
 
-function aboutOverlay() {
-  if (!showAbout) return "";
-  return `<div class="welcome-overlay" role="dialog" aria-modal="true">
-    <div class="welcome-card">
-      <p class="overline">ABOUT</p>
-      <h2>VocaWin</h2>
-      <p>Private, offline voice dictation for Windows. Audio and models stay on this PC.</p>
-      <button class="primary" id="about-dismiss">Close</button>
+function sidebarFooter() {
+  const parked = !!runtime.parkKind && !recording;
+  const statusLabel = recording
+    ? "Listening"
+    : testingDictation
+      ? "Testing…"
+      : runtime.parkKind === "idle"
+        ? "Unloaded"
+        : runtime.paused || runtime.parkKind === "autopause"
+          ? "Paused"
+          : "Ready";
+  const levelPct = Math.min(100, Math.round(micLevel * 140));
+  const result = testResult
+    ? `<p class="sidebar-result">${escape(testResult)}</p>`
+    : `<p class="sidebar-result muted">Test dictation stays here. History keeps real takes.</p>`;
+  return `<div class="sidebar-footer">
+    <div class="sidebar-status ${parked ? "parked" : recording ? "live" : ""}"><i></i><div><strong>${statusLabel}</strong>${runtime.parkDetail && !recording ? `<small>${escape(runtime.parkDetail)}</small>` : `<small>${escape(runtime.inputDevice)}</small>`}</div></div>
+    <div class="sidebar-mic">
+      <button type="button" class="quiet-button" id="mic-test-footer" ${recording || testListening ? "disabled" : ""}>${micTesting ? "Stop mic" : "Mic test"}</button>
+      <div class="level-meter sidebar-meter" aria-hidden="true"><span style="width:${levelPct}%"></span></div>
     </div>
+    <button type="button" class="quiet-button sidebar-test" id="test-dictation" ${runtime.paused || micTesting ? "disabled" : ""}>${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test dictation"}</button>
+    ${result}
   </div>`;
 }
 
-function logsPage() {
-  const body = logLines.length
-    ? logLines.map(line => `<div class="log-line">${escape(line)}</div>`).join("")
-    : `<div class="empty-history">No log lines yet.</div>`;
-  return `<header><div><p class="overline">DIAGNOSTICS</p><h1>App <em>logs.</em></h1><p class="lede">Recent messages from this session. Opening View Logs again reuses this window.</p></div>
-    <button class="quiet-button" id="clear-logs">Clear</button></header>
-    <section class="log-panel">${body}</section>`;
+function toastMarkup() {
+  if (!toastText) return "";
+  return `<p class="toast" role="status">${escape(toastText)}</p>`;
 }
 
 function render() {
-  if (isLogsWindow) {
-    app.innerHTML = `<main class="logs-main">${logsPage()}</main>`;
-    document.querySelector("#clear-logs")?.addEventListener("click", async () => {
-      await invoke("clear_log_lines");
-      logLines = [];
-      render();
-    });
-    return;
-  }
+  const pages: Record<View, () => string> = {
+    dictation: dictationPage,
+    models: modelsPage,
+    history: historyPage,
+    settings: settingsPage,
+    debug: debugPage,
+    about: aboutPage,
+  };
+  app.innerHTML = `<aside>
+    <div class="brand"><span class="mark">${sidebarMark}</span><span>VocaWin</span><span class="brand-tag" title="Developer-only build">Alpha</span></div>
+    <p class="brand-subtitle">Voice dictation, kept private.</p>
+    <nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}${nav("debug", "Debug", "⌗")}${nav("about", "About", "ⓘ")}</nav>
+    ${sidebarFooter()}
+  </aside>
+  <main>
+    ${toastMarkup()}
+    ${pages[view]()}
+    ${welcomeOverlay()}
+  </main>`;
+  bindChrome();
+  restoreFocusedField();
+}
 
-  const pages: Record<View, () => string> = { dictation: dictationPage, models: modelsPage, history: historyPage, settings: settingsPage };
-  app.innerHTML = `<aside><div class="brand"><span class="mark">${sidebarMark}</span><span>VocaWin</span><span class="brand-tag" title="Developer-only build">Alpha</span></div><p class="brand-subtitle">Voice dictation, kept private.</p><nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}</nav><div class="privacy"><i>✓</i><div><b>Private by default</b><small>Your audio stays here</small></div></div></aside><main>${pages[view]()}${welcomeOverlay()}${aboutOverlay()}<p class="notice" role="status">${escape(noticeText)}</p></main>`;
-  document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(button => button.addEventListener("click", () => { view = button.dataset.view as View; render(); }));
-  document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach(button => button.addEventListener("click", () => { view = button.dataset.go as View; render(); }));
+function bindChrome() {
+  document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(button => button.addEventListener("click", () => {
+    view = button.dataset.view as View;
+    if (view === "settings") void refreshRunningApps();
+    if (view === "debug") void refreshLogs().then(render);
+    else render();
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach(button => button.addEventListener("click", () => {
+    view = button.dataset.go as View;
+    render();
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-open]").forEach(button => button.addEventListener("click", () => {
+    void openExternal(button.dataset.open!);
+  }));
   document.querySelector("#record")?.addEventListener("click", toggleRecording);
-  document.querySelector("#save")?.addEventListener("click", save);
   document.querySelector("#clear-history")?.addEventListener("click", clearHistory);
   document.querySelector("#test-dictation")?.addEventListener("click", testDictation);
   document.querySelector("#mic-test")?.addEventListener("click", toggleMicTest);
   document.querySelector("#mic-test-footer")?.addEventListener("click", toggleMicTest);
   document.querySelector("#welcome-dismiss")?.addEventListener("click", dismissWelcome);
-  document.querySelector("#about-dismiss")?.addEventListener("click", () => { showAbout = false; render(); });
-  document.querySelector("#settings-search")?.addEventListener("input", event => {
-    settingsQuery = (event.target as HTMLInputElement).value;
-    const active = document.activeElement === event.target;
-    render();
-    if (active) {
-      const input = document.querySelector<HTMLInputElement>("#settings-search");
-      if (input) {
-        input.focus();
-        input.setSelectionRange(settingsQuery.length, settingsQuery.length);
-      }
-    }
+  document.querySelector("#copy-logs")?.addEventListener("click", copyLogs);
+  document.querySelector("#clear-logs")?.addEventListener("click", clearLogs);
+  document.querySelector("#add-watched-app")?.addEventListener("click", addWatchedApp);
+  document.querySelectorAll<HTMLButtonElement>("[data-unwatch]").forEach(button => {
+    button.addEventListener("click", () => void removeWatchedApp(button.dataset.unwatch!));
   });
-  document.querySelector("#language-filter")?.addEventListener("input", event => {
-    languageQuery = (event.target as HTMLInputElement).value;
-    const active = document.activeElement === event.target;
-    render();
-    if (active) {
-      const input = document.querySelector<HTMLInputElement>("#language-filter");
-      if (input) {
-        input.focus();
-        input.setSelectionRange(languageQuery.length, languageQuery.length);
-      }
-    }
+  document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach(button => {
+    button.addEventListener("click", () => {
+      const name = button.dataset.filter;
+      const value = button.dataset.value ?? "";
+      if (name === "engine") engineFilter = value as EngineFilter;
+      if (name === "language") languageFilter = value as LanguageFilter;
+      render();
+    });
   });
+  bindLiveSearch("#settings-search", value => { settingsQuery = value; });
+  bindLiveSearch("#model-search", value => { modelQuery = value; });
   document.querySelector("#record-hotkey")?.addEventListener("click", () => {
     void toggleHotkeyRecording();
   });
   const soundTheme = document.querySelector<HTMLSelectElement>("#sound-theme");
   const previewSound = document.querySelector<HTMLButtonElement>("#preview-sound");
-  soundTheme?.addEventListener("change", () => {
-    previewStartNext = true;
-    if (previewSound) previewSound.disabled = soundTheme.value === "off";
-  });
   previewSound?.addEventListener("click", async () => {
     const theme = soundTheme?.value ?? settings.soundTheme;
     if (theme === "off") return;
     try {
       await invoke("preview_sound", { theme, start: previewStartNext });
       previewStartNext = !previewStartNext;
+      if (previewSound) previewSound.textContent = previewStartNext ? "Preview start" : "Preview end";
     } catch (error) {
-      noticeText = String(error);
+      showToast(String(error));
       render();
     }
   });
-  const language = document.querySelector<HTMLSelectElement>("#language"); if (language) language.value = settings.language;
-  const activation = document.querySelector<HTMLSelectElement>("#activation"); if (activation) activation.value = settings.activationMode;
-  document.querySelectorAll<HTMLElement>("[data-model]").forEach(card => {
-    const select = () => selectModel(card.dataset.model!);
-    card.addEventListener("click", event => {
-      if ((event.target as HTMLElement).closest("[data-download], [data-delete]")) return;
-      select();
-    });
-    card.addEventListener("keydown", event => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        select();
+  const language = document.querySelector<HTMLSelectElement>("#language");
+  if (language) language.value = settings.language;
+  const activation = document.querySelector<HTMLSelectElement>("#activation");
+  if (activation) activation.value = settings.activationMode;
+  document.querySelectorAll<HTMLInputElement>("[data-activate]").forEach(box => {
+    box.addEventListener("click", event => event.stopPropagation());
+    box.addEventListener("change", () => {
+      if (box.checked) void selectModel(box.dataset.activate!);
+      else {
+        box.checked = true;
       }
     });
   });
@@ -534,6 +766,129 @@ function render() {
     event.stopPropagation();
     deleteModel(button.dataset.delete!);
   }));
+  bindAutosave();
+}
+
+function bindLiveSearch(selector: string, assign: (value: string) => void) {
+  document.querySelector(selector)?.addEventListener("input", event => {
+    const input = event.target as HTMLInputElement;
+    assign(input.value);
+    focusRestore = { id: input.id, start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length };
+    render();
+  });
+}
+
+function restoreFocusedField() {
+  if (!focusRestore) return;
+  const input = document.querySelector<HTMLInputElement>(`#${focusRestore.id}`);
+  if (input) {
+    input.focus();
+    try { input.setSelectionRange(focusRestore.start, focusRestore.end); } catch { /* ignore */ }
+  }
+  focusRestore = null;
+}
+
+function bindAutosave() {
+  const persistFromEvent = (event: Event) => {
+    const target = event.target as HTMLElement;
+    if (target.id === "settings-search" || target.id === "model-search" || target.id === "language-filter") return;
+    if (target.id === "running-apps") {
+      pickerApp = (target as HTMLSelectElement).value;
+      return;
+    }
+    void persistSettings();
+  };
+  document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging").forEach(node => {
+    node.addEventListener("change", persistFromEvent);
+    if (node instanceof HTMLInputElement && (node.type === "number" || node.type === "search")) {
+      node.addEventListener("blur", persistFromEvent);
+    }
+  });
+}
+
+function collectSettingsFromDom() {
+  const preset = document.querySelector<HTMLSelectElement>("#hotkey-preset");
+  if (preset) settings.hotkey = preset.value;
+  const language = document.querySelector<HTMLSelectElement>("#language");
+  if (language) settings.language = language.value;
+  const activation = document.querySelector<HTMLSelectElement>("#activation");
+  if (activation) settings.activationMode = activation.value;
+  const silence = document.querySelector<HTMLInputElement>("#silence");
+  if (silence) settings.silenceSeconds = Number(silence.value) || 1.5;
+  const maxRecording = document.querySelector<HTMLInputElement>("#max-recording");
+  if (maxRecording) settings.maxRecordingSeconds = Number(maxRecording.value) || 60;
+  const soundTheme = document.querySelector<HTMLSelectElement>("#sound-theme");
+  if (soundTheme) {
+    settings.soundTheme = soundTheme.value;
+    settings.soundEffects = soundTheme.value !== "off";
+    previewStartNext = true;
+  }
+  const autoCap = document.querySelector<HTMLInputElement>("#auto-cap");
+  if (autoCap) settings.autoCapitalize = autoCap.checked;
+  const trailing = document.querySelector<HTMLInputElement>("#trailing-space");
+  if (trailing) settings.appendTrailingSpace = trailing.checked;
+  const launch = document.querySelector<HTMLInputElement>("#launch-login");
+  if (launch) settings.launchAtLogin = launch.checked;
+  const inputDevice = document.querySelector<HTMLSelectElement>("#input-device");
+  if (inputDevice) settings.inputDevice = inputDevice.value;
+  const autoPause = document.querySelector<HTMLInputElement>("#auto-pause");
+  if (autoPause) settings.autoPauseEnabled = autoPause.checked;
+  const idleUnload = document.querySelector<HTMLInputElement>("#idle-unload");
+  if (idleUnload) settings.idleUnloadEnabled = idleUnload.checked;
+  const idleSeconds = document.querySelector<HTMLInputElement>("#idle-unload-seconds");
+  if (idleSeconds) settings.idleUnloadSeconds = Number(idleSeconds.value) || 300;
+  const historyEnabled = document.querySelector<HTMLInputElement>("#history-enabled");
+  if (historyEnabled) settings.historyEnabled = historyEnabled.checked;
+  const debugLogging = document.querySelector<HTMLInputElement>("#debug-logging");
+  if (debugLogging) settings.debugLogging = debugLogging.checked;
+}
+
+async function persistSettings(silent = false, skipCollect = false) {
+  if (!skipCollect) collectSettingsFromDom();
+  try {
+    await invoke("save_settings", { settings });
+    settings = await invoke<Settings>("get_settings");
+    await refreshRuntime();
+    if (view === "debug") await refreshLogs();
+    if (!silent) showToast("Settings saved");
+  } catch (error) {
+    showToast(String(error));
+  }
+  render();
+}
+
+async function addWatchedApp() {
+  const select = document.querySelector<HTMLSelectElement>("#running-apps");
+  const name = (select?.value || pickerApp).trim();
+  if (!name) {
+    showToast("Pick a running app first.");
+    render();
+    return;
+  }
+  const current = watchedApps();
+  if (current.some(entry => entry.toLowerCase() === name.toLowerCase())) {
+    showToast("That app is already on the list.");
+    render();
+    return;
+  }
+  current.push(name);
+  settings.autoPauseApps = current.join("\n");
+  pickerApp = "";
+  await persistSettings();
+}
+
+async function removeWatchedApp(name: string) {
+  settings.autoPauseApps = watchedApps().filter(entry => entry !== name).join("\n");
+  await persistSettings();
+}
+
+async function openExternal(url: string) {
+  try {
+    await invoke("open_external", { url });
+  } catch (error) {
+    showToast(String(error));
+    render();
+  }
 }
 
 function codeToHotkeyPart(code: string, key: string): string | null {
@@ -559,23 +914,21 @@ function codeToHotkeyPart(code: string, key: string): string | null {
 async function toggleHotkeyRecording() {
   if (recordingHotkey) {
     recordingHotkey = false;
-    noticeText = "Hotkey recording cancelled.";
+    showToast("Hotkey recording cancelled.");
     try { await invoke("resume_hotkey_listener"); } catch { /* ignore */ }
     render();
     return;
   }
   try { await invoke("pause_hotkey_listener"); } catch { /* ignore */ }
   recordingHotkey = true;
-  noticeText = "Press a key or combo. Escape cancels. Lone Right Ctrl/Alt/Shift are valid.";
   render();
 }
 
 function finishHotkeyCapture(spec: string, label: string) {
   settings.hotkey = spec;
   recordingHotkey = false;
-  noticeText = `Hotkey set to ${label}. Save to apply.`;
   void invoke("resume_hotkey_listener").catch(() => undefined);
-  render();
+  void persistSettings(true, true).then(() => showToast(`Hotkey set to ${label}.`));
 }
 
 function onGlobalKeyDown(event: KeyboardEvent) {
@@ -584,13 +937,13 @@ function onGlobalKeyDown(event: KeyboardEvent) {
   event.stopPropagation();
   if (event.key === "Escape") {
     recordingHotkey = false;
-    noticeText = "Hotkey recording cancelled.";
+    showToast("Hotkey recording cancelled.");
     void invoke("resume_hotkey_listener").catch(() => undefined);
     render();
     return;
   }
   if (event.key === "Meta" || event.code.startsWith("Meta") || event.code === "OSLeft" || event.code === "OSRight") {
-    noticeText = "Win/Super is reserved on Windows. Pick another key.";
+    showToast("Win/Super is reserved on Windows. Pick another key.");
     render();
     return;
   }
@@ -632,10 +985,41 @@ async function refreshRuntime() {
   try { runtime = await invoke<RuntimeStatus>("get_runtime_status"); } catch { /* ignore */ }
 }
 async function refreshLogs() {
-  try { logLines = await invoke<string[]>("get_log_lines"); } catch { logLines = []; }
+  try { logLines = await invoke<LogLine[]>("get_log_lines"); } catch { logLines = []; }
+}
+async function refreshRunningApps() {
+  try { runningApps = await invoke<RunningApp[]>("list_running_apps"); } catch { runningApps = []; }
 }
 async function clearHistory() {
-  try { await invoke("clear_history"); history = []; noticeText = "History cleared."; } catch (error) { noticeText = String(error); }
+  try { await invoke("clear_history"); history = []; showToast("History cleared."); } catch (error) { showToast(String(error)); }
+  render();
+}
+async function copyLogs() {
+  const text = visibleLogs().map(line => `[${line.level}] ${line.text}`).join("\n");
+  if (!text) {
+    showToast("No logs to copy.");
+    render();
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("Logs copied.");
+  } catch {
+    showToast("Could not copy logs.");
+  }
+  render();
+}
+async function clearLogs() {
+  if (!window.confirm("Clear the log buffer for this session? This does not delete files on disk.")) {
+    return;
+  }
+  try {
+    await invoke("clear_log_lines");
+    logLines = [];
+    showToast("Logs cleared.");
+  } catch (error) {
+    showToast(String(error));
+  }
   render();
 }
 async function dismissWelcome() {
@@ -643,52 +1027,52 @@ async function dismissWelcome() {
     await invoke("dismiss_welcome");
     settings.welcomeDismissed = true;
   } catch (error) {
-    noticeText = String(error);
+    showToast(String(error));
   }
   render();
 }
 async function downloadModel(id: string) {
   try {
     statuses[id] = { ...(statuses[id] ?? { installed: false, downloadable: true }), downloading: true, progress: 0, message: "Connecting…" };
-    noticeText = `Downloading ${models.find(model => model.id === id)?.name ?? "model"}…`; render();
+    showToast(`Downloading ${models.find(model => model.id === id)?.name ?? "model"}…`);
+    render();
     const timer = window.setInterval(() => refreshStatuses().then(render).catch(() => undefined), 500);
     await invoke("download_model", { modelId: id });
-    window.clearInterval(timer); await refreshStatuses(); noticeText = "Model installed locally.";
+    window.clearInterval(timer); await refreshStatuses(); showToast("Model downloaded.");
   } catch (error) {
     await refreshStatuses().catch(() => undefined);
     const status = statuses[id];
-    noticeText = status?.message ? String(status.message) : String(error);
+    showToast(status?.message ? String(status.message) : String(error));
   }
   render();
 }
 async function deleteModel(id: string) {
-  try { await invoke("delete_model", { modelId: id }); await refreshStatuses(); noticeText = "Model removed."; } catch (error) { noticeText = String(error); }
+  try { await invoke("delete_model", { modelId: id }); await refreshStatuses(); showToast("Model removed."); } catch (error) { showToast(String(error)); }
   render();
 }
 async function selectModel(id: string) {
   settings.selectedModel = id;
-  try { await invoke("save_settings", { settings }); noticeText = `${selected()?.name ?? "Model"} selected.`; render(); } catch (error) { noticeText = String(error); render(); }
+  try { await invoke("save_settings", { settings }); showToast(`${selected()?.name ?? "Model"} is active.`); render(); } catch (error) { showToast(String(error)); render(); }
 }
 async function toggleRecording() {
   try {
     if (!recording) {
       if (!modelInstalled()) {
-        noticeText = emptySpeechMessage();
+        showToast(emptySpeechMessage());
         render();
         return;
       }
       await invoke("start_recording");
       recording = true;
-      noticeText = "Listening locally…";
       await refreshRuntime();
       render();
       return;
     }
-    recording = false; noticeText = "Transcribing on this PC…"; render();
+    recording = false; render();
     const text = await invoke<string>("stop_and_transcribe");
-    if (!text) { noticeText = emptySpeechMessage(); render(); return; }
-    await invoke("inject_text", { text }); await refreshHistory(); noticeText = `Inserted: ${text}`;
-  } catch (error) { recording = false; noticeText = String(error); }
+    if (!text) { showToast(emptySpeechMessage()); render(); return; }
+    await invoke("inject_text", { text }); await refreshHistory();
+  } catch (error) { recording = false; showToast(String(error)); }
   await refreshRuntime();
   render();
 }
@@ -698,13 +1082,13 @@ async function toggleMicTest() {
       if (recording || testListening) return;
       await invoke("start_mic_test");
       micTesting = true;
-      noticeText = "Mic Test: speak to watch the level. This does not recognize speech.";
       if (micMeterTimer) window.clearInterval(micMeterTimer);
       micMeterTimer = window.setInterval(async () => {
         try {
           micLevel = await invoke<number>("get_mic_level");
-          const bar = document.querySelector<HTMLElement>(".level-meter span");
-          if (bar) bar.style.width = `${Math.min(100, Math.round(micLevel * 140))}%`;
+          document.querySelectorAll<HTMLElement>(".level-meter span").forEach(bar => {
+            bar.style.width = `${Math.min(100, Math.round(micLevel * 140))}%`;
+          });
         } catch { /* ignore */ }
       }, 80);
       render();
@@ -714,12 +1098,11 @@ async function toggleMicTest() {
     micTesting = false;
     micLevel = 0;
     if (micMeterTimer) { window.clearInterval(micMeterTimer); micMeterTimer = null; }
-    noticeText = "Mic Test stopped.";
   } catch (error) {
     micTesting = false;
     micLevel = 0;
     if (micMeterTimer) { window.clearInterval(micMeterTimer); micMeterTimer = null; }
-    noticeText = String(error);
+    showToast(String(error));
   }
   render();
 }
@@ -728,7 +1111,7 @@ async function testDictation() {
   try {
     if (!testListening) {
       if (!modelInstalled()) {
-        noticeText = emptySpeechMessage();
+        showToast(emptySpeechMessage());
         render();
         return;
       }
@@ -737,7 +1120,7 @@ async function testDictation() {
       recording = true;
       testListening = true;
       testingDictation = false;
-      noticeText = "Test Dictation listening… click Stop test. Result stays here (no inject).";
+      testResult = "";
       await refreshRuntime();
       render();
       return;
@@ -745,58 +1128,17 @@ async function testDictation() {
     testingDictation = true;
     recording = false;
     testListening = false;
-    noticeText = "Transcribing test take…";
     render();
     const text = await invoke<string>("stop_and_transcribe");
-    noticeText = text ? `Test result: ${text}` : emptySpeechMessage();
+    testResult = text || emptySpeechMessage();
     await refreshHistory();
   } catch (error) {
     recording = false;
     testListening = false;
-    noticeText = String(error);
+    testResult = String(error);
   }
   testingDictation = false;
   await refreshRuntime();
-  render();
-}
-async function save() {
-  const preset = document.querySelector<HTMLSelectElement>("#hotkey-preset");
-  if (preset) settings.hotkey = preset.value;
-  const language = document.querySelector<HTMLSelectElement>("#language");
-  if (language) settings.language = language.value;
-  const activation = document.querySelector<HTMLSelectElement>("#activation");
-  if (activation) settings.activationMode = activation.value;
-  const silence = document.querySelector<HTMLInputElement>("#silence");
-  if (silence) settings.silenceSeconds = Number(silence.value) || 1.5;
-  const maxRecording = document.querySelector<HTMLInputElement>("#max-recording");
-  if (maxRecording) settings.maxRecordingSeconds = Number(maxRecording.value) || 60;
-  const soundTheme = document.querySelector<HTMLSelectElement>("#sound-theme");
-  if (soundTheme) {
-    settings.soundTheme = soundTheme.value;
-    settings.soundEffects = soundTheme.value !== "off";
-  }
-  const autoCap = document.querySelector<HTMLInputElement>("#auto-cap");
-  if (autoCap) settings.autoCapitalize = autoCap.checked;
-  const trailing = document.querySelector<HTMLInputElement>("#trailing-space");
-  if (trailing) settings.appendTrailingSpace = trailing.checked;
-  const launch = document.querySelector<HTMLInputElement>("#launch-login");
-  if (launch) settings.launchAtLogin = launch.checked;
-  const inputDevice = document.querySelector<HTMLSelectElement>("#input-device");
-  if (inputDevice) settings.inputDevice = inputDevice.value;
-  const autoPause = document.querySelector<HTMLInputElement>("#auto-pause");
-  if (autoPause) settings.autoPauseEnabled = autoPause.checked;
-  const autoPauseApps = document.querySelector<HTMLTextAreaElement>("#auto-pause-apps");
-  if (autoPauseApps) settings.autoPauseApps = autoPauseApps.value;
-  const idleUnload = document.querySelector<HTMLInputElement>("#idle-unload");
-  if (idleUnload) settings.idleUnloadEnabled = idleUnload.checked;
-  const idleSeconds = document.querySelector<HTMLInputElement>("#idle-unload-seconds");
-  if (idleSeconds) settings.idleUnloadSeconds = Number(idleSeconds.value) || 300;
-  try {
-    await invoke("save_settings", { settings });
-    settings = await invoke<Settings>("get_settings");
-    await refreshRuntime();
-    noticeText = "Settings saved. Hotkey is live.";
-  } catch (error) { noticeText = String(error); }
   render();
 }
 
@@ -808,91 +1150,95 @@ listen<boolean>("recording-changed", event => {
   if (!event.payload) testListening = false;
   refreshRuntime().then(render).catch(() => render());
 }).catch(() => undefined);
-listen<string>("dictation-finished", async event => {
+listen<string>("dictation-finished", async () => {
   recording = false;
   await refreshHistory().catch(() => undefined);
   await refreshRuntime().catch(() => undefined);
-  noticeText = event.payload ? `Inserted: ${event.payload}` : emptySpeechMessage();
   render();
 }).catch(() => undefined);
 listen<string>("test-dictation-finished", async event => {
   recording = false;
   testListening = false;
+  testResult = event.payload || emptySpeechMessage();
   await refreshHistory().catch(() => undefined);
   await refreshRuntime().catch(() => undefined);
-  noticeText = event.payload ? `Test result: ${event.payload}` : emptySpeechMessage();
   render();
 }).catch(() => undefined);
 listen<string>("dictation-error", event => {
   recording = false;
-  noticeText = event.payload;
+  showToast(event.payload);
   refreshRuntime().then(render).catch(() => render());
 }).catch(() => undefined);
-listen<string>("runtime-status", event => {
-  runtime = { ...runtime, status: event.payload, paused: event.payload === "Paused" };
+listen<RuntimeStatus>("runtime-status", event => {
+  if (typeof event.payload === "string") {
+    runtime = { ...runtime, status: event.payload, paused: event.payload === "Paused" };
+  } else {
+    runtime = { ...runtime, ...event.payload };
+  }
   render();
 }).catch(() => undefined);
 listen<Settings>("settings-changed", event => {
   settings = { ...settings, ...event.payload };
   render();
 }).catch(() => undefined);
-listen("show-about", () => {
-  showAbout = true;
-  render();
-}).catch(() => undefined);
 listen<string>("navigate", event => {
-  if (event.payload === "settings" || event.payload === "models" || event.payload === "history" || event.payload === "dictation") {
+  if (event.payload === "settings" || event.payload === "models" || event.payload === "history" || event.payload === "dictation" || event.payload === "debug" || event.payload === "about") {
     view = event.payload;
-    render();
+    if (view === "settings") void refreshRunningApps().then(render);
+    else if (view === "debug") void refreshLogs().then(render);
+    else render();
   }
 }).catch(() => undefined);
-listen<string>("log-line", event => {
-  logLines = [...logLines.slice(-499), event.payload];
-  if (isLogsWindow) render();
+listen<LogLine>("log-line", event => {
+  const line = event.payload;
+  if (line && typeof line === "object" && "text" in line) {
+    logLines = [...logLines.slice(-499), line];
+  }
+  if (view === "debug") render();
 }).catch(() => undefined);
 
-if (isLogsWindow) {
-  refreshLogs().then(render).catch(error => { app.textContent = `Could not open logs: ${error}`; });
-} else {
-  Promise.all([
-    invoke<Model[]>("get_models"),
-    invoke<Settings>("get_settings"),
-    invoke<Record<string, ModelStatus>>("get_model_statuses"),
-    invoke<HistoryEntry[]>("get_history"),
-    invoke<HotkeyPreset[]>("get_hotkey_presets"),
-    invoke<GpuStatus>("get_gpu_status"),
-    invoke<InputDevice[]>("list_input_devices").catch(() => [] as InputDevice[]),
-    invoke<ModelRecommendation>("recommend_model").catch(() => null),
-    invoke<RuntimeStatus>("get_runtime_status").catch(() => runtime),
-  ]).then(([catalog, saved, installs, entries, hotkeyPresets, gpuStatus, inputDevices, modelRec, runtimeStatus]) => {
-    models = catalog;
-    settings = {
-      ...saved,
-      soundTheme: saved.soundTheme || (saved.soundEffects === false ? "off" : "voca"),
-      soundEffects: saved.soundEffects ?? true,
-      maxRecordingSeconds: saved.maxRecordingSeconds ?? 60,
-      appendTrailingSpace: saved.appendTrailingSpace ?? true,
-      autoCapitalize: saved.autoCapitalize ?? true,
-      inputDevice: saved.inputDevice ?? "",
-      autoPauseEnabled: saved.autoPauseEnabled ?? false,
-      autoPauseApps: saved.autoPauseApps ?? "",
-      idleUnloadEnabled: saved.idleUnloadEnabled ?? false,
-      idleUnloadSeconds: saved.idleUnloadSeconds ?? 300,
-      welcomeDismissed: saved.welcomeDismissed ?? false,
-    };
-    statuses = installs;
-    history = entries;
-    presets = hotkeyPresets;
-    gpu = {
-      ...gpuStatus,
-      deviceIndex: gpuStatus.deviceIndex ?? -1,
-      discrete: gpuStatus.discrete ?? false,
-      vramMb: gpuStatus.vramMb ?? 0,
-      detail: gpuStatus.detail ?? "",
-    };
-    devices = inputDevices;
-    recommendation = modelRec;
-    runtime = runtimeStatus;
-    render();
-  }).catch(error => { app.textContent = `Could not start VocaWin: ${error}`; });
-}
+Promise.all([
+  invoke<Model[]>("get_models"),
+  invoke<Settings>("get_settings"),
+  invoke<Record<string, ModelStatus>>("get_model_statuses"),
+  invoke<HistoryEntry[]>("get_history"),
+  invoke<HotkeyPreset[]>("get_hotkey_presets"),
+  invoke<GpuStatus>("get_gpu_status"),
+  invoke<InputDevice[]>("list_input_devices").catch(() => [] as InputDevice[]),
+  invoke<ModelRecommendation>("recommend_model").catch(() => null),
+  invoke<RuntimeStatus>("get_runtime_status").catch(() => runtime),
+  invoke<LogLine[]>("get_log_lines").catch(() => [] as LogLine[]),
+]).then(([catalog, saved, installs, entries, hotkeyPresets, gpuStatus, inputDevices, modelRec, runtimeStatus, logs]) => {
+  models = catalog;
+  settings = {
+    ...saved,
+    soundTheme: saved.soundTheme || (saved.soundEffects === false ? "off" : "voca"),
+    soundEffects: saved.soundEffects ?? true,
+    maxRecordingSeconds: saved.maxRecordingSeconds ?? 60,
+    appendTrailingSpace: saved.appendTrailingSpace ?? true,
+    autoCapitalize: saved.autoCapitalize ?? true,
+    inputDevice: saved.inputDevice ?? "",
+    autoPauseEnabled: saved.autoPauseEnabled ?? false,
+    autoPauseApps: saved.autoPauseApps ?? "",
+    idleUnloadEnabled: saved.idleUnloadEnabled ?? false,
+    idleUnloadSeconds: saved.idleUnloadSeconds ?? 300,
+    welcomeDismissed: saved.welcomeDismissed ?? false,
+    historyEnabled: saved.historyEnabled ?? true,
+    debugLogging: saved.debugLogging ?? false,
+  };
+  statuses = installs;
+  history = entries;
+  presets = hotkeyPresets;
+  gpu = {
+    ...gpuStatus,
+    deviceIndex: gpuStatus.deviceIndex ?? -1,
+    discrete: gpuStatus.discrete ?? false,
+    vramMb: gpuStatus.vramMb ?? 0,
+    detail: gpuStatus.detail ?? "",
+  };
+  devices = inputDevices;
+  recommendation = modelRec;
+  runtime = runtimeStatus;
+  logLines = logs;
+  render();
+}).catch(error => { app.textContent = `Could not start VocaWin: ${error}`; });
