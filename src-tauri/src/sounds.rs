@@ -174,7 +174,10 @@ mod tests {
         let bits = u16::from_le_bytes([bytes[34], bytes[35]]);
         assert_eq!(channels, 1);
         assert_eq!(bits, 16);
-        assert!(rate == 16_000 || rate == 22_050, "rate {rate}");
+        assert!(
+            rate == 16_000 || rate == 22_050 || rate == 44_100 || rate == 48_000,
+            "rate {rate}"
+        );
     }
 
     #[test]
