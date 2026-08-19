@@ -185,6 +185,7 @@ mod tests {
     #[test]
     fn matching_name_needs_a_running_hit() {
         assert!(matching_process_name(&[]).is_none());
+        assert!(!matching_process_running(&[]));
         assert!(matching_process_name(&["definitely-not-a-real-vocawin-task.exe".into()]).is_none());
     }
 

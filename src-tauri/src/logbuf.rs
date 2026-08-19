@@ -121,6 +121,7 @@ pub fn snapshot_text(include_debug: bool) -> String {
         .join("\n")
 }
 
+#[allow(dead_code)]
 pub fn push_and_emit(app: &AppHandle, line: impl Into<String>) {
     push_level_and_emit(app, Level::Info, line);
 }
@@ -158,14 +159,18 @@ pub fn clear() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_view_hides_debug_and_info() {
+        let _guard = TEST_LOCK.lock().expect("log test lock");
         clear();
         set_debug_enabled(false);
         push_level(Level::Debug, "mic opened");
         push_level(Level::Info, "ready");
-        push_level(Level::Warn, "hotkey busy");
+        warn("hotkey busy");
         push_level(Level::Error, "download failed");
         let shown = snapshot_filtered(false);
         assert_eq!(
@@ -174,14 +179,7 @@ mod tests {
         );
         let all = snapshot_filtered(true);
         assert_eq!(all.len(), 4);
-        clear();
-    }
-
-    #[test]
-    fn snapshot_text_keeps_levels() {
-        clear();
-        push_level(Level::Error, "boom");
-        assert_eq!(snapshot_text(false), "[error] boom");
+        assert_eq!(snapshot_text(false), "[warn] hotkey busy\n[error] download failed");
         clear();
     }
 }
