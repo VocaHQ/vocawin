@@ -10,6 +10,9 @@ $bundleRoot = "C:\t\release\bundle"
 $pfxPath = Join-Path $env:RUNNER_TEMP "vocawin-alpha.pfx"
 $cerPath = Join-Path $env:RUNNER_TEMP "vocawin-alpha.cer"
 $importedThumb = $null
+# /tr waits on a public TSA. A hung HTTP call used to stall the job
+# until someone cancelled it. 45s is enough for a live timestamp.
+$signToolTimeoutSeconds = 45
 
 function Set-SignedOutput([string]$Value) {
     if ($env:GITHUB_OUTPUT) {
@@ -54,29 +57,102 @@ function Get-SignToolPath {
     return $found.FullName
 }
 
+# Starts signtool as its own process so a stuck /tr can be killed.
+# Never logs the argument list: the PFX retry passes /p.
+function Invoke-SignToolWithTimeout {
+    param(
+        [Parameter(Mandatory = $true)][string]$Tool,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [int]$TimeoutSeconds = 45
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Tool
+    $psi.UseShellExecute = $false
+    foreach ($arg in $ArgumentList) {
+        [void]$psi.ArgumentList.Add($arg)
+    }
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    try {
+        [void]$proc.Start()
+        if ($proc.WaitForExit($TimeoutSeconds * 1000)) {
+            return [pscustomobject]@{
+                TimedOut = $false
+                ExitCode = $proc.ExitCode
+            }
+        }
+
+        Write-Host "signtool exceeded ${TimeoutSeconds}s. Killing the hung process."
+        if (-not $proc.HasExited) {
+            try {
+                $proc.Kill($true)
+            } catch {
+                try {
+                    & taskkill.exe /PID $proc.Id /T /F | Out-Null
+                } catch {
+                    # already gone
+                }
+            }
+        }
+        try {
+            [void]$proc.WaitForExit(10000)
+        } catch {
+            # process handle already closed
+        }
+        return [pscustomobject]@{
+            TimedOut = $true
+            ExitCode = $null
+        }
+    } finally {
+        $proc.Dispose()
+    }
+}
+
 function Invoke-SignFile([string]$Tool, [string]$Thumb, [string]$FilePath, [string]$PfxFile) {
     $urls = @(
         "http://timestamp.digicert.com",
         "http://timestamp.sectigo.com"
     )
+    $sawTimeout = $false
+
     foreach ($url in $urls) {
-        Write-Host "Signing $FilePath"
-        & $Tool sign /sha1 $Thumb /fd SHA256 /tr $url /td SHA256 $FilePath
-        if ($LASTEXITCODE -eq 0) {
+        Write-Host "Signing $FilePath via $url"
+        $result = Invoke-SignToolWithTimeout -Tool $Tool -TimeoutSeconds $signToolTimeoutSeconds -ArgumentList @(
+            "sign", "/sha1", $Thumb, "/fd", "SHA256", "/tr", $url, "/td", "SHA256", $FilePath
+        )
+        if (-not $result.TimedOut -and $result.ExitCode -eq 0) {
             return
         }
-        Write-Host "Timestamp authority failed (exit $LASTEXITCODE). Trying the next public TSA."
+        if ($result.TimedOut) {
+            $sawTimeout = $true
+            Write-Host "Timestamp authority timed out. Trying the next public TSA."
+        } else {
+            Write-Host "Timestamp authority failed (exit $($result.ExitCode)). Trying the next public TSA."
+        }
     }
     if (Test-Path -LiteralPath $PfxFile) {
         foreach ($url in $urls) {
-            Write-Host "Retrying $FilePath from the PFX"
-            & $Tool sign /f $PfxFile /p $env:VOCAWIN_SELF_SIGN_PASSWORD /fd SHA256 /tr $url /td SHA256 $FilePath
-            if ($LASTEXITCODE -eq 0) {
+            Write-Host "Retrying $FilePath from the PFX via $url"
+            $result = Invoke-SignToolWithTimeout -Tool $Tool -TimeoutSeconds $signToolTimeoutSeconds -ArgumentList @(
+                "sign", "/f", $PfxFile, "/p", $env:VOCAWIN_SELF_SIGN_PASSWORD, "/fd", "SHA256", "/tr", $url, "/td", "SHA256", $FilePath
+            )
+            if (-not $result.TimedOut -and $result.ExitCode -eq 0) {
                 return
+            }
+            if ($result.TimedOut) {
+                $sawTimeout = $true
+                Write-Host "PFX retry timed out. Trying the next public TSA."
+            } else {
+                Write-Host "PFX retry failed (exit $($result.ExitCode)). Trying the next public TSA."
             }
         }
     }
-    throw "signtool sign failed for $FilePath"
+    if ($sawTimeout) {
+        throw "signtool sign failed for $FilePath. DigiCert and Sectigo timed out or returned an error (store cert, then PFX retry). Stopping instead of hanging."
+    }
+    throw "signtool sign failed for $FilePath. DigiCert and Sectigo both returned an error (store cert, then PFX retry)."
 }
 
 if ([string]::IsNullOrWhiteSpace($env:VOCAWIN_SELF_SIGN_PFX) -or [string]::IsNullOrWhiteSpace($env:VOCAWIN_SELF_SIGN_PASSWORD)) {
@@ -145,8 +221,11 @@ try {
 
     foreach ($file in $files) {
         Invoke-SignFile $signtool $importedThumb $file.FullName $pfxPath
-        & $signtool verify /pa $file.FullName
-        if ($LASTEXITCODE -ne 0) {
+        $verify = Invoke-SignToolWithTimeout -Tool $signtool -TimeoutSeconds $signToolTimeoutSeconds -ArgumentList @("verify", "/pa", $file.FullName)
+        if ($verify.TimedOut) {
+            throw "signtool verify /pa timed out for $($file.FullName)"
+        }
+        if ($verify.ExitCode -ne 0) {
             throw "signtool verify /pa failed for $($file.FullName)"
         }
         Write-Host "Verified $($file.FullName)"
