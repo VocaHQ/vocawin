@@ -44,7 +44,7 @@ This is a tester build you can run today. It is not a store listing and not a st
 
 ### Still rough
 
-- Unsigned / self-signed. SmartScreen is expected. There is no purchased CA signature and no Microsoft Store listing.
+- Unsigned. SmartScreen is expected. There is no purchased CA signature and no Microsoft Store listing.
 - The installer does not bundle a speech model. First run needs a network once to download one.
 - Elevated windows can block text injection.
 - Parakeet CTC and Vosk stay out of the catalog until they work.
@@ -118,9 +118,9 @@ npm run check           # TypeScript build + Rust tests
 
 A macOS/Linux host can validate the frontend and Rust command layer, but Windows injection and installer artifacts must be exercised on Windows 10/11.
 
-Windows CI builds an NSIS (and MSI) installer on pushes to main and on workflow_dispatch, then uploads it as a GitHub Actions artifact. Pull requests only run cargo test, so a docs change does not package the setup wizards. VocaHQ CI self-signs the main/tag builds. SmartScreen can still warn. Forks without those secrets stay unsigned.
+Windows CI builds an NSIS (and MSI) installer on pushes to main and on workflow_dispatch, then uploads it as a GitHub Actions artifact. Pull requests only run cargo test, so a docs change does not package the setup wizards. The installers stay unsigned. SmartScreen can still warn.
 
-Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is self-signed, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
+Pushing a `v*` tag (for example `v0.1.0-alpha.1`) builds the same NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
 ## System Requirements
 
