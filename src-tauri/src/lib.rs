@@ -827,10 +827,8 @@ struct AppState {
 /// from starting. In that case we retain the file for diagnosis and use safe
 /// defaults until the user saves settings again.
 fn load_settings(path: &std::path::Path) -> Settings {
-    let mut settings = fs::read_to_string(path)
-        .ok()
-        .and_then(|contents| serde_json::from_str(&contents).ok())
-        .unwrap_or_default();
+    let contents = fs::read_to_string(path).unwrap_or_default();
+    let mut settings: Settings = serde_json::from_str(&contents).unwrap_or_default();
     sounds::apply_theme(&mut settings.sound_theme, &mut settings.sound_effects);
     settings
 }
