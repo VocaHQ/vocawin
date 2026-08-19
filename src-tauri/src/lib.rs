@@ -2119,6 +2119,11 @@ fn inject_text(text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    output::copy_to_clipboard(&text)
+}
+
+#[tauri::command]
 fn preview_sound(theme: String, start: bool) -> Result<(), String> {
     sounds::preview_theme(&theme, start)
 }
@@ -2283,6 +2288,7 @@ pub fn run() {
             stop_and_transcribe,
             preview_sound,
             inject_text,
+            copy_text,
             open_external
         ])
         .run(tauri::generate_context!())

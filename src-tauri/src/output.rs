@@ -269,6 +269,19 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
     }
 }
 
+/// Copy Debug log text (and other UI strings) to the system clipboard.
+pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        write_clipboard_unicode(text)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = text;
+        Err("Clipboard copy is available in Windows builds only.".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

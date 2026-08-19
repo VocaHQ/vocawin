@@ -226,6 +226,7 @@ function showToast(text: string) {
     toastTimer = null;
     render();
   }, 1800);
+  render();
 }
 
 function visibleLogs() {
@@ -392,11 +393,13 @@ function modelsPage() {
 }
 
 function historyPage() {
-  if (!settings.historyEnabled) {
-    return `<header><div><p class="overline">LOCAL HISTORY</p><h1>Your recent <em>dictation.</em></h1><p class="lede">History is turned off. Turn it back on in Settings if you want VocaWin to keep recent dictation on this PC.</p></div></header><section class="history-list"><div class="empty-history">Nothing is being saved. Older entries stay on disk until you clear them.</div></section>`;
-  }
-  const entries = history.length ? history.map(entry => `<article class="history-entry"><p>${escape(entry.text)}</p><footer>${escape(models.find(model => model.id === entry.modelId)?.name ?? entry.modelId)} · ${new Date(entry.createdAtMs).toLocaleString()}</footer></article>`).join("") : `<div class="empty-history">Your local transcription history will appear here.</div>`;
-  return `<header><div><p class="overline">LOCAL HISTORY</p><h1>Your recent <em>dictation.</em></h1><p class="lede">History is stored only on this computer and can be cleared at any time.</p></div>${history.length ? `<button class="quiet-button" id="clear-history">Clear history</button>` : ""}</header><section class="history-list">${entries}</section>`;
+  const entries = history.length
+    ? history.map(entry => `<article class="history-entry"><p>${escape(entry.text)}</p><footer>${escape(models.find(model => model.id === entry.modelId)?.name ?? entry.modelId)} · ${new Date(entry.createdAtMs).toLocaleString()}</footer></article>`).join("")
+    : `<div class="empty-history">${settings.historyEnabled ? "Your local transcription history will appear here." : "Nothing is saved yet. Turn history back on in Settings if you want new takes kept on this PC."}</div>`;
+  const lede = settings.historyEnabled
+    ? "History is stored only on this computer and can be cleared at any time."
+    : "New takes are not being saved. Older entries stay on this PC until you clear them.";
+  return `<header><div><p class="overline">LOCAL HISTORY</p><h1>Your recent <em>dictation.</em></h1><p class="lede">${lede}</p></div>${history.length ? `<button class="quiet-button" id="clear-history">Clear history</button>` : ""}</header><section class="history-list">${entries}</section>`;
 }
 
 function runningAppOptions() {
@@ -650,7 +653,7 @@ function sidebarFooter() {
   const levelPct = Math.min(100, Math.round(micLevel * 140));
   const result = testResult
     ? `<p class="sidebar-result">${escape(testResult)}</p>`
-    : `<p class="sidebar-result muted">Test dictation stays here. History keeps real takes.</p>`;
+    : `<p class="sidebar-result muted">Test dictation stays here. If history is on, this take is saved there too.</p>`;
   return `<div class="sidebar-footer">
     <div class="sidebar-status ${parked ? "parked" : recording ? "live" : ""}"><i></i><div><strong>${statusLabel}</strong>${runtime.parkDetail && !recording ? `<small>${escape(runtime.parkDetail)}</small>` : `<small>${escape(runtime.inputDevice)}</small>`}</div></div>
     <div class="sidebar-mic">
@@ -691,16 +694,25 @@ function render() {
   restoreFocusedField();
 }
 
+function openView(next: View) {
+  view = next;
+  if (next === "settings") {
+    void refreshRunningApps().then(render);
+    return;
+  }
+  if (next === "debug") {
+    void refreshLogs().then(render);
+    return;
+  }
+  render();
+}
+
 function bindChrome() {
   document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(button => button.addEventListener("click", () => {
-    view = button.dataset.view as View;
-    if (view === "settings") void refreshRunningApps();
-    if (view === "debug") void refreshLogs().then(render);
-    else render();
+    openView(button.dataset.view as View);
   }));
   document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach(button => button.addEventListener("click", () => {
-    view = button.dataset.go as View;
-    render();
+    openView(button.dataset.go as View);
   }));
   document.querySelectorAll<HTMLButtonElement>("[data-open]").forEach(button => button.addEventListener("click", () => {
     void openExternal(button.dataset.open!);
@@ -1002,12 +1014,16 @@ async function copyLogs() {
     return;
   }
   try {
-    await navigator.clipboard.writeText(text);
+    await invoke("copy_text", { text });
     showToast("Logs copied.");
   } catch {
-    showToast("Could not copy logs.");
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("Logs copied.");
+    } catch {
+      showToast("Could not copy logs.");
+    }
   }
-  render();
 }
 async function clearLogs() {
   if (!window.confirm("Clear the log buffer for this session? This does not delete files on disk.")) {
@@ -1183,10 +1199,7 @@ listen<Settings>("settings-changed", event => {
 }).catch(() => undefined);
 listen<string>("navigate", event => {
   if (event.payload === "settings" || event.payload === "models" || event.payload === "history" || event.payload === "dictation" || event.payload === "debug" || event.payload === "about") {
-    view = event.payload;
-    if (view === "settings") void refreshRunningApps().then(render);
-    else if (view === "debug") void refreshLogs().then(render);
-    else render();
+    openView(event.payload);
   }
 }).catch(() => undefined);
 listen<LogLine>("log-line", event => {
