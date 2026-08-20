@@ -11,6 +11,7 @@ mod logbuf;
 mod output;
 mod power;
 mod sounds;
+mod vocabulary;
 mod whisper_cache;
 
 #[cfg(windows)]
@@ -236,6 +237,9 @@ struct Settings {
     /// When false, Debug shows error and warning only.
     #[serde(default)]
     debug_logging: bool,
+    /// Raw custom-words list. Parsed by `vocabulary` the same way as VocaPhone.
+    #[serde(default)]
+    custom_vocabulary: String,
 }
 
 fn default_true() -> bool {
@@ -272,6 +276,7 @@ impl Default for Settings {
             welcome_dismissed: false,
             history_enabled: true,
             debug_logging: false,
+            custom_vocabulary: String::new(),
         }
     }
 }
@@ -1875,6 +1880,7 @@ fn transcribe_samples(
             use_gpu,
             gpu.device_index,
             true,
+            vocabulary::whisper_prompt(&settings.custom_vocabulary),
         )?
     };
     let text = output::apply_output_polish(

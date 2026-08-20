@@ -19,6 +19,7 @@ enum CacheCommand {
         use_gpu: bool,
         gpu_device: i32,
         keep_alive: bool,
+        initial_prompt: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
     Unload,
@@ -52,6 +53,7 @@ impl WhisperCache {
         use_gpu: bool,
         gpu_device: i32,
         keep_alive: bool,
+        initial_prompt: String,
     ) -> Result<String, String> {
         let (reply, response) = mpsc::channel();
         self.commands
@@ -62,6 +64,7 @@ impl WhisperCache {
                 use_gpu,
                 gpu_device,
                 keep_alive,
+                initial_prompt,
                 reply,
             })
             .map_err(|_| "Whisper cache thread is not running".to_string())?;
@@ -97,6 +100,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                 use_gpu,
                 gpu_device,
                 keep_alive,
+                initial_prompt,
                 reply,
             }) => {
                 let result = run_transcribe(
@@ -108,6 +112,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                     use_gpu,
                     gpu_device,
                     keep_alive,
+                    &initial_prompt,
                 );
                 loaded.store(context.is_some(), Ordering::Relaxed);
                 if result.is_ok() {
@@ -154,6 +159,7 @@ fn run_transcribe(
     use_gpu: bool,
     gpu_device: i32,
     keep_alive: bool,
+    initial_prompt: &str,
 ) -> Result<String, String> {
     let needs_reload = context.is_none()
         || loaded_path
@@ -186,6 +192,10 @@ fn run_transcribe(
     parameters.set_print_progress(false);
     parameters.set_print_realtime(false);
     parameters.set_print_timestamps(false);
+    let prompt = initial_prompt.replace('\0', "");
+    if !prompt.is_empty() {
+        parameters.set_initial_prompt(&prompt);
+    }
     session
         .full(parameters, pcm)
         .map_err(|error| format!("Transcription failed: {error}"))?;
