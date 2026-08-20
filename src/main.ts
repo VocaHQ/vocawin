@@ -138,8 +138,8 @@ const LANGUAGE_CHOICES = ["Auto-detect", "English", ...[...LANGUAGE_CORE].sort((
 const ICON_DOWNLOAD = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a.75.75 0 0 1 .75.75v6.19l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V2.25A.75.75 0 0 1 8 1.5Zm-4.5 9a.75.75 0 0 1 .75.75v1.5h7.5v-1.5a.75.75 0 0 1 1.5 0v2.25c0 .41-.34.75-.75.75h-9a.75.75 0 0 1-.75-.75V11.25A.75.75 0 0 1 3.5 10.5Z"/></svg>`;
 const ICON_TRASH = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.2 1.75A1.25 1.25 0 0 1 7.4.75h1.2c.55 0 1.03.36 1.2.88l.2.62h2.7a.75.75 0 0 1 0 1.5h-.3l-.55 8.08A1.75 1.75 0 0 1 10.11 13.5H5.89A1.75 1.75 0 0 1 4.15 11.83L3.6 3.75h-.35a.75.75 0 0 1 0-1.5h2.7l.2-.62c.17-.52.65-.88 1.2-.88Zm.55 1.5-.1.37h2.7l-.1-.37-.05-.13H6.8l-.05.13ZM5.1 3.75l.54 8.02a.25.25 0 0 0 .25.23h4.22a.25.25 0 0 0 .25-.23l.54-8.02H5.1Z"/></svg>`;
 const ICON_CHECK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.4 10.3 3.85 7.74a.75.75 0 0 0-1.06 1.06l3.1 3.1a.75.75 0 0 0 1.08-.02l6.2-6.6A.75.75 0 0 0 12.1 4.2l-5.7 6.1Z"/></svg>`;
-const ICON_PLAY = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4.2 2.4v11.2L13.6 8z"/></svg>`;
-const ICON_STOP = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 4h8v8H4z"/></svg>`;
+const ICON_PLAY = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#0F6B57" stroke="#0F6B57" stroke-width="1" stroke-linejoin="round" d="M4.2 2.4v11.2L13.6 8z"/></svg>`;
+const ICON_STOP = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#0F6B57" stroke="#0F6B57" stroke-width="1" d="M4 4h8v8H4z"/></svg>`;
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let models: Model[] = [];

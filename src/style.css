@@ -100,7 +100,7 @@ main{height:100vh;overflow-y:auto;padding:36px 48px 48px;position:relative;--scr
 .mic-test .level-meter{width:120px;height:10px}
 .sound-theme-controls{display:flex;align-items:center;gap:8px}
 .sound-theme-controls select,.sound-theme-controls .preview-sound{height:36px}
-.sound-theme-controls .preview-sound{width:36px;padding:0;display:grid;place-items:center;color:#0f6b57}
+.sound-theme-controls .preview-sound{width:36px;padding:0;display:grid;place-items:center}
 .sound-theme-controls .preview-sound svg{width:14px;height:14px;display:block}
 .power-combo,.power-block select{border-color:#0f6b57;color-scheme:light}
 .power-block{padding:18px 22px 16px}
@@ -137,7 +137,6 @@ main{height:100vh;overflow-y:auto;padding:36px 48px 48px;position:relative;--scr
   .sidebar-status small,.sidebar-result.muted,.power-block p,.power-note,.about-tagline,.about-copy p{color:#c2c8c3}
   .model-filters input,.setting-row textarea{background:#292c29;border-color:#3c403d;color:#e3e4e1}
   .power-combo,.power-block select{background:#292c29;color:#e3e4e1;border-color:#77d0b2;color-scheme:dark}
-  .sound-theme-controls .preview-sound{color:#77d0b2}
   .app-chip{background:#34463d;color:#c3f3e0}
   .app-chip button{color:#77d0b2}
   .sidebar-result{color:#e3e4e1}
