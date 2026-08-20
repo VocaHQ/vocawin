@@ -447,11 +447,6 @@ function watchedAppChips() {
   return `<ul class="app-chips">${apps.map(name => `<li class="app-chip"><span>${escape(chipLabel(name))}</span><button type="button" data-unwatch="${escape(name)}" title="Remove ${escape(chipLabel(name))}" aria-label="Remove ${escape(chipLabel(name))}">×</button></li>`).join("")}</ul>`;
 }
 
-function isWhisperActive() {
-  const model = selected();
-  return !!model && model.engine === "whisper.cpp";
-}
-
 function idleUnloadValue() {
   if (!settings.idleUnloadEnabled) return 0;
   const seconds = settings.idleUnloadSeconds;
@@ -530,12 +525,10 @@ function settingsItems(): SettingsItem[] {
     },
     {
       group: "Dictation",
-      title: "Custom words",
-      subtitle: isWhisperActive()
-        ? "Bias Whisper toward names and jargon. It is a hint, not a guarantee."
-        : "Whisper only. Select a Whisper model to use this list.",
-      keywords: "custom words vocabulary dictionary glossary names jargon initial prompt whisper",
-      html: `<textarea id="custom-words" rows="5" ${isWhisperActive() ? "" : "disabled "}placeholder="One name or phrase per line">${escape(settings.customVocabulary)}</textarea>`,
+      title: "Custom Vocabulary",
+      subtitle: "Bias Whisper toward names and jargon. It is a hint, not a guarantee.",
+      keywords: "custom vocabulary dictionary glossary names jargon initial prompt whisper",
+      html: `<textarea id="custom-vocabulary" rows="5" placeholder="kubectl, PostgreSQL, nginx, Grafana">${escape(settings.customVocabulary)}</textarea>`,
     },
     {
       group: "Audio",
@@ -885,7 +878,7 @@ function bindAutosave() {
     void persistSettings();
   };
   document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging").forEach(node => {
-    if (node.id === "custom-words") {
+    if (node.id === "custom-vocabulary") {
       node.addEventListener("change", persistFromEvent);
       node.addEventListener("blur", persistFromEvent);
       return;
@@ -932,8 +925,8 @@ function collectSettingsFromDom() {
   if (historyEnabled) settings.historyEnabled = historyEnabled.checked;
   const debugLogging = document.querySelector<HTMLInputElement>("#debug-logging");
   if (debugLogging) settings.debugLogging = debugLogging.checked;
-  const customWords = document.querySelector<HTMLTextAreaElement>("#custom-words");
-  if (customWords && !customWords.disabled) settings.customVocabulary = customWords.value;
+  const customVocabulary = document.querySelector<HTMLTextAreaElement>("#custom-vocabulary");
+  if (customVocabulary) settings.customVocabulary = customVocabulary.value;
 }
 
 async function persistSettings(silent = false, skipCollect = false) {

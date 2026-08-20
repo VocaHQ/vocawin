@@ -1,9 +1,10 @@
-//! Custom words for Whisper, matching VocaPhone `CustomVocabulary`.
+//! Custom Vocabulary, matching VocaPhone `CustomVocabulary` (Android + iOS).
 //!
-//! Stored text is a list of jargon / names. Split on newlines and commas, keep
-//! phrases with spaces intact. The whisper.cpp `initial_prompt` is a
-//! comma-separated list, max 640 characters, 64 per term, first spelling wins,
-//! then a trailing period.
+//! The stored list is a Win setting, not a shared family config key. Whisper.cpp
+//! has no vocabulary parameter; the engine field is `initial_prompt`.
+//! Split on newlines and commas, not spaces. Case-insensitive dedup keeps the
+//! first spelling. Term max 64, prompt max 640, join with ", " and a trailing
+//! period.
 
 const MAX_PROMPT_CHARACTERS: usize = 640;
 const MAX_TERM_CHARACTERS: usize = 64;

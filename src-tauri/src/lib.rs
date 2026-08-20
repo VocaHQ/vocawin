@@ -237,7 +237,8 @@ struct Settings {
     /// When false, Debug shows error and warning only.
     #[serde(default)]
     debug_logging: bool,
-    /// Raw custom-words list. Parsed by `vocabulary` the same way as VocaPhone.
+    /// Raw Custom Vocabulary list (Mac/Phone UX). Parsed like VocaPhone
+    /// `CustomVocabulary`, then sent to whisper.cpp as `initial_prompt`.
     #[serde(default)]
     custom_vocabulary: String,
 }
@@ -2799,6 +2800,26 @@ mod tests {
         assert_eq!(loaded.hotkey, "Ctrl+Shift+V");
         assert_eq!(loaded.sound_theme, "voca");
         assert!(loaded.sound_effects);
+        assert!(loaded.custom_vocabulary.is_empty());
+    }
+
+    #[test]
+    fn custom_vocabulary_round_trips_like_phone() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("VocaWin/settings.json");
+        let settings = Settings {
+            custom_vocabulary: "Claude Code\nTailscale, VocaPhone".into(),
+            ..Settings::default()
+        };
+        persist_settings(&path, &settings).unwrap();
+        assert_eq!(
+            load_settings(&path).custom_vocabulary,
+            "Claude Code\nTailscale, VocaPhone"
+        );
+        assert_eq!(
+            vocabulary::whisper_prompt(&settings.custom_vocabulary),
+            "Claude Code, Tailscale, VocaPhone."
+        );
     }
 
     #[test]

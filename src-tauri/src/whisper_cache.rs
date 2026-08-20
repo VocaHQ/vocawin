@@ -192,6 +192,10 @@ fn run_transcribe(
     parameters.set_print_progress(false);
     parameters.set_print_realtime(false);
     parameters.set_print_timestamps(false);
+    // Engine field is initial_prompt (whisper.cpp has no vocabulary param).
+    // Phone Android also sets carry_initial_prompt so the list survives
+    // later 30s windows. whisper-rs 0.16 does not expose that flag; a single
+    // PTT take is one window, so the prompt still reaches the decoder.
     let prompt = initial_prompt.replace('\0', "");
     if !prompt.is_empty() {
         parameters.set_initial_prompt(&prompt);
