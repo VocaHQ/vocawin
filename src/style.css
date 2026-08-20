@@ -128,7 +128,7 @@ main{height:100vh;overflow-y:auto;padding:36px 48px 48px;position:relative;--scr
 .about-links{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:10px 16px}
 .about-links .text-button{margin:0}
 .about-report{margin:8px 0 12px}
-@media(max-width:850px){main{padding:28px 24px 36px}.model-filters{grid-template-columns:1fr}}
+@media(max-width:850px){main{padding:28px 24px 36px}}
 @media(prefers-color-scheme:dark){
   main{--scrollbar-thumb:#4a524c}
   .toast{background:#34463d;color:#c3f3e0}
