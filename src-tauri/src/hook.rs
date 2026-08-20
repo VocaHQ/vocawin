@@ -6,8 +6,10 @@
 //!
 //! Windows sends Alt as a SYSKEY. Down and up are matched from WM_KEY* and
 //! WM_SYSKEY*, from LLKHF_UP, and from VK_MENU plus the extended bit (Right
-//! Alt). If a key-up is lost, a hold watchdog and the next ordinary key recover
-//! so the modifier does not stay logically down.
+//! Alt). Identity is the bound side only: Left Alt does not end a Right Alt
+//! hold. Lost-up recovery is a long safety timeout (max recording + 5s) or a
+//! later matching down after the typematic window. Do not poll GetAsyncKeyState
+//! on a consumed Alt. That API often reports the eaten key as up.
 
 #![allow(dead_code)] // Hook symbols are Windows-only; Linux CI still typechecks the module.
 
@@ -31,10 +33,36 @@ const WM_KEYUP: u32 = 0x0101;
 const WM_SYSKEYDOWN: u32 = 0x0104;
 const WM_SYSKEYUP: u32 = 0x0105;
 
+/// Mac uses max recording + 5s. Default max is 60s, so 65s.
+pub const DEFAULT_SAFETY_TIMEOUT: Duration = Duration::from_secs(65);
+
+/// Windows SYSKEYDOWN repeats while Alt is held. A later down after this gap
+/// is a real press (lost up), not typematic.
+const AUTOREPEAT_GAP_MS: u128 = 1_500;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HookEvent {
     Pressed,
     Released,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KeyEdge {
+    Down,
+    Up,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HoldAction {
+    None,
+    Start,
+    /// Bound-side up. Unstick only this side, and only after a real up.
+    Stop,
+    /// Matching down after a lost up. Do not inject key-ups; the key is down.
+    RecoverStop,
+    /// Extra down while holding (Windows typematic). Eat it, keep the hold.
+    Swallow,
 }
 
 struct HookShared {
@@ -47,11 +75,13 @@ struct HookShared {
     armed: bool,
     /// VK we consumed on key-down and still owe a release for.
     held_vk: Option<u32>,
+    hold_gen: u64,
+    last_down_ms: u128,
+    safety_timeout: Duration,
 }
 
 static SHARED: OnceLock<Mutex<HookShared>> = OnceLock::new();
 static HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
-static WATCHDOG_ACTIVE: AtomicBool = AtomicBool::new(false);
 static EVENT_TX: OnceLock<mpsc::Sender<HookEvent>> = OnceLock::new();
 
 fn shared() -> &'static Mutex<HookShared> {
@@ -63,6 +93,9 @@ fn shared() -> &'static Mutex<HookShared> {
             dictation_paused: false,
             armed: false,
             held_vk: None,
+            hold_gen: 0,
+            last_down_ms: 0,
+            safety_timeout: DEFAULT_SAFETY_TIMEOUT,
         })
     })
 }
@@ -85,7 +118,6 @@ pub fn start(app: AppHandle) {
             }
         })
         .ok();
-    start_hold_watchdog();
     std::thread::Builder::new()
         .name("vocawin-hotkey".into())
         .spawn(|| {
@@ -103,11 +135,17 @@ pub fn set_binding(spec: HotkeySpec) {
     guard.armed = true;
 }
 
+pub fn set_safety_timeout(timeout: Duration) {
+    let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
+    guard.safety_timeout = timeout;
+}
+
 pub fn clear_binding() {
     let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
     guard.binding = None;
     guard.armed = false;
     let held = guard.held_vk.take();
+    guard.hold_gen = guard.hold_gen.wrapping_add(1);
     drop(guard);
     if let Some(vk) = held {
         emit_released();
@@ -135,47 +173,32 @@ fn emit_released() {
     emit(HookEvent::Released);
 }
 
-fn start_hold_watchdog() {
-    if WATCHDOG_ACTIVE.swap(true, Ordering::SeqCst) {
-        return;
-    }
+fn now_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn arm_safety_timer(timeout: Duration, gen: u64) {
     std::thread::Builder::new()
-        .name("vocawin-hotkey-hold".into())
-        .spawn(|| {
-            let mut misses = 0u8;
-            loop {
-                std::thread::sleep(Duration::from_millis(50));
-                let held = {
-                    let guard = shared().lock().unwrap_or_else(|e| e.into_inner());
-                    guard.held_vk
-                };
-                let Some(vk) = held else {
-                    misses = 0;
-                    continue;
-                };
-                if physical_key_down(vk) {
-                    misses = 0;
-                    continue;
-                }
-                misses = misses.saturating_add(1);
-                if misses >= 3 {
-                    recover_lost_up(vk);
-                    misses = 0;
-                }
+        .name("vocawin-hotkey-safety".into())
+        .spawn(move || {
+            std::thread::sleep(timeout);
+            let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
+            if guard.hold_gen != gen || guard.held_vk.is_none() {
+                return;
             }
+            guard.held_vk = None;
+            drop(guard);
+            emit_released();
         })
         .ok();
 }
 
-fn recover_lost_up(vk: u32) {
-    let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
-    if guard.held_vk != Some(vk) {
-        return;
-    }
-    guard.held_vk = None;
-    drop(guard);
-    emit_released();
-    unstick_modifier(vk);
+fn bump_hold_gen(guard: &mut HookShared) -> u64 {
+    guard.hold_gen = guard.hold_gen.wrapping_add(1);
+    guard.hold_gen
 }
 
 #[cfg(windows)]
@@ -232,9 +255,8 @@ unsafe extern "system" fn low_level_proc(
     }
 
     let flags = info.flags.0;
-    let down = is_key_down(wparam.0 as u32, flags);
-    let up = is_key_up(wparam.0 as u32, flags);
-    if !down && !up {
+    let edge = classify_edge(wparam.0 as u32, flags);
+    if edge == KeyEdge::Other {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
@@ -245,45 +267,67 @@ unsafe extern "system" fn low_level_proc(
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        if up {
-            if let Some(held) = guard.held_vk {
-                if vks_are_same_hold(held, vk) {
-                    guard.held_vk = None;
-                    drop(guard);
-                    emit_released();
-                    unstick_modifier(held);
-                    return LRESULT(1);
-                }
-            }
-            return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+        let altgr_blocks = edge == KeyEdge::Down
+            && matches!(guard.binding, Some(HotkeySpec::Lone { vk: bound }) if bound == crate::hotkey::VK_RMENU)
+            && ctrl_is_down();
+        let ms_since_last_down = now_ms().saturating_sub(guard.last_down_ms);
+        let mut action = hold_action(
+            guard.held_vk,
+            vk,
+            edge,
+            guard.binding.as_ref(),
+            altgr_blocks,
+            ms_since_last_down,
+        );
+        if action == HoldAction::None
+            && combo_modifier_dropped(guard.binding.as_ref(), guard.held_vk, vk, edge)
+        {
+            action = HoldAction::Stop;
+            // Keep held_vk so the later base key-up is still eaten.
+            let _gen = bump_hold_gen(&mut guard);
+            drop(guard);
+            emit_released();
+            return LRESULT(1);
         }
 
-        if let Some(held) = guard.held_vk {
-            if vks_are_same_hold(held, vk) {
-                return LRESULT(1);
-            }
-            if !physical_key_down(held) {
-                guard.held_vk = None;
-                drop(guard);
-                emit_released();
-                unstick_modifier(held);
+        match action {
+            HoldAction::None => {
                 return unsafe { CallNextHookEx(None, code, wparam, lparam) };
             }
+            HoldAction::Swallow => {
+                return LRESULT(1);
+            }
+            HoldAction::Start => {
+                if guard.capture_paused || guard.dictation_paused || !guard.armed {
+                    return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+                }
+                guard.held_vk = Some(vk);
+                guard.last_down_ms = now_ms();
+                let gen = bump_hold_gen(&mut guard);
+                let timeout = guard.safety_timeout;
+                drop(guard);
+                emit(HookEvent::Pressed);
+                arm_safety_timer(timeout, gen);
+                true
+            }
+            HoldAction::Stop => {
+                let held = guard.held_vk.take();
+                let _ = bump_hold_gen(&mut guard);
+                drop(guard);
+                emit_released();
+                if let Some(held) = held {
+                    unstick_modifier(held);
+                }
+                true
+            }
+            HoldAction::RecoverStop => {
+                guard.held_vk = None;
+                let _ = bump_hold_gen(&mut guard);
+                drop(guard);
+                emit_released();
+                true
+            }
         }
-
-        if guard.capture_paused || guard.dictation_paused || !guard.armed {
-            return unsafe { CallNextHookEx(None, code, wparam, lparam) };
-        }
-        let Some(binding) = guard.binding.clone() else {
-            return unsafe { CallNextHookEx(None, code, wparam, lparam) };
-        };
-        if !down_matches(&binding, vk) {
-            return unsafe { CallNextHookEx(None, code, wparam, lparam) };
-        }
-        guard.held_vk = Some(vk);
-        drop(guard);
-        emit(HookEvent::Pressed);
-        true
     };
 
     if consume {
@@ -291,6 +335,74 @@ unsafe extern "system" fn low_level_proc(
     }
 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+fn classify_edge(wparam: u32, flags: u32) -> KeyEdge {
+    if is_key_up(wparam, flags) {
+        KeyEdge::Up
+    } else if is_key_down(wparam, flags) {
+        KeyEdge::Down
+    } else {
+        KeyEdge::Other
+    }
+}
+
+fn hold_action(
+    held: Option<u32>,
+    vk: u32,
+    edge: KeyEdge,
+    binding: Option<&HotkeySpec>,
+    altgr_blocks_down: bool,
+    ms_since_last_down: u128,
+) -> HoldAction {
+    match edge {
+        KeyEdge::Other => HoldAction::None,
+        KeyEdge::Up => {
+            if held == Some(vk) {
+                HoldAction::Stop
+            } else {
+                HoldAction::None
+            }
+        }
+        KeyEdge::Down => {
+            if held == Some(vk) {
+                if ms_since_last_down > AUTOREPEAT_GAP_MS {
+                    HoldAction::RecoverStop
+                } else {
+                    HoldAction::Swallow
+                }
+            } else if held.is_some() {
+                HoldAction::None
+            } else if altgr_blocks_down {
+                HoldAction::None
+            } else if binding.is_some_and(|spec| down_matches(spec, vk)) {
+                HoldAction::Start
+            } else {
+                HoldAction::None
+            }
+        }
+    }
+}
+
+fn combo_modifier_dropped(
+    binding: Option<&HotkeySpec>,
+    held: Option<u32>,
+    vk: u32,
+    edge: KeyEdge,
+) -> bool {
+    let Some(HotkeySpec::Combo {
+        ctrl,
+        alt,
+        shift,
+        vk: base,
+    }) = binding
+    else {
+        return false;
+    };
+    if held != Some(*base) || edge != KeyEdge::Up {
+        return false;
+    }
+    (*ctrl && is_ctrl_vk(vk)) || (*alt && is_alt_vk(vk)) || (*shift && is_shift_vk(vk))
 }
 
 fn is_key_down(wparam: u32, flags: u32) -> bool {
@@ -314,34 +426,14 @@ fn resolve_vk(vk: u32, extended: bool) -> u32 {
     }
 }
 
-fn vks_are_same_hold(held: u32, vk: u32) -> bool {
-    if held == vk {
-        return true;
-    }
-    matches!(
-        (held, vk),
-        (crate::hotkey::VK_RMENU, crate::hotkey::VK_LMENU)
-            | (crate::hotkey::VK_LMENU, crate::hotkey::VK_RMENU)
-            | (crate::hotkey::VK_RMENU, VK_MENU)
-            | (crate::hotkey::VK_LMENU, VK_MENU)
-            | (VK_MENU, crate::hotkey::VK_RMENU)
-            | (VK_MENU, crate::hotkey::VK_LMENU)
-    ) || (is_alt_vk(held) && is_alt_vk(vk))
-}
-
-fn is_alt_vk(vk: u32) -> bool {
-    vk == VK_MENU || vk == crate::hotkey::VK_LMENU || vk == crate::hotkey::VK_RMENU
-}
-
 fn down_matches(binding: &HotkeySpec, vk: u32) -> bool {
     match binding {
         HotkeySpec::Lone { vk: bound } => {
-            if !lone_vk_matches(*bound, vk) {
+            if vk != *bound {
                 return false;
             }
-            // AltGr is Left Ctrl + Right Alt on most Windows layouts. Apply
-            // this only on key-down so a Ctrl flicker cannot drop the matching
-            // key-up and leave Alt logically held.
+            // AltGr is Left Ctrl + Right Alt. Apply this only on key-down so a
+            // Ctrl flicker cannot drop the matching key-up.
             if *bound == crate::hotkey::VK_RMENU && ctrl_is_down() {
                 return false;
             }
@@ -356,14 +448,16 @@ fn down_matches(binding: &HotkeySpec, vk: u32) -> bool {
     }
 }
 
-fn lone_vk_matches(bound: u32, vk: u32) -> bool {
-    if vk == bound {
-        return true;
-    }
-    if is_alt_vk(bound) {
-        return is_alt_vk(vk) && (bound == vk || vk == VK_MENU || bound == VK_MENU);
-    }
-    false
+fn is_alt_vk(vk: u32) -> bool {
+    vk == VK_MENU || vk == crate::hotkey::VK_LMENU || vk == crate::hotkey::VK_RMENU
+}
+
+fn is_ctrl_vk(vk: u32) -> bool {
+    vk == VK_CONTROL as u32 || vk == crate::hotkey::VK_LCONTROL || vk == crate::hotkey::VK_RCONTROL
+}
+
+fn is_shift_vk(vk: u32) -> bool {
+    vk == VK_SHIFT as u32 || vk == crate::hotkey::VK_LSHIFT || vk == crate::hotkey::VK_RSHIFT
 }
 
 fn ctrl_is_down() -> bool {
@@ -394,38 +488,20 @@ fn mods_match(want_ctrl: bool, want_alt: bool, want_shift: bool) -> bool {
     }
 }
 
-fn physical_key_down(vk: u32) -> bool {
-    #[cfg(windows)]
-    {
-        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
-        let down = |code: i32| (unsafe { GetAsyncKeyState(code) } as u16) & 0x8000 != 0;
-        if is_alt_vk(vk) {
-            return down(VK_MENU as i32)
-                || down(crate::hotkey::VK_LMENU as i32)
-                || down(crate::hotkey::VK_RMENU as i32);
-        }
-        down(vk as i32)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = vk;
-        false
-    }
-}
-
+/// Inject a key-up for the bound side only, and only after a real up.
 fn unstick_modifier(vk: u32) {
     #[cfg(windows)]
     {
-        if is_alt_vk(vk) {
+        if vk == crate::hotkey::VK_RMENU {
             inject_key_up(crate::hotkey::VK_RMENU as u16, true);
+        } else if vk == crate::hotkey::VK_LMENU {
             inject_key_up(crate::hotkey::VK_LMENU as u16, false);
-            inject_key_up(VK_MENU as u16, false);
-        } else if vk == crate::hotkey::VK_RCONTROL || vk == crate::hotkey::VK_LCONTROL {
-            inject_key_up(vk as u16, vk == crate::hotkey::VK_RCONTROL);
-            inject_key_up(VK_CONTROL as u16, false);
+        } else if vk == crate::hotkey::VK_RCONTROL {
+            inject_key_up(vk as u16, true);
+        } else if vk == crate::hotkey::VK_LCONTROL {
+            inject_key_up(vk as u16, false);
         } else if vk == crate::hotkey::VK_RSHIFT || vk == crate::hotkey::VK_LSHIFT {
             inject_key_up(vk as u16, false);
-            inject_key_up(VK_SHIFT as u16, false);
         }
     }
     #[cfg(not(windows))]
@@ -466,6 +542,10 @@ mod tests {
     use super::*;
     use crate::hotkey::{VK_LMENU, VK_RMENU};
 
+    fn right_alt() -> HotkeySpec {
+        HotkeySpec::Lone { vk: VK_RMENU }
+    }
+
     #[test]
     fn syskey_and_keyup_flag_both_count_as_up() {
         assert!(is_key_up(WM_SYSKEYUP, 0));
@@ -474,6 +554,8 @@ mod tests {
         assert!(is_key_down(WM_SYSKEYDOWN, 0));
         assert!(!is_key_down(WM_SYSKEYDOWN, LLKHF_UP));
         assert!(is_key_down(WM_KEYDOWN, 0));
+        assert_eq!(classify_edge(WM_SYSKEYUP, 0), KeyEdge::Up);
+        assert_eq!(classify_edge(WM_KEYUP, LLKHF_UP), KeyEdge::Up);
     }
 
     #[test]
@@ -484,11 +566,109 @@ mod tests {
     }
 
     #[test]
-    fn right_alt_hold_matches_menu_alias() {
-        assert!(vks_are_same_hold(VK_RMENU, VK_MENU));
-        assert!(vks_are_same_hold(VK_RMENU, VK_RMENU));
-        assert!(lone_vk_matches(VK_RMENU, VK_RMENU));
-        let binding = HotkeySpec::Lone { vk: VK_RMENU };
-        assert!(down_matches(&binding, VK_RMENU));
+    fn left_alt_does_not_end_right_alt_hold() {
+        let binding = right_alt();
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_LMENU,
+                KeyEdge::Up,
+                Some(&binding),
+                false,
+                0
+            ),
+            HoldAction::None
+        );
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_LMENU,
+                KeyEdge::Down,
+                Some(&binding),
+                false,
+                0
+            ),
+            HoldAction::None
+        );
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_RMENU,
+                KeyEdge::Up,
+                Some(&binding),
+                false,
+                0
+            ),
+            HoldAction::Stop
+        );
+    }
+
+    #[test]
+    fn matching_down_while_held_stops_after_typematic_window() {
+        let binding = right_alt();
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_RMENU,
+                KeyEdge::Down,
+                Some(&binding),
+                false,
+                AUTOREPEAT_GAP_MS + 1
+            ),
+            HoldAction::RecoverStop
+        );
+    }
+
+    #[test]
+    fn consumed_alt_repeat_is_not_treated_as_up() {
+        let binding = right_alt();
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_RMENU,
+                KeyEdge::Down,
+                Some(&binding),
+                false,
+                40
+            ),
+            HoldAction::Swallow
+        );
+        assert!(DEFAULT_SAFETY_TIMEOUT >= Duration::from_secs(60));
+        assert!(AUTOREPEAT_GAP_MS > 150);
+    }
+
+    #[test]
+    fn right_alt_down_starts_and_does_not_match_left() {
+        let binding = right_alt();
+        assert_eq!(
+            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), false, 0),
+            HoldAction::Start
+        );
+        assert_eq!(
+            hold_action(None, VK_LMENU, KeyEdge::Down, Some(&binding), false, 0),
+            HoldAction::None
+        );
+        assert!(!down_matches(&binding, VK_LMENU));
+        assert!(down_matches(&binding, VK_RMENU) || cfg!(not(windows)));
+    }
+
+    #[test]
+    fn altgr_filter_is_down_only() {
+        let binding = right_alt();
+        assert_eq!(
+            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), true, 0),
+            HoldAction::None
+        );
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_RMENU,
+                KeyEdge::Up,
+                Some(&binding),
+                true,
+                0
+            ),
+            HoldAction::Stop
+        );
     }
 }
