@@ -518,13 +518,13 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                         meter_only: meter,
                         reply,
                     } => {
-                        silence_seconds = silence.clamp(0.3, 10.0);
-                        max_seconds = max.clamp(3.0, 300.0);
-                        silence_auto_stop = enable_silence;
-                        meter_only = meter;
+                        meter_only = meter_only_after_start(stream.is_some(), meter, meter_only);
                         let result = if stream.is_some() {
                             Err("A recording is already in progress".into())
                         } else {
+                            silence_seconds = silence.clamp(0.3, 10.0);
+                            max_seconds = max.clamp(3.0, 300.0);
+                            silence_auto_stop = enable_silence;
                             match open_input_stream(
                                 Arc::clone(&samples),
                                 Arc::clone(&last_voice_ms),
@@ -542,7 +542,10 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                                     logbuf::debug("Microphone opened.");
                                     Ok(())
                                 }
-                                Err(error) => Err(error),
+                                Err(error) => {
+                                    meter_only = false;
+                                    Err(error)
+                                }
                             }
                         };
                         // Reply before any UI work. Tray/emit stay on the
@@ -1760,8 +1763,8 @@ enum MicTestGate {
     RefuseLiveSession,
 }
 
-fn ptt_pressed_action(session_live: bool) -> PttPressedAction {
-    if session_live {
+fn ptt_pressed_action(recording_flag: bool, capture_live: bool) -> PttPressedAction {
+    if recording_flag || capture_live {
         PttPressedAction::Stop
     } else {
         PttPressedAction::Start
@@ -1775,6 +1778,21 @@ fn mic_test_gate(recording_flag: bool, capture_live: bool) -> MicTestGate {
         MicTestGate::ClearStaleThenAllow
     } else {
         MicTestGate::Allow
+    }
+}
+
+fn is_stale_stop_error(error: &str) -> bool {
+    error.contains("No recording is in progress")
+        || error.contains("No microphone audio was captured")
+}
+
+/// A failed Start must not flip an already-open stream from meter to dictation
+/// (or the other way). Only a successful open owns `meter_only`.
+fn meter_only_after_start(stream_open: bool, requested_meter: bool, current_meter: bool) -> bool {
+    if stream_open {
+        current_meter
+    } else {
+        requested_meter
     }
 }
 
@@ -1972,12 +1990,34 @@ fn transcribe_samples(
 }
 
 fn transcribe_recording(state: &AppState) -> Result<String, String> {
+    match end_voice_session(state)? {
+        Some(text) => Ok(text),
+        None => Ok(String::new()),
+    }
+}
+
+/// Stop capture and clear the session flag even when stop() fails.
+/// Transcribe only when there is real PCM.
+fn end_voice_session(state: &AppState) -> Result<Option<String>, String> {
     let stopped = state.recorder.stop();
     set_recording_flag(state, recording_after_stop_attempt());
     state.session_opening.store(false, Ordering::SeqCst);
     state.release_during_open.store(false, Ordering::SeqCst);
-    let (samples, sample_rate) = stopped?;
-    transcribe_samples(state, samples, sample_rate)
+    match stopped {
+        Ok((samples, sample_rate)) if !samples.is_empty() => {
+            transcribe_samples(state, samples, sample_rate).map(Some)
+        }
+        Ok(_) => Ok(None),
+        Err(error) if is_stale_stop_error(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn abandon_voice_session(state: &AppState) {
+    let _ = state.recorder.stop();
+    set_recording_flag(state, recording_after_stop_attempt());
+    state.session_opening.store(false, Ordering::SeqCst);
+    state.release_during_open.store(false, Ordering::SeqCst);
 }
 
 fn finish_voice_session(handle: &AppHandle) {
@@ -1988,8 +2028,8 @@ fn finish_voice_session(handle: &AppHandle) {
         .inject_on_auto_stop
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    match transcribe_recording(&state) {
-        Ok(text) => {
+    match end_voice_session(&state) {
+        Ok(Some(text)) if !text.is_empty() => {
             sounds::play_if_enabled(&settings.sound_theme, false);
             if inject {
                 let _ = output::inject(&text);
@@ -1998,6 +2038,7 @@ fn finish_voice_session(handle: &AppHandle) {
                 let _ = handle.emit("test-dictation-finished", text);
             }
         }
+        Ok(_) => {}
         Err(error) => {
             sounds::play_error_if_enabled(&settings.sound_theme);
             logbuf::error_and_emit(handle, format!("Dictation error: {error}"));
@@ -2018,9 +2059,11 @@ async fn stop_and_transcribe(app: AppHandle) -> Result<String, String> {
             .map(|settings| settings.sound_theme.clone())
             .unwrap_or_else(|_| "voca".into());
         set_tray_phase(&app, TrayPhase::Processing);
-        let text = match transcribe_recording(&state) {
-            Ok(text) => text,
+        let text = match end_voice_session(&state) {
+            Ok(Some(text)) => text,
+            Ok(None) => String::new(),
             Err(error) => {
+                let _ = app.emit("recording-changed", false);
                 apply_ready_or_parked_tray(&app);
                 sounds::play_error_if_enabled(&sound);
                 return Err(error);
@@ -2104,6 +2147,11 @@ async fn start_mic_test(app: AppHandle) -> Result<(), String> {
                 return Err("Stop dictation before running Mic Test.".into());
             }
             MicTestGate::ClearStaleThenAllow => {
+                match state.recorder.stop() {
+                    Ok(_) => {}
+                    Err(error) if is_stale_stop_error(&error) => {}
+                    Err(_) => {}
+                }
                 set_recording_flag(&state, false);
                 let _ = app.emit("recording-changed", false);
             }
@@ -2470,10 +2518,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
         hook::HookEvent::Pressed => {
             let flag = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
             let live = state.recorder.capture_live();
-            if flag && !live {
-                set_recording_flag(&state, false);
-            }
-            match ptt_pressed_action(live) {
+            match ptt_pressed_action(flag, live) {
                 PttPressedAction::Stop => finish_voice_session(handle),
                 PttPressedAction::Start => {
                     if let Err(error) = begin_voice_session(handle, true) {
@@ -2526,6 +2571,9 @@ fn start_auto_pause_watcher(app: AppHandle) {
                 *paused = true;
                 drop(paused);
                 hook::set_dictation_paused(true);
+                hook::clear_held_vk();
+                abandon_voice_session(&state);
+                let _ = app.emit("recording-changed", false);
                 state.whisper_cache.unload();
                 if let Ok(mut park) = state.park_reason.lock() {
                     *park = ParkReason::AutoPause(hit.unwrap_or_else(|| "a watched app".into()));
@@ -3182,8 +3230,24 @@ mod tests {
 
     #[test]
     fn ptt_down_while_recording_stops() {
-        assert_eq!(ptt_pressed_action(true), PttPressedAction::Stop);
-        assert_eq!(ptt_pressed_action(false), PttPressedAction::Start);
+        assert_eq!(ptt_pressed_action(true, false), PttPressedAction::Stop);
+        assert_eq!(ptt_pressed_action(false, true), PttPressedAction::Stop);
+        assert_eq!(ptt_pressed_action(false, false), PttPressedAction::Start);
+    }
+
+    #[test]
+    fn stop_without_stream_leaves_recording_false() {
+        assert!(!recording_after_stop_attempt());
+        assert!(is_stale_stop_error("No recording is in progress"));
+        assert!(is_stale_stop_error("No microphone audio was captured"));
+        assert_eq!(mic_test_gate(true, false), MicTestGate::ClearStaleThenAllow);
+    }
+
+    #[test]
+    fn start_while_meter_running_does_not_clobber_meter_only() {
+        assert!(meter_only_after_start(true, false, true));
+        assert!(!meter_only_after_start(false, false, true));
+        assert!(meter_only_after_start(false, true, false));
     }
 
     #[test]

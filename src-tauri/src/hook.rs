@@ -140,6 +140,12 @@ pub fn set_safety_timeout(timeout: Duration) {
     guard.safety_timeout = timeout;
 }
 
+pub fn clear_held_vk() {
+    let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
+    guard.held_vk = None;
+    guard.hold_gen = guard.hold_gen.wrapping_add(1);
+}
+
 pub fn clear_binding() {
     let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
     guard.binding = None;
