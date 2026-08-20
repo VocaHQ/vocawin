@@ -8,12 +8,13 @@
 //! WM_SYSKEY*, from LLKHF_UP, and from VK_MENU plus the extended bit (Right
 //! Alt). Identity is the bound side only: Left Alt does not end a Right Alt
 //! hold. Generic VK_MENU matches that bound side, never the other Alt.
-//! Lost-up recovery is only the long safety timeout (max recording + 5s).
-//! Typematic SYSKEY repeats are Swallow for the whole hold. A matching
-//! down while held is not a new press and is not a stop. Do not poll
-//! GetAsyncKeyState on a consumed Alt. Do not SendInput from the hook
-//! callback; a synthetic unstick is queued on vocawin-hotkey-actor after
-//! a real bound-side up.
+//! Hold state is Idle or Recording (armed). First matching down while
+//! Idle starts. Matching downs while Recording are typematic and swallow.
+//! Matching up while Recording stops. Lost-up recovery is only the long
+//! safety timeout (max recording + 5s). Do not poll GetAsyncKeyState on
+//! the consumed Alt. A different vk (Ctrl for AltGr) is fine. Do not
+//! SendInput from the hook callback; a synthetic unstick is queued on
+//! vocawin-hotkey-actor after a real bound-side up.
 
 #![allow(dead_code)] // Hook symbols are Windows-only; Linux CI still typechecks the module.
 
@@ -63,6 +64,27 @@ enum HoldAction {
     Swallow,
 }
 
+/// OpenWhispr-style hold: idle until the first down, then recording
+/// until the matching up. Typematic downs stay in Recording.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HoldSession {
+    Idle,
+    Recording { vk: u32 },
+}
+
+impl HoldSession {
+    fn armed(self) -> bool {
+        matches!(self, HoldSession::Recording { .. })
+    }
+
+    fn held_vk(self) -> Option<u32> {
+        match self {
+            HoldSession::Idle => None,
+            HoldSession::Recording { vk } => Some(vk),
+        }
+    }
+}
+
 struct HookShared {
     app: Option<AppHandle>,
     binding: Option<HotkeySpec>,
@@ -70,9 +92,9 @@ struct HookShared {
     capture_paused: bool,
     /// True while auto-pause apps are running.
     dictation_paused: bool,
-    armed: bool,
-    /// VK we consumed on key-down and still owe a release for.
-    held_vk: Option<u32>,
+    /// Listener is bound. Not the same as a live hold.
+    listener_enabled: bool,
+    session: HoldSession,
     hold_gen: u64,
     safety_timeout: Duration,
 }
@@ -94,8 +116,8 @@ fn shared() -> &'static Mutex<HookShared> {
             binding: None,
             capture_paused: false,
             dictation_paused: false,
-            armed: false,
-            held_vk: None,
+            listener_enabled: false,
+            session: HoldSession::Idle,
             hold_gen: 0,
             safety_timeout: DEFAULT_SAFETY_TIMEOUT,
         })
@@ -137,7 +159,7 @@ pub fn start(app: AppHandle) {
 pub fn set_binding(spec: HotkeySpec) {
     let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
     guard.binding = Some(spec);
-    guard.armed = true;
+    guard.listener_enabled = true;
 }
 
 pub fn set_safety_timeout(timeout: Duration) {
@@ -147,15 +169,16 @@ pub fn set_safety_timeout(timeout: Duration) {
 
 pub fn clear_held_vk() {
     let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
-    guard.held_vk = None;
+    guard.session = HoldSession::Idle;
     guard.hold_gen = guard.hold_gen.wrapping_add(1);
 }
 
 pub fn clear_binding() {
     let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
     guard.binding = None;
-    guard.armed = false;
-    let held = guard.held_vk.take();
+    guard.listener_enabled = false;
+    let held = guard.session.held_vk();
+    guard.session = HoldSession::Idle;
     guard.hold_gen = guard.hold_gen.wrapping_add(1);
     drop(guard);
     if let Some(vk) = held {
@@ -196,10 +219,10 @@ fn arm_safety_timer(timeout: Duration, gen: u64) {
         .spawn(move || {
             std::thread::sleep(timeout);
             let mut guard = shared().lock().unwrap_or_else(|e| e.into_inner());
-            if guard.hold_gen != gen || guard.held_vk.is_none() {
+            if guard.hold_gen != gen || !guard.session.armed() {
                 return;
             }
-            guard.held_vk = None;
+            guard.session = HoldSession::Idle;
             drop(guard);
             emit_released();
         })
@@ -281,16 +304,16 @@ unsafe extern "system" fn low_level_proc(
             && matches!(guard.binding, Some(HotkeySpec::Lone { vk: bound }) if bound == crate::hotkey::VK_RMENU)
             && ctrl_is_down();
         let action = hold_action(
-            guard.held_vk,
+            guard.session,
             vk,
             edge,
             guard.binding.as_ref(),
             altgr_blocks,
         );
         if action == HoldAction::None
-            && combo_modifier_dropped(guard.binding.as_ref(), guard.held_vk, vk, edge)
+            && combo_modifier_dropped(guard.binding.as_ref(), guard.session.held_vk(), vk, edge)
         {
-            // Keep held_vk so the later base key-up is still eaten.
+            // Stay Recording so the later base key-up is still eaten.
             let _gen = bump_hold_gen(&mut guard);
             drop(guard);
             emit_released();
@@ -305,10 +328,10 @@ unsafe extern "system" fn low_level_proc(
                 return LRESULT(1);
             }
             HoldAction::Start => {
-                if guard.capture_paused || guard.dictation_paused || !guard.armed {
+                if guard.capture_paused || guard.dictation_paused || !guard.listener_enabled {
                     return unsafe { CallNextHookEx(None, code, wparam, lparam) };
                 }
-                guard.held_vk = Some(vk);
+                guard.session = HoldSession::Recording { vk };
                 let gen = bump_hold_gen(&mut guard);
                 let timeout = guard.safety_timeout;
                 drop(guard);
@@ -317,7 +340,8 @@ unsafe extern "system" fn low_level_proc(
                 true
             }
             HoldAction::Stop => {
-                let held = guard.held_vk.take();
+                let held = guard.session.held_vk();
+                guard.session = HoldSession::Idle;
                 let _ = bump_hold_gen(&mut guard);
                 drop(guard);
                 emit_released();
@@ -361,8 +385,8 @@ fn vks_are_same_hold(held: u32, incoming: u32, bound: u32) -> bool {
     (incoming == VK_MENU && held == bound) || (held == VK_MENU && incoming == bound)
 }
 
-fn is_same_hold(held: Option<u32>, incoming: u32, binding: Option<&HotkeySpec>) -> bool {
-    let Some(held) = held else {
+fn is_same_hold(session: HoldSession, incoming: u32, binding: Option<&HotkeySpec>) -> bool {
+    let Some(held) = session.held_vk() else {
         return false;
     };
     match bound_vk(binding) {
@@ -372,7 +396,7 @@ fn is_same_hold(held: Option<u32>, incoming: u32, binding: Option<&HotkeySpec>) 
 }
 
 fn hold_action(
-    held: Option<u32>,
+    session: HoldSession,
     vk: u32,
     edge: KeyEdge,
     binding: Option<&HotkeySpec>,
@@ -381,17 +405,19 @@ fn hold_action(
     match edge {
         KeyEdge::Other => HoldAction::None,
         KeyEdge::Up => {
-            if is_same_hold(held, vk, binding) {
+            if session.armed() && is_same_hold(session, vk, binding) {
                 HoldAction::Stop
             } else {
                 HoldAction::None
             }
         }
         KeyEdge::Down => {
-            if is_same_hold(held, vk, binding) {
-                HoldAction::Swallow
-            } else if held.is_some() {
-                HoldAction::None
+            if session.armed() {
+                if is_same_hold(session, vk, binding) {
+                    HoldAction::Swallow
+                } else {
+                    HoldAction::None
+                }
             } else if altgr_blocks_down {
                 HoldAction::None
             } else if binding.is_some_and(|spec| down_matches(spec, vk)) {
@@ -482,6 +508,8 @@ fn is_shift_vk(vk: u32) -> bool {
 fn ctrl_is_down() -> bool {
     #[cfg(windows)]
     {
+        // Ctrl is a different vk from the consumed Right Alt. MSDN: async
+        // state of an eaten key never updates, so never poll that key.
         use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
         (unsafe { GetAsyncKeyState(VK_CONTROL) } as u16) & 0x8000 != 0
     }
@@ -585,28 +613,27 @@ mod tests {
         assert_eq!(resolve_vk(VK_RMENU, true), VK_RMENU);
     }
 
-    fn apply(held: Option<u32>, vk: u32, edge: KeyEdge) -> HoldAction {
-        hold_action(held, vk, edge, Some(&right_alt()), false)
+    fn idle() -> HoldSession {
+        HoldSession::Idle
+    }
+
+    fn recording() -> HoldSession {
+        HoldSession::Recording { vk: VK_RMENU }
+    }
+
+    fn apply(session: HoldSession, vk: u32, edge: KeyEdge) -> HoldAction {
+        hold_action(session, vk, edge, Some(&right_alt()), false)
     }
 
     #[test]
     fn left_alt_does_not_end_right_alt_hold() {
+        assert_eq!(apply(recording(), VK_LMENU, KeyEdge::Up), HoldAction::None);
         assert_eq!(
-            apply(Some(VK_RMENU), VK_LMENU, KeyEdge::Up),
+            apply(recording(), VK_LMENU, KeyEdge::Down),
             HoldAction::None
         );
-        assert_eq!(
-            apply(Some(VK_RMENU), VK_LMENU, KeyEdge::Down),
-            HoldAction::None
-        );
-        assert_eq!(
-            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Up),
-            HoldAction::Stop
-        );
-        assert_eq!(
-            apply(Some(VK_RMENU), VK_MENU, KeyEdge::Up),
-            HoldAction::Stop
-        );
+        assert_eq!(apply(recording(), VK_RMENU, KeyEdge::Up), HoldAction::Stop);
+        assert_eq!(apply(recording(), VK_MENU, KeyEdge::Up), HoldAction::Stop);
     }
 
     #[test]
@@ -622,42 +649,39 @@ mod tests {
 
     #[test]
     fn start_then_down_two_seconds_later_is_still_swallow() {
-        assert_eq!(apply(None, VK_RMENU, KeyEdge::Down), HoldAction::Start);
+        assert_eq!(apply(idle(), VK_RMENU, KeyEdge::Down), HoldAction::Start);
         assert_eq!(
-            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Down),
+            apply(recording(), VK_RMENU, KeyEdge::Down),
             HoldAction::Swallow
         );
     }
 
     #[test]
     fn start_then_up_stops() {
-        assert_eq!(apply(None, VK_RMENU, KeyEdge::Down), HoldAction::Start);
-        assert_eq!(
-            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Up),
-            HoldAction::Stop
-        );
+        assert_eq!(apply(idle(), VK_RMENU, KeyEdge::Down), HoldAction::Start);
+        assert_eq!(apply(recording(), VK_RMENU, KeyEdge::Up), HoldAction::Stop);
     }
 
     #[test]
-    fn many_downs_then_one_up_is_one_start_one_stop() {
+    fn no_duplicate_press_events() {
         let binding = right_alt();
-        let mut held = None;
+        let mut session = HoldSession::Idle;
         let mut starts = 0;
         let mut stops = 0;
         for _ in 0..40 {
-            let action = hold_action(held, VK_RMENU, KeyEdge::Down, Some(&binding), false);
+            let action = hold_action(session, VK_RMENU, KeyEdge::Down, Some(&binding), false);
             match action {
                 HoldAction::Start => {
                     starts += 1;
-                    held = Some(VK_RMENU);
+                    session = HoldSession::Recording { vk: VK_RMENU };
                 }
                 HoldAction::Swallow => {
-                    assert_eq!(held, Some(VK_RMENU));
+                    assert!(session.armed());
                 }
                 other => panic!("unexpected down action {other:?}"),
             }
         }
-        let up = hold_action(held, VK_RMENU, KeyEdge::Up, Some(&binding), false);
+        let up = hold_action(session, VK_RMENU, KeyEdge::Up, Some(&binding), false);
         assert_eq!(up, HoldAction::Stop);
         stops += 1;
         assert_eq!((starts, stops), (1, 1));
@@ -666,7 +690,7 @@ mod tests {
     #[test]
     fn consumed_alt_repeat_is_not_treated_as_up() {
         assert_eq!(
-            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Down),
+            apply(recording(), VK_RMENU, KeyEdge::Down),
             HoldAction::Swallow
         );
         assert!(DEFAULT_SAFETY_TIMEOUT >= Duration::from_secs(60));
@@ -675,8 +699,8 @@ mod tests {
     #[test]
     fn right_alt_down_starts_and_does_not_match_left() {
         let binding = right_alt();
-        assert_eq!(apply(None, VK_RMENU, KeyEdge::Down), HoldAction::Start);
-        assert_eq!(apply(None, VK_LMENU, KeyEdge::Down), HoldAction::None);
+        assert_eq!(apply(idle(), VK_RMENU, KeyEdge::Down), HoldAction::Start);
+        assert_eq!(apply(idle(), VK_LMENU, KeyEdge::Down), HoldAction::None);
         assert!(!down_matches(&binding, VK_LMENU));
         assert!(down_matches(&binding, VK_RMENU) || cfg!(not(windows)));
     }
@@ -685,11 +709,11 @@ mod tests {
     fn altgr_filter_is_down_only() {
         let binding = right_alt();
         assert_eq!(
-            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), true),
+            hold_action(idle(), VK_RMENU, KeyEdge::Down, Some(&binding), true),
             HoldAction::None
         );
         assert_eq!(
-            hold_action(Some(VK_RMENU), VK_RMENU, KeyEdge::Up, Some(&binding), true),
+            hold_action(recording(), VK_RMENU, KeyEdge::Up, Some(&binding), true),
             HoldAction::Stop
         );
     }
