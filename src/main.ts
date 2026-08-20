@@ -4,6 +4,10 @@ import "./style.css";
 import sidebarMark from "./assets/voca-logo.svg?raw";
 import dictateIdle from "./assets/vocawin-dictate-idle.svg?raw";
 import dictateListening from "./assets/vocawin-dictate-listening.svg?raw";
+import discordMark from "./assets/social/discord.svg?raw";
+import githubMark from "./assets/social/github.svg?raw";
+import mailMark from "./assets/social/mail.svg?raw";
+import xMark from "./assets/social/x.svg?raw";
 import familyLogo from "../web/assets/brand/voca-logo-512.png";
 
 type Model = { id: string; name: string; engine: string; size: string; languages: string; acceleration: string; description: string };
@@ -741,11 +745,11 @@ function aboutPage() {
       <p class="settings-group">Talk to us</p>
       <div class="about-copy">
         <p>Bugs, feedback, and feature ideas open a new GitHub issue. You pick the template on the next screen.</p>
-        <button type="button" class="primary about-report" data-open="https://github.com/VocaHQ/vocawin/issues/new/choose">Report a bug or idea</button>
-        <ul class="about-links">
-          <li><button type="button" class="text-button" data-open="https://discord.gg/UMJduhcqn">Discord</button></li>
-          <li><button type="button" class="text-button" data-open="https://x.com/vocahq">X @vocahq</button></li>
-          <li><button type="button" class="text-button" data-open="mailto:hello@vocahq.com">hello@vocahq.com</button></li>
+        <button type="button" class="primary about-report" data-open="https://github.com/VocaHQ/vocawin/issues/new/choose">${githubMark}<span>Report a bug or idea</span></button>
+        <ul class="about-talk" role="list">
+          <li><button type="button" class="about-talk-btn" data-open="https://discord.gg/UMJduhcqn">${discordMark}<span>Discord</span></button></li>
+          <li><button type="button" class="about-talk-btn" data-open="https://x.com/vocahq">${xMark}<span>X</span></button></li>
+          <li><button type="button" class="about-talk-btn" data-open="mailto:hello@vocahq.com">${mailMark}<span>Email</span></button></li>
         </ul>
       </div>
     </section>`;
