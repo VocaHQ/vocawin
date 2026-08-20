@@ -9,7 +9,9 @@
 //! Alt). Identity is the bound side only: Left Alt does not end a Right Alt
 //! hold. Generic VK_MENU matches that bound side, never the other Alt.
 //! Lost-up recovery is a long safety timeout (max recording + 5s) or a
-//! later matching down after the typematic window. Do not poll GetAsyncKeyState
+//! later matching down after a real gap between downs. Typematic SYSKEY
+//! repeats stay Swallow for the whole hold; last_down_ms advances on each
+//! one so the 1.5s gap is not measured from session start. Do not poll GetAsyncKeyState
 //! on a consumed Alt. That API often reports the eaten key as up. Do not
 //! SendInput from the hook callback; a synthetic unstick is queued on
 //! vocawin-hotkey-actor after a real bound-side up.
@@ -39,8 +41,9 @@ const WM_SYSKEYUP: u32 = 0x0105;
 /// Mac uses max recording + 5s. Default max is 60s, so 65s.
 pub const DEFAULT_SAFETY_TIMEOUT: Duration = Duration::from_secs(65);
 
-/// Windows SYSKEYDOWN repeats while Alt is held. A later down after this gap
-/// is a real press (lost up), not typematic.
+/// Windows SYSKEYDOWN repeats while Alt is held. Measured from the last
+/// down (Start or Swallow), not from session start. A later down after
+/// this gap is a new press (lost up), not typematic.
 const AUTOREPEAT_GAP_MS: u128 = 1_500;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -295,7 +298,7 @@ unsafe extern "system" fn low_level_proc(
             && matches!(guard.binding, Some(HotkeySpec::Lone { vk: bound }) if bound == crate::hotkey::VK_RMENU)
             && ctrl_is_down();
         let ms_since_last_down = now_ms().saturating_sub(guard.last_down_ms);
-        let mut action = hold_action(
+        let action = hold_action(
             guard.held_vk,
             vk,
             edge,
@@ -306,7 +309,6 @@ unsafe extern "system" fn low_level_proc(
         if action == HoldAction::None
             && combo_modifier_dropped(guard.binding.as_ref(), guard.held_vk, vk, edge)
         {
-            action = HoldAction::Stop;
             // Keep held_vk so the later base key-up is still eaten.
             let _gen = bump_hold_gen(&mut guard);
             drop(guard);
@@ -319,6 +321,7 @@ unsafe extern "system" fn low_level_proc(
                 return unsafe { CallNextHookEx(None, code, wparam, lparam) };
             }
             HoldAction::Swallow => {
+                guard.last_down_ms = now_ms();
                 return LRESULT(1);
             }
             HoldAction::Start => {
@@ -676,7 +679,36 @@ mod tests {
     }
 
     #[test]
-    fn matching_down_while_held_stops_after_typematic_window() {
+    fn typematic_train_two_seconds_later_is_still_swallow() {
+        let binding = right_alt();
+        assert_eq!(
+            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), false, 0),
+            HoldAction::Start
+        );
+        let mut now = 0_u128;
+        let mut last_down = 0_u128;
+        now += 30;
+        while now <= 2_000 {
+            let gap = now - last_down;
+            assert_eq!(
+                hold_action(
+                    Some(VK_RMENU),
+                    VK_RMENU,
+                    KeyEdge::Down,
+                    Some(&binding),
+                    false,
+                    gap
+                ),
+                HoldAction::Swallow,
+                "typematic at {now}ms with gap {gap}ms"
+            );
+            last_down = now;
+            now += 30;
+        }
+    }
+
+    #[test]
+    fn matching_down_after_real_gap_recovers() {
         let binding = right_alt();
         assert_eq!(
             hold_action(
