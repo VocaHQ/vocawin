@@ -543,10 +543,11 @@ function powerMatches(query: string) {
 
 function powerSection() {
   return `<section class="settings-card power-card" data-settings-group="Power"><p class="settings-group">Power</p>
-    <div class="power-block">
-      <strong>Pause while these apps are running</strong>
-      <p>Voca stays quiet so they can use the mic.</p>
+    <div class="setting-row">
+      <div><strong>Pause while these apps are running</strong><p>Voca stays quiet so they can use the mic.</p></div>
       <select id="auto-pause-app" class="themed-select power-combo">${runningAppOptions()}</select>
+    </div>
+    <div class="power-chips">
       <div id="watched-app-chips">${watchedAppChips()}</div>
       <p class="power-note">Empty list means off. Each chip removes that app.</p>
     </div>
