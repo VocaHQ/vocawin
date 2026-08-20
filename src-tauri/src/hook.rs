@@ -7,9 +7,12 @@
 //! Windows sends Alt as a SYSKEY. Down and up are matched from WM_KEY* and
 //! WM_SYSKEY*, from LLKHF_UP, and from VK_MENU plus the extended bit (Right
 //! Alt). Identity is the bound side only: Left Alt does not end a Right Alt
-//! hold. Lost-up recovery is a long safety timeout (max recording + 5s) or a
+//! hold. Generic VK_MENU matches that bound side, never the other Alt.
+//! Lost-up recovery is a long safety timeout (max recording + 5s) or a
 //! later matching down after the typematic window. Do not poll GetAsyncKeyState
-//! on a consumed Alt. That API often reports the eaten key as up.
+//! on a consumed Alt. That API often reports the eaten key as up. Do not
+//! SendInput from the hook callback; a synthetic unstick is queued on
+//! vocawin-hotkey-actor after a real bound-side up.
 
 #![allow(dead_code)] // Hook symbols are Windows-only; Linux CI still typechecks the module.
 
@@ -80,9 +83,15 @@ struct HookShared {
     safety_timeout: Duration,
 }
 
+enum ActorMsg {
+    Event(HookEvent),
+    /// Bound-side key-up only, and only after the hook has returned.
+    Unstick(u32),
+}
+
 static SHARED: OnceLock<Mutex<HookShared>> = OnceLock::new();
 static HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
-static EVENT_TX: OnceLock<mpsc::Sender<HookEvent>> = OnceLock::new();
+static ACTOR_TX: OnceLock<mpsc::Sender<ActorMsg>> = OnceLock::new();
 
 fn shared() -> &'static Mutex<HookShared> {
     SHARED.get_or_init(|| {
@@ -109,12 +118,15 @@ pub fn start(app: AppHandle) {
         return;
     }
     let (tx, rx) = mpsc::channel();
-    let _ = EVENT_TX.set(tx);
+    let _ = ACTOR_TX.set(tx);
     std::thread::Builder::new()
         .name("vocawin-hotkey-actor".into())
         .spawn(move || {
-            while let Ok(event) = rx.recv() {
-                crate::on_hotkey_event(&app, event);
+            while let Ok(msg) = rx.recv() {
+                match msg {
+                    ActorMsg::Event(event) => crate::on_hotkey_event(&app, event),
+                    ActorMsg::Unstick(vk) => unstick_modifier(vk),
+                }
             }
         })
         .ok();
@@ -155,7 +167,7 @@ pub fn clear_binding() {
     drop(guard);
     if let Some(vk) = held {
         emit_released();
-        unstick_modifier(vk);
+        queue_unstick(vk);
     }
 }
 
@@ -170,13 +182,22 @@ pub fn set_dictation_paused(paused: bool) {
 }
 
 fn emit(event: HookEvent) {
-    if let Some(tx) = EVENT_TX.get() {
-        let _ = tx.send(event);
+    if let Some(tx) = ACTOR_TX.get() {
+        let _ = tx.send(ActorMsg::Event(event));
     }
 }
 
 fn emit_released() {
     emit(HookEvent::Released);
+}
+
+fn queue_unstick(vk: u32) {
+    if let Some(tx) = ACTOR_TX.get() {
+        if tx.send(ActorMsg::Unstick(vk)).is_ok() {
+            return;
+        }
+    }
+    unstick_modifier(vk);
 }
 
 fn now_ms() -> u128 {
@@ -322,7 +343,7 @@ unsafe extern "system" fn low_level_proc(
                 drop(guard);
                 emit_released();
                 if let Some(held) = held {
-                    unstick_modifier(held);
+                    queue_unstick(held);
                 }
                 true
             }
@@ -353,6 +374,31 @@ fn classify_edge(wparam: u32, flags: u32) -> KeyEdge {
     }
 }
 
+fn bound_vk(binding: Option<&HotkeySpec>) -> Option<u32> {
+    match binding {
+        Some(HotkeySpec::Lone { vk }) | Some(HotkeySpec::Combo { vk, .. }) => Some(*vk),
+        None => None,
+    }
+}
+
+/// Generic VK_MENU matches the bound side only. Left Alt is not Right Alt.
+fn vks_are_same_hold(held: u32, incoming: u32, bound: u32) -> bool {
+    if held == incoming {
+        return true;
+    }
+    (incoming == VK_MENU && held == bound) || (held == VK_MENU && incoming == bound)
+}
+
+fn is_same_hold(held: Option<u32>, incoming: u32, binding: Option<&HotkeySpec>) -> bool {
+    let Some(held) = held else {
+        return false;
+    };
+    match bound_vk(binding) {
+        Some(bound) => vks_are_same_hold(held, incoming, bound),
+        None => held == incoming,
+    }
+}
+
 fn hold_action(
     held: Option<u32>,
     vk: u32,
@@ -364,14 +410,14 @@ fn hold_action(
     match edge {
         KeyEdge::Other => HoldAction::None,
         KeyEdge::Up => {
-            if held == Some(vk) {
+            if is_same_hold(held, vk, binding) {
                 HoldAction::Stop
             } else {
                 HoldAction::None
             }
         }
         KeyEdge::Down => {
-            if held == Some(vk) {
+            if is_same_hold(held, vk, binding) {
                 if ms_since_last_down > AUTOREPEAT_GAP_MS {
                     HoldAction::RecoverStop
                 } else {
@@ -494,7 +540,8 @@ fn mods_match(want_ctrl: bool, want_alt: bool, want_shift: bool) -> bool {
     }
 }
 
-/// Inject a key-up for the bound side only, and only after a real up.
+/// Inject a key-up for the bound side only. Call this from the actor
+/// thread after the hook has returned, never from low_level_proc.
 fn unstick_modifier(vk: u32) {
     #[cfg(windows)]
     {
@@ -607,6 +654,28 @@ mod tests {
             ),
             HoldAction::Stop
         );
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_MENU,
+                KeyEdge::Up,
+                Some(&binding),
+                false,
+                0
+            ),
+            HoldAction::Stop
+        );
+    }
+
+    #[test]
+    fn generic_menu_matches_bound_side_only() {
+        assert!(vks_are_same_hold(VK_RMENU, VK_RMENU, VK_RMENU));
+        assert!(vks_are_same_hold(VK_RMENU, VK_MENU, VK_RMENU));
+        assert!(vks_are_same_hold(VK_MENU, VK_RMENU, VK_RMENU));
+        assert!(vks_are_same_hold(VK_LMENU, VK_MENU, VK_LMENU));
+        assert!(!vks_are_same_hold(VK_RMENU, VK_LMENU, VK_RMENU));
+        assert!(!vks_are_same_hold(VK_LMENU, VK_RMENU, VK_RMENU));
+        assert!(!vks_are_same_hold(VK_LMENU, VK_MENU, VK_RMENU));
     }
 
     #[test]
@@ -628,6 +697,8 @@ mod tests {
     #[test]
     fn consumed_alt_repeat_is_not_treated_as_up() {
         let binding = right_alt();
+        // A consumed Alt never updates GetAsyncKeyState. Do not treat a
+        // 40ms later down as a lost-up release the way a 150ms poll would.
         assert_eq!(
             hold_action(
                 Some(VK_RMENU),
@@ -636,6 +707,17 @@ mod tests {
                 Some(&binding),
                 false,
                 40
+            ),
+            HoldAction::Swallow
+        );
+        assert_eq!(
+            hold_action(
+                Some(VK_RMENU),
+                VK_RMENU,
+                KeyEdge::Down,
+                Some(&binding),
+                false,
+                150
             ),
             HoldAction::Swallow
         );
