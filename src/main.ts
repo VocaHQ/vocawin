@@ -185,7 +185,6 @@ let toastTimer: number | null = null;
 let logLines: LogLine[] = [];
 let previewStartNext = true;
 let runningApps: RunningApp[] = [];
-let pickerApp = "";
 let focusRestore: { id: string; start: number; end: number } | null = null;
 let paneScroll = 0;
 let resetPaneScroll = false;
@@ -425,26 +424,29 @@ function historyPage() {
   return `<header><div><p class="overline">LOCAL HISTORY</p><h1>Your recent <em>dictation.</em></h1><p class="lede">${lede}</p></div>${history.length ? `<button class="quiet-button" id="clear-history">Clear history</button>` : ""}</header><section class="history-list">${entries}</section>`;
 }
 
-function runningAppOptions() {
-  const watched = new Set(watchedApps().map(name => name.toLowerCase()));
-  const options = runningApps
-    .filter(appName => !watched.has(appName.name.toLowerCase()))
-    .map(appName => `<option value="${escape(appName.name)}">${escape(appName.label)}</option>`);
-  if (!options.length) {
-    return `<option value="">No other running apps right now</option>`;
-  }
-  return `<option value="">Add a running app</option>${options.join("")}`;
-}
-
-function chipLabel(name: string) {
+function pauseAppLabel(name: string) {
   return runningApps.find(app => app.name.toLowerCase() === name.toLowerCase())?.label
     ?? name.replace(/\.exe$/i, "");
 }
 
-function watchedAppChips() {
-  const apps = watchedApps();
-  if (!apps.length) return "";
-  return `<ul class="app-chips">${apps.map(name => `<li class="app-chip"><span>${escape(chipLabel(name))}</span><button type="button" data-unwatch="${escape(name)}" title="Remove ${escape(chipLabel(name))}" aria-label="Remove ${escape(chipLabel(name))}">×</button></li>`).join("")}</ul>`;
+function pauseAppValue() {
+  return watchedApps()[0] ?? "";
+}
+
+function pauseAppOptions() {
+  const current = pauseAppValue();
+  const seen = new Set<string>();
+  const options = [`<option value="" ${current ? "" : "selected"}>None</option>`];
+  if (current) {
+    seen.add(current.toLowerCase());
+    options.push(`<option value="${escape(current)}" selected>${escape(pauseAppLabel(current))}</option>`);
+  }
+  for (const app of runningApps) {
+    if (seen.has(app.name.toLowerCase())) continue;
+    seen.add(app.name.toLowerCase());
+    options.push(`<option value="${escape(app.name)}">${escape(app.label)}</option>`);
+  }
+  return options.join("");
 }
 
 function idleUnloadValue() {
@@ -463,24 +465,20 @@ function idleUnloadOptions() {
 
 function powerMatches(query: string) {
   if (!query) return true;
-  const hay = "power pause while these apps are running voca stays quiet so they can use the mic unload the model after idle frees ram next dictation loads it again never minutes hour autopause";
+  const hay = "power pause while this app is running voca stays quiet so that app can use the mic unload the model after idle frees ram next dictation loads it again never minutes hour autopause discord";
   return query.split(/\s+/).every(part => hay.includes(part));
 }
 
 function powerSection() {
   return `<section class="settings-card power-card" data-settings-group="Power"><p class="settings-group">Power</p>
-    <div class="power-block">
-      <strong>Pause while these apps are running</strong>
-      <p>Voca stays quiet so they can use the mic.</p>
-      <select id="auto-pause-app">${runningAppOptions()}</select>
-      ${watchedAppChips()}
-      <p class="power-note">Empty list means off. Each chip removes that app.</p>
+    <div class="setting-row">
+      <div><strong>Pause while this app is running</strong><p>Voca stays quiet so that app can use the mic.</p></div>
+      <select id="auto-pause-app" class="power-combo">${pauseAppOptions()}</select>
     </div>
-    <div class="setting-row idle-row">
+    <div class="setting-row">
       <div><strong>Unload the model after idle</strong><p>Frees RAM. Next dictation loads it again.</p></div>
-      <select id="idle-unload">${idleUnloadOptions()}</select>
+      <select id="idle-unload" class="power-combo">${idleUnloadOptions()}</select>
     </div>
-    <p class="power-note idle-note">Idle Never = keep the model in RAM.</p>
   </section>`;
 }
 
@@ -779,12 +777,6 @@ function bindChrome() {
   document.querySelector("#welcome-dismiss")?.addEventListener("click", dismissWelcome);
   document.querySelector("#copy-logs")?.addEventListener("click", copyLogs);
   document.querySelector("#clear-logs")?.addEventListener("click", clearLogs);
-  document.querySelector("#auto-pause-app")?.addEventListener("change", () => {
-    void addWatchedApp();
-  });
-  document.querySelectorAll<HTMLButtonElement>("[data-unwatch]").forEach(button => {
-    button.addEventListener("click", () => void removeWatchedApp(button.dataset.unwatch!));
-  });
   bindFilterCombo("#engine-filter", ENGINE_FILTERS, value => { engineFilter = value as EngineFilter; });
   bindFilterCombo("#language-filter", LANGUAGE_FILTERS, value => { languageFilter = value as LanguageFilter; });
   bindLiveSearch("#settings-search", value => { settingsQuery = value; });
@@ -868,7 +860,7 @@ function bindFilterCombo(selector: string, options: Array<[string, string]>, ass
 function bindAutosave() {
   const persistFromEvent = (event: Event) => {
     const target = event.target as HTMLElement;
-    if (target.id === "settings-search" || target.id === "model-search" || target.id === "engine-filter" || target.id === "language-filter" || target.id === "auto-pause-app") return;
+    if (target.id === "settings-search" || target.id === "model-search" || target.id === "engine-filter" || target.id === "language-filter") return;
     void persistSettings();
   };
   document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging").forEach(node => {
@@ -904,6 +896,12 @@ function collectSettingsFromDom() {
   if (launch) settings.launchAtLogin = launch.checked;
   const inputDevice = document.querySelector<HTMLSelectElement>("#input-device");
   if (inputDevice) settings.inputDevice = inputDevice.value;
+  const pauseApp = document.querySelector<HTMLSelectElement>("#auto-pause-app");
+  if (pauseApp) {
+    const name = pauseApp.value.trim();
+    settings.autoPauseApps = name;
+    settings.autoPauseEnabled = !!name;
+  }
   const idleUnload = document.querySelector<HTMLSelectElement>("#idle-unload");
   if (idleUnload) {
     const seconds = Number(idleUnload.value);
@@ -928,29 +926,6 @@ async function persistSettings(silent = false, skipCollect = false) {
   } catch (error) {
     showToast(String(error));
   }
-}
-
-async function addWatchedApp() {
-  const select = document.querySelector<HTMLSelectElement>("#auto-pause-app");
-  const name = (select?.value || "").trim();
-  if (!name) return;
-  const current = watchedApps();
-  if (current.some(entry => entry.toLowerCase() === name.toLowerCase())) {
-    if (select) select.value = "";
-    return;
-  }
-  current.push(name);
-  settings.autoPauseApps = current.join("\n");
-  settings.autoPauseEnabled = true;
-  pickerApp = "";
-  await persistSettings();
-}
-
-async function removeWatchedApp(name: string) {
-  const remaining = watchedApps().filter(entry => entry !== name);
-  settings.autoPauseApps = remaining.join("\n");
-  settings.autoPauseEnabled = remaining.length > 0;
-  await persistSettings();
 }
 
 async function openExternal(url: string) {
