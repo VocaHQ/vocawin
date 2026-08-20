@@ -8,13 +8,12 @@
 //! WM_SYSKEY*, from LLKHF_UP, and from VK_MENU plus the extended bit (Right
 //! Alt). Identity is the bound side only: Left Alt does not end a Right Alt
 //! hold. Generic VK_MENU matches that bound side, never the other Alt.
-//! Lost-up recovery is a long safety timeout (max recording + 5s) or a
-//! later matching down after a real gap between downs. Typematic SYSKEY
-//! repeats stay Swallow for the whole hold; last_down_ms advances on each
-//! one so the 1.5s gap is not measured from session start. Do not poll GetAsyncKeyState
-//! on a consumed Alt. That API often reports the eaten key as up. Do not
-//! SendInput from the hook callback; a synthetic unstick is queued on
-//! vocawin-hotkey-actor after a real bound-side up.
+//! Lost-up recovery is only the long safety timeout (max recording + 5s).
+//! Typematic SYSKEY repeats are Swallow for the whole hold. A matching
+//! down while held is not a new press and is not a stop. Do not poll
+//! GetAsyncKeyState on a consumed Alt. Do not SendInput from the hook
+//! callback; a synthetic unstick is queued on vocawin-hotkey-actor after
+//! a real bound-side up.
 
 #![allow(dead_code)] // Hook symbols are Windows-only; Linux CI still typechecks the module.
 
@@ -41,11 +40,6 @@ const WM_SYSKEYUP: u32 = 0x0105;
 /// Mac uses max recording + 5s. Default max is 60s, so 65s.
 pub const DEFAULT_SAFETY_TIMEOUT: Duration = Duration::from_secs(65);
 
-/// Windows SYSKEYDOWN repeats while Alt is held. Measured from the last
-/// down (Start or Swallow), not from session start. A later down after
-/// this gap is a new press (lost up), not typematic.
-const AUTOREPEAT_GAP_MS: u128 = 1_500;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HookEvent {
     Pressed,
@@ -65,8 +59,6 @@ enum HoldAction {
     Start,
     /// Bound-side up. Unstick only this side, and only after a real up.
     Stop,
-    /// Matching down after a lost up. Do not inject key-ups; the key is down.
-    RecoverStop,
     /// Extra down while holding (Windows typematic). Eat it, keep the hold.
     Swallow,
 }
@@ -82,7 +74,6 @@ struct HookShared {
     /// VK we consumed on key-down and still owe a release for.
     held_vk: Option<u32>,
     hold_gen: u64,
-    last_down_ms: u128,
     safety_timeout: Duration,
 }
 
@@ -106,7 +97,6 @@ fn shared() -> &'static Mutex<HookShared> {
             armed: false,
             held_vk: None,
             hold_gen: 0,
-            last_down_ms: 0,
             safety_timeout: DEFAULT_SAFETY_TIMEOUT,
         })
     })
@@ -200,13 +190,6 @@ fn queue_unstick(vk: u32) {
     }
 }
 
-fn now_ms() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
-}
-
 fn arm_safety_timer(timeout: Duration, gen: u64) {
     std::thread::Builder::new()
         .name("vocawin-hotkey-safety".into())
@@ -297,14 +280,12 @@ unsafe extern "system" fn low_level_proc(
         let altgr_blocks = edge == KeyEdge::Down
             && matches!(guard.binding, Some(HotkeySpec::Lone { vk: bound }) if bound == crate::hotkey::VK_RMENU)
             && ctrl_is_down();
-        let ms_since_last_down = now_ms().saturating_sub(guard.last_down_ms);
         let action = hold_action(
             guard.held_vk,
             vk,
             edge,
             guard.binding.as_ref(),
             altgr_blocks,
-            ms_since_last_down,
         );
         if action == HoldAction::None
             && combo_modifier_dropped(guard.binding.as_ref(), guard.held_vk, vk, edge)
@@ -321,7 +302,6 @@ unsafe extern "system" fn low_level_proc(
                 return unsafe { CallNextHookEx(None, code, wparam, lparam) };
             }
             HoldAction::Swallow => {
-                guard.last_down_ms = now_ms();
                 return LRESULT(1);
             }
             HoldAction::Start => {
@@ -329,7 +309,6 @@ unsafe extern "system" fn low_level_proc(
                     return unsafe { CallNextHookEx(None, code, wparam, lparam) };
                 }
                 guard.held_vk = Some(vk);
-                guard.last_down_ms = now_ms();
                 let gen = bump_hold_gen(&mut guard);
                 let timeout = guard.safety_timeout;
                 drop(guard);
@@ -345,13 +324,6 @@ unsafe extern "system" fn low_level_proc(
                 if let Some(held) = held {
                     queue_unstick(held);
                 }
-                true
-            }
-            HoldAction::RecoverStop => {
-                guard.held_vk = None;
-                let _ = bump_hold_gen(&mut guard);
-                drop(guard);
-                emit_released();
                 true
             }
         }
@@ -405,7 +377,6 @@ fn hold_action(
     edge: KeyEdge,
     binding: Option<&HotkeySpec>,
     altgr_blocks_down: bool,
-    ms_since_last_down: u128,
 ) -> HoldAction {
     match edge {
         KeyEdge::Other => HoldAction::None,
@@ -418,11 +389,7 @@ fn hold_action(
         }
         KeyEdge::Down => {
             if is_same_hold(held, vk, binding) {
-                if ms_since_last_down > AUTOREPEAT_GAP_MS {
-                    HoldAction::RecoverStop
-                } else {
-                    HoldAction::Swallow
-                }
+                HoldAction::Swallow
             } else if held.is_some() {
                 HoldAction::None
             } else if altgr_blocks_down {
@@ -618,51 +585,26 @@ mod tests {
         assert_eq!(resolve_vk(VK_RMENU, true), VK_RMENU);
     }
 
+    fn apply(held: Option<u32>, vk: u32, edge: KeyEdge) -> HoldAction {
+        hold_action(held, vk, edge, Some(&right_alt()), false)
+    }
+
     #[test]
     fn left_alt_does_not_end_right_alt_hold() {
-        let binding = right_alt();
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_LMENU,
-                KeyEdge::Up,
-                Some(&binding),
-                false,
-                0
-            ),
+            apply(Some(VK_RMENU), VK_LMENU, KeyEdge::Up),
             HoldAction::None
         );
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_LMENU,
-                KeyEdge::Down,
-                Some(&binding),
-                false,
-                0
-            ),
+            apply(Some(VK_RMENU), VK_LMENU, KeyEdge::Down),
             HoldAction::None
         );
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_RMENU,
-                KeyEdge::Up,
-                Some(&binding),
-                false,
-                0
-            ),
+            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Up),
             HoldAction::Stop
         );
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_MENU,
-                KeyEdge::Up,
-                Some(&binding),
-                false,
-                0
-            ),
+            apply(Some(VK_RMENU), VK_MENU, KeyEdge::Up),
             HoldAction::Stop
         );
     }
@@ -679,92 +621,62 @@ mod tests {
     }
 
     #[test]
-    fn typematic_train_two_seconds_later_is_still_swallow() {
-        let binding = right_alt();
+    fn start_then_down_two_seconds_later_is_still_swallow() {
+        assert_eq!(apply(None, VK_RMENU, KeyEdge::Down), HoldAction::Start);
         assert_eq!(
-            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), false, 0),
-            HoldAction::Start
+            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Down),
+            HoldAction::Swallow
         );
-        let mut now = 0_u128;
-        let mut last_down = 0_u128;
-        now += 30;
-        while now <= 2_000 {
-            let gap = now - last_down;
-            assert_eq!(
-                hold_action(
-                    Some(VK_RMENU),
-                    VK_RMENU,
-                    KeyEdge::Down,
-                    Some(&binding),
-                    false,
-                    gap
-                ),
-                HoldAction::Swallow,
-                "typematic at {now}ms with gap {gap}ms"
-            );
-            last_down = now;
-            now += 30;
-        }
     }
 
     #[test]
-    fn matching_down_after_real_gap_recovers() {
-        let binding = right_alt();
+    fn start_then_up_stops() {
+        assert_eq!(apply(None, VK_RMENU, KeyEdge::Down), HoldAction::Start);
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_RMENU,
-                KeyEdge::Down,
-                Some(&binding),
-                false,
-                AUTOREPEAT_GAP_MS + 1
-            ),
-            HoldAction::RecoverStop
+            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Up),
+            HoldAction::Stop
         );
+    }
+
+    #[test]
+    fn many_downs_then_one_up_is_one_start_one_stop() {
+        let binding = right_alt();
+        let mut held = None;
+        let mut starts = 0;
+        let mut stops = 0;
+        for _ in 0..40 {
+            let action = hold_action(held, VK_RMENU, KeyEdge::Down, Some(&binding), false);
+            match action {
+                HoldAction::Start => {
+                    starts += 1;
+                    held = Some(VK_RMENU);
+                }
+                HoldAction::Swallow => {
+                    assert_eq!(held, Some(VK_RMENU));
+                }
+                other => panic!("unexpected down action {other:?}"),
+            }
+        }
+        let up = hold_action(held, VK_RMENU, KeyEdge::Up, Some(&binding), false);
+        assert_eq!(up, HoldAction::Stop);
+        stops += 1;
+        assert_eq!((starts, stops), (1, 1));
     }
 
     #[test]
     fn consumed_alt_repeat_is_not_treated_as_up() {
-        let binding = right_alt();
-        // A consumed Alt never updates GetAsyncKeyState. Do not treat a
-        // 40ms later down as a lost-up release the way a 150ms poll would.
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_RMENU,
-                KeyEdge::Down,
-                Some(&binding),
-                false,
-                40
-            ),
-            HoldAction::Swallow
-        );
-        assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_RMENU,
-                KeyEdge::Down,
-                Some(&binding),
-                false,
-                150
-            ),
+            apply(Some(VK_RMENU), VK_RMENU, KeyEdge::Down),
             HoldAction::Swallow
         );
         assert!(DEFAULT_SAFETY_TIMEOUT >= Duration::from_secs(60));
-        assert!(AUTOREPEAT_GAP_MS > 150);
     }
 
     #[test]
     fn right_alt_down_starts_and_does_not_match_left() {
         let binding = right_alt();
-        assert_eq!(
-            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), false, 0),
-            HoldAction::Start
-        );
-        assert_eq!(
-            hold_action(None, VK_LMENU, KeyEdge::Down, Some(&binding), false, 0),
-            HoldAction::None
-        );
+        assert_eq!(apply(None, VK_RMENU, KeyEdge::Down), HoldAction::Start);
+        assert_eq!(apply(None, VK_LMENU, KeyEdge::Down), HoldAction::None);
         assert!(!down_matches(&binding, VK_LMENU));
         assert!(down_matches(&binding, VK_RMENU) || cfg!(not(windows)));
     }
@@ -773,18 +685,11 @@ mod tests {
     fn altgr_filter_is_down_only() {
         let binding = right_alt();
         assert_eq!(
-            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), true, 0),
+            hold_action(None, VK_RMENU, KeyEdge::Down, Some(&binding), true),
             HoldAction::None
         );
         assert_eq!(
-            hold_action(
-                Some(VK_RMENU),
-                VK_RMENU,
-                KeyEdge::Up,
-                Some(&binding),
-                true,
-                0
-            ),
+            hold_action(Some(VK_RMENU), VK_RMENU, KeyEdge::Up, Some(&binding), true),
             HoldAction::Stop
         );
     }

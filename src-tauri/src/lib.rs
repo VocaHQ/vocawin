@@ -1757,7 +1757,7 @@ fn write_pcm_wav(path: &std::path::Path, pcm: &[f32]) -> Result<(), String> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PttPressedAction {
     Start,
-    Stop,
+    Ignore,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1769,7 +1769,7 @@ enum MicTestGate {
 
 fn ptt_pressed_action(recording_flag: bool, capture_live: bool) -> PttPressedAction {
     if recording_flag || capture_live {
-        PttPressedAction::Stop
+        PttPressedAction::Ignore
     } else {
         PttPressedAction::Start
     }
@@ -2536,7 +2536,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             let flag = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
             let live = state.recorder.capture_live();
             match ptt_pressed_action(flag, live) {
-                PttPressedAction::Stop => finish_voice_session(handle),
+                PttPressedAction::Ignore => {}
                 PttPressedAction::Start => {
                     if let Err(error) = begin_voice_session(handle, true) {
                         if error.contains("No speech model is installed") {
@@ -3253,9 +3253,9 @@ mod tests {
     }
 
     #[test]
-    fn ptt_down_while_recording_stops() {
-        assert_eq!(ptt_pressed_action(true, false), PttPressedAction::Stop);
-        assert_eq!(ptt_pressed_action(false, true), PttPressedAction::Stop);
+    fn ptt_press_while_recording_is_noop() {
+        assert_eq!(ptt_pressed_action(true, false), PttPressedAction::Ignore);
+        assert_eq!(ptt_pressed_action(false, true), PttPressedAction::Ignore);
         assert_eq!(ptt_pressed_action(false, false), PttPressedAction::Start);
     }
 
