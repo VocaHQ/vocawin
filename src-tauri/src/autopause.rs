@@ -183,6 +183,13 @@ mod tests {
     }
 
     #[test]
+    fn empty_list_means_autopause_is_off() {
+        assert!(parse_app_list("").is_empty());
+        assert!(parse_app_list(" \n , ; ").is_empty());
+        assert!(matching_process_name(&[]).is_none());
+    }
+
+    #[test]
     fn matching_name_needs_a_running_hit() {
         assert!(matching_process_name(&[]).is_none());
         assert!(!matching_process_running(&[]));

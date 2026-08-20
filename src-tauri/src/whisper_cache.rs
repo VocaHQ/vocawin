@@ -1,4 +1,5 @@
 //! Whisper keep-alive cache with optional idle unload (opt-in).
+//! Never / disabled keeps the model in RAM. A timeout unloads after quiet time.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};

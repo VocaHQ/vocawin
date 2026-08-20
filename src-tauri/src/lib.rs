@@ -540,13 +540,24 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                         let _ = reply.send(result);
                     }
                     AudioCommand::Stop { reply } => {
+                        let meter = meter_only;
                         meter_only = false;
-                        let result = take_recording(
-                            &mut stream,
-                            &mut sample_rate,
-                            &mut started_ms,
-                            &samples,
-                        );
+                        let result = if meter {
+                            stream.take();
+                            sample_rate.take();
+                            started_ms = None;
+                            if let Ok(mut buffer) = samples.lock() {
+                                buffer.clear();
+                            }
+                            Ok((Vec::new(), 16_000))
+                        } else {
+                            take_recording(
+                                &mut stream,
+                                &mut sample_rate,
+                                &mut started_ms,
+                                &samples,
+                            )
+                        };
                         if let Ok(mut peak) = peak_level.lock() {
                             *peak = 0.0;
                         }
@@ -984,6 +995,11 @@ fn save_settings(
     if settings.idle_unload_enabled && !(30..=3600).contains(&settings.idle_unload_seconds) {
         return Err("Idle unload must be between 30 and 3600 seconds".into());
     }
+    if settings.auto_pause_apps.trim().is_empty() {
+        settings.auto_pause_enabled = false;
+    } else {
+        settings.auto_pause_enabled = true;
+    }
     sounds::apply_theme(&mut settings.sound_theme, &mut settings.sound_effects);
     settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
     persist_settings(&state.settings_path, &settings)?;
@@ -999,7 +1015,7 @@ fn save_settings(
         .whisper_cache
         .configure_idle(settings.idle_unload_enabled, settings.idle_unload_seconds);
     if !settings.idle_unload_enabled {
-        state.whisper_cache.unload();
+        // Never keeps the model in RAM. Only clear an idle-park banner.
         let mut park = state
             .park_reason
             .lock()
@@ -1858,7 +1874,7 @@ fn transcribe_samples(
             language_code.map(str::to_string),
             use_gpu,
             gpu.device_index,
-            settings.idle_unload_enabled,
+            true,
         )?
     };
     let text = output::apply_output_polish(
@@ -2315,7 +2331,9 @@ fn resume_hotkey_listener() {
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
     let state = handle.state::<AppState>();
-    if *state.dictation_paused.lock().unwrap_or_else(|e| e.into_inner()) {
+    if *state.dictation_paused.lock().unwrap_or_else(|e| e.into_inner())
+        && event == hook::HookEvent::Pressed
+    {
         return;
     }
     let settings = state
@@ -2398,10 +2416,10 @@ fn start_auto_pause_watcher(app: AppHandle) {
                 Err(_) => continue,
             };
             let watched = autopause::parse_app_list(&settings.auto_pause_apps);
-            let hit = if settings.auto_pause_enabled {
-                autopause::matching_process_name(&watched)
-            } else {
+            let hit = if watched.is_empty() {
                 None
+            } else {
+                autopause::matching_process_name(&watched)
             };
             let should_pause = hit.is_some();
             let mut paused = match state.dictation_paused.lock() {
@@ -2829,6 +2847,11 @@ mod tests {
         let settings = Settings::default();
         assert!(settings.history_enabled);
         assert!(!settings.debug_logging);
+    }
+
+    #[test]
+    fn idle_never_is_the_default_keep_in_ram() {
+        assert!(!Settings::default().idle_unload_enabled);
     }
 
     #[test]

@@ -69,6 +69,24 @@ type SettingsItem = {
   html: string;
 };
 
+const ENGINE_FILTERS: Array<[EngineFilter, string]> = [
+  ["all", "All engines"],
+  ["whisper", "Whisper"],
+  ["onnx", "ONNX"],
+];
+const LANGUAGE_FILTERS: Array<[LanguageFilter, string]> = [
+  ["any", "Any language"],
+  ["english", "English"],
+  ["multilingual", "Multilingual"],
+];
+const IDLE_PRESETS: Array<[number, string]> = [
+  [0, "Never"],
+  [300, "5 minutes"],
+  [900, "15 minutes"],
+  [1800, "30 minutes"],
+  [3600, "1 hour"],
+];
+
 const SOUND_THEMES: Array<[string, string]> = [
   ["lift", "Lift"],
   ["flick", "Flick"],
@@ -169,6 +187,9 @@ let previewStartNext = true;
 let runningApps: RunningApp[] = [];
 let pickerApp = "";
 let focusRestore: { id: string; start: number; end: number } | null = null;
+let paneScroll = 0;
+let resetPaneScroll = false;
+let micPeak = 0;
 
 const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const selected = () => models.find(model => model.id === settings.selectedModel);
@@ -366,8 +387,12 @@ function dictationPage() {
   <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button><div class="info-card"><p class="card-label">ACTIVATION</p><strong>${escape(settings.hotkey)}</strong><span>${modeLabel}</span><button class="text-button" data-go="settings">Edit shortcut</button></div></section>`;
 }
 
-function filterChip(name: string, value: string, current: string, label: string) {
-  return `<button type="button" class="chip ${current === value ? "active" : ""}" data-filter="${name}" data-value="${value}">${escape(label)}</button>`;
+function filterLabel<T extends string>(options: Array<[T, string]>, value: T) {
+  return options.find(([id]) => id === value)?.[1] ?? options[0][1];
+}
+
+function filterDatalist(id: string, options: Array<[string, string]>) {
+  return `<datalist id="${id}">${options.map(([, label]) => `<option value="${escape(label)}"></option>`).join("")}</datalist>`;
 }
 
 function modelsPage() {
@@ -376,18 +401,16 @@ function modelsPage() {
     : "";
   return `<header><div><p class="overline">ON-DEVICE MODELS</p><h1>Choose your <em>engine.</em></h1><p class="lede">Models stay on your PC. Pick the trade-off between speed, accuracy, and language coverage.</p></div></header>
   ${tip}
-  <div class="model-toolbar">
+  <div class="model-filters">
     <input id="model-search" type="search" placeholder="Search models" value="${escape(modelQuery)}" />
-    <div class="chip-row" role="group" aria-label="Runtime">
-      ${filterChip("engine", "all", engineFilter, "All engines")}
-      ${filterChip("engine", "whisper", engineFilter, "Whisper")}
-      ${filterChip("engine", "onnx", engineFilter, "ONNX")}
-    </div>
-    <div class="chip-row" role="group" aria-label="Language">
-      ${filterChip("language", "any", languageFilter, "Any language")}
-      ${filterChip("language", "english", languageFilter, "English")}
-      ${filterChip("language", "multilingual", languageFilter, "Multilingual")}
-    </div>
+    <label class="filter-combo"><span class="vh">Engine</span>
+      <input id="engine-filter" type="search" list="engine-filter-list" placeholder="All engines" autocomplete="off" value="${escape(filterLabel(ENGINE_FILTERS, engineFilter))}" />
+      ${filterDatalist("engine-filter-list", ENGINE_FILTERS)}
+    </label>
+    <label class="filter-combo"><span class="vh">Language</span>
+      <input id="language-filter" type="search" list="language-filter-list" placeholder="Any language" autocomplete="off" value="${escape(filterLabel(LANGUAGE_FILTERS, languageFilter))}" />
+      ${filterDatalist("language-filter-list", LANGUAGE_FILTERS)}
+    </label>
   </div>
   <div class="model-grid compact">${modelCards()}</div>`;
 }
@@ -406,17 +429,59 @@ function runningAppOptions() {
   const watched = new Set(watchedApps().map(name => name.toLowerCase()));
   const options = runningApps
     .filter(appName => !watched.has(appName.name.toLowerCase()))
-    .map(appName => `<option value="${escape(appName.name)}" ${pickerApp === appName.name ? "selected" : ""}>${escape(appName.label)}</option>`);
+    .map(appName => `<option value="${escape(appName.name)}">${escape(appName.label)}</option>`);
   if (!options.length) {
     return `<option value="">No other running apps right now</option>`;
   }
-  return `<option value="">Pick a running app</option>${options.join("")}`;
+  return `<option value="">Add a running app</option>${options.join("")}`;
+}
+
+function chipLabel(name: string) {
+  return runningApps.find(app => app.name.toLowerCase() === name.toLowerCase())?.label
+    ?? name.replace(/\.exe$/i, "");
 }
 
 function watchedAppChips() {
   const apps = watchedApps();
-  if (!apps.length) return `<p class="picker-empty">Nothing watched yet. Pick a running app and add it.</p>`;
-  return `<ul class="watch-list">${apps.map(name => `<li><span>${escape(name)}</span><button type="button" class="icon-button danger" data-unwatch="${escape(name)}" title="Remove ${escape(name)}" aria-label="Remove ${escape(name)}">${ICON_TRASH}</button></li>`).join("")}</ul>`;
+  if (!apps.length) return "";
+  return `<ul class="app-chips">${apps.map(name => `<li class="app-chip"><span>${escape(chipLabel(name))}</span><button type="button" data-unwatch="${escape(name)}" title="Remove ${escape(chipLabel(name))}" aria-label="Remove ${escape(chipLabel(name))}">×</button></li>`).join("")}</ul>`;
+}
+
+function idleUnloadValue() {
+  if (!settings.idleUnloadEnabled) return 0;
+  const seconds = settings.idleUnloadSeconds;
+  return [300, 900, 1800, 3600].reduce((best, value) =>
+    Math.abs(value - seconds) < Math.abs(best - seconds) ? value : best, 300);
+}
+
+function idleUnloadOptions() {
+  const current = idleUnloadValue();
+  return IDLE_PRESETS.map(([value, label]) =>
+    `<option value="${value}" ${value === current ? "selected" : ""}>${label}</option>`
+  ).join("");
+}
+
+function powerMatches(query: string) {
+  if (!query) return true;
+  const hay = "power pause while these apps are running voca stays quiet so they can use the mic unload the model after idle frees ram next dictation loads it again never minutes hour autopause";
+  return query.split(/\s+/).every(part => hay.includes(part));
+}
+
+function powerSection() {
+  return `<section class="settings-card power-card" data-settings-group="Power"><p class="settings-group">Power</p>
+    <div class="power-block">
+      <strong>Pause while these apps are running</strong>
+      <p>Voca stays quiet so they can use the mic.</p>
+      <select id="auto-pause-app">${runningAppOptions()}</select>
+      ${watchedAppChips()}
+      <p class="power-note">Empty list means off. Each chip removes that app.</p>
+    </div>
+    <div class="setting-row idle-row">
+      <div><strong>Unload the model after idle</strong><p>Frees RAM. Next dictation loads it again.</p></div>
+      <select id="idle-unload">${idleUnloadOptions()}</select>
+    </div>
+    <p class="power-note idle-note">Idle Never = keep the model in RAM.</p>
+  </section>`;
 }
 
 function settingsItems(): SettingsItem[] {
@@ -426,7 +491,7 @@ function settingsItems(): SettingsItem[] {
     {
       group: "Dictation",
       title: "Activation hotkey",
-      subtitle: "Pick a preset or press Record. New installs default to Right Alt (same hold-default as VocaLinux). AltGr (Ctrl+Right Alt) is not consumed, so layout characters still type. Escape cancels. The live listener pauses while recording.",
+      subtitle: "Pick a preset or press Record. New installs default to Right Alt (Option), the same hold-default as VocaLinux. AltGr (Ctrl+Right Alt) is not consumed, so layout characters still type. Escape cancels. The live listener pauses while recording.",
       keywords: "hotkey shortcut keyboard record preset right alt altright",
       html: `<div class="hotkey-controls"><select id="hotkey-preset">${hotkeyOptions()}</select>
     <button type="button" class="quiet-button" id="record-hotkey">${recordingHotkey ? "Cancel" : "Record"}</button></div>`,
@@ -510,35 +575,6 @@ function settingsItems(): SettingsItem[] {
       keywords: "history transcript save local",
       html: `<label class="switch"><input id="history-enabled" type="checkbox" ${settings.historyEnabled ? "checked" : ""}/><span></span></label>`,
     },
-    {
-      group: "Application",
-      title: "Auto-pause apps",
-      subtitle: "While a watched app is running, VocaWin unloads the hotkey and the model so games and capture tools keep their keys.",
-      keywords: "pause game fortnite obs process task picker",
-      html: `<div class="pause-picker">
-        <label class="switch"><input id="auto-pause" type="checkbox" ${settings.autoPauseEnabled ? "checked" : ""}/><span></span></label>
-        <div class="task-picker">
-          <select id="running-apps">${runningAppOptions()}</select>
-          <button type="button" class="quiet-button" id="add-watched-app">Add</button>
-        </div>
-        ${watchedAppChips()}
-      </div>`,
-    },
-    {
-      group: "Application",
-      title: "Idle model unload",
-      subtitle: settings.idleUnloadEnabled
-        ? "Keep Whisper in RAM between takes, then unload after this many quiet seconds."
-        : "Off loads the model for each take, then unloads it. Turn this on if you want it to stay warm.",
-      keywords: "idle unload keepalive memory model",
-      html: `<div class="idle-control">
-        <label class="switch"><input id="idle-unload" type="checkbox" ${settings.idleUnloadEnabled ? "checked" : ""}/><span></span></label>
-        <label class="idle-seconds ${settings.idleUnloadEnabled ? "" : "is-disabled"}">Unload after
-          <input id="idle-unload-seconds" type="number" min="30" max="3600" step="30" value="${settings.idleUnloadSeconds}" ${settings.idleUnloadEnabled ? "" : "disabled"} />
-          seconds
-        </label>
-      </div>`,
-    },
   ];
 }
 
@@ -557,9 +593,10 @@ function settingsPage() {
       ${rows.map(item => `<div class="setting-row"><div><strong>${escape(item.title)}</strong><p>${escape(item.subtitle)}</p></div>${item.html}</div>`).join("")}
       </section>`;
   }).join("");
+  const power = powerMatches(query) ? powerSection() : "";
   return `<header><div><p class="overline">PREFERENCES</p><h1>Make it <em>yours.</em></h1><p class="lede">VocaWin only stores these choices locally on this PC. Each change is saved as you make it.</p></div></header>
   <div class="settings-search"><input id="settings-search" type="search" placeholder="Search settings" value="${escape(settingsQuery)}" /></div>
-  ${cards || `<div class="empty-history">No settings match “${escape(settingsQuery)}”.</div>`}
+  ${cards}${power || (cards ? "" : `<div class="empty-history">No settings match “${escape(settingsQuery)}”.</div>`)}
   ${recordingHotkey ? `<p class="recording-hint">Press a key combo, or Escape to cancel.</p>` : ""}`;
 }
 
@@ -650,16 +687,12 @@ function sidebarFooter() {
         : runtime.paused || runtime.parkKind === "autopause"
           ? "Paused"
           : "Ready";
-  const levelPct = Math.min(100, Math.round(micLevel * 140));
   const result = testResult
     ? `<p class="sidebar-result">${escape(testResult)}</p>`
     : `<p class="sidebar-result muted">Test dictation stays here. If history is on, this take is saved there too.</p>`;
   return `<div class="sidebar-footer">
     <div class="sidebar-status ${parked ? "parked" : recording ? "live" : ""}"><i></i><div><strong>${statusLabel}</strong>${runtime.parkDetail && !recording ? `<small>${escape(runtime.parkDetail)}</small>` : `<small>${escape(runtime.inputDevice)}</small>`}</div></div>
-    <div class="sidebar-mic">
-      <button type="button" class="quiet-button" id="mic-test-footer" ${recording || testListening ? "disabled" : ""}>${micTesting ? "Stop mic" : "Mic test"}</button>
-      <div class="level-meter sidebar-meter" aria-hidden="true"><span style="width:${levelPct}%"></span></div>
-    </div>
+    ${toastMarkup()}
     <button type="button" class="quiet-button sidebar-test" id="test-dictation" ${runtime.paused || micTesting ? "disabled" : ""}>${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test dictation"}</button>
     ${result}
   </div>`;
@@ -670,7 +703,28 @@ function toastMarkup() {
   return `<p class="toast" role="status">${escape(toastText)}</p>`;
 }
 
+function captureChrome() {
+  const main = document.querySelector("main");
+  if (main && !resetPaneScroll) paneScroll = main.scrollTop;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.id && !focusRestore) {
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+      focusRestore = { id: active.id, start: active.selectionStart ?? 0, end: active.selectionEnd ?? 0 };
+    } else {
+      focusRestore = { id: active.id, start: 0, end: 0 };
+    }
+  }
+}
+
+function restorePaneScroll() {
+  const main = document.querySelector("main");
+  if (!main) return;
+  main.scrollTop = resetPaneScroll ? 0 : paneScroll;
+  resetPaneScroll = false;
+}
+
 function render() {
+  captureChrome();
   const pages: Record<View, () => string> = {
     dictation: dictationPage,
     models: modelsPage,
@@ -686,16 +740,17 @@ function render() {
     ${sidebarFooter()}
   </aside>
   <main>
-    ${toastMarkup()}
     ${pages[view]()}
     ${welcomeOverlay()}
   </main>`;
   bindChrome();
   restoreFocusedField();
+  restorePaneScroll();
 }
 
 function openView(next: View) {
   view = next;
+  resetPaneScroll = true;
   if (next === "settings") {
     void refreshRunningApps().then(render);
     return;
@@ -721,23 +776,17 @@ function bindChrome() {
   document.querySelector("#clear-history")?.addEventListener("click", clearHistory);
   document.querySelector("#test-dictation")?.addEventListener("click", testDictation);
   document.querySelector("#mic-test")?.addEventListener("click", toggleMicTest);
-  document.querySelector("#mic-test-footer")?.addEventListener("click", toggleMicTest);
   document.querySelector("#welcome-dismiss")?.addEventListener("click", dismissWelcome);
   document.querySelector("#copy-logs")?.addEventListener("click", copyLogs);
   document.querySelector("#clear-logs")?.addEventListener("click", clearLogs);
-  document.querySelector("#add-watched-app")?.addEventListener("click", addWatchedApp);
+  document.querySelector("#auto-pause-app")?.addEventListener("change", () => {
+    void addWatchedApp();
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-unwatch]").forEach(button => {
     button.addEventListener("click", () => void removeWatchedApp(button.dataset.unwatch!));
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach(button => {
-    button.addEventListener("click", () => {
-      const name = button.dataset.filter;
-      const value = button.dataset.value ?? "";
-      if (name === "engine") engineFilter = value as EngineFilter;
-      if (name === "language") languageFilter = value as LanguageFilter;
-      render();
-    });
-  });
+  bindFilterCombo("#engine-filter", ENGINE_FILTERS, value => { engineFilter = value as EngineFilter; });
+  bindFilterCombo("#language-filter", LANGUAGE_FILTERS, value => { languageFilter = value as LanguageFilter; });
   bindLiveSearch("#settings-search", value => { settingsQuery = value; });
   bindLiveSearch("#model-search", value => { modelQuery = value; });
   document.querySelector("#record-hotkey")?.addEventListener("click", () => {
@@ -792,22 +841,34 @@ function bindLiveSearch(selector: string, assign: (value: string) => void) {
 
 function restoreFocusedField() {
   if (!focusRestore) return;
-  const input = document.querySelector<HTMLInputElement>(`#${focusRestore.id}`);
-  if (input) {
-    input.focus();
-    try { input.setSelectionRange(focusRestore.start, focusRestore.end); } catch { /* ignore */ }
+  const field = document.querySelector<HTMLElement>(`#${focusRestore.id}`);
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    field.focus();
+    try { field.setSelectionRange(focusRestore.start, focusRestore.end); } catch { /* ignore */ }
+  } else if (field instanceof HTMLSelectElement) {
+    field.focus();
   }
   focusRestore = null;
+}
+
+function bindFilterCombo(selector: string, options: Array<[string, string]>, assign: (value: string) => void) {
+  const input = document.querySelector<HTMLInputElement>(selector);
+  if (!input) return;
+  const apply = () => {
+    const match = options.find(([, label]) => label.toLowerCase() === input.value.trim().toLowerCase());
+    if (!match) return;
+    assign(match[0]);
+    focusRestore = { id: input.id, start: input.value.length, end: input.value.length };
+    render();
+  };
+  input.addEventListener("change", apply);
+  input.addEventListener("input", apply);
 }
 
 function bindAutosave() {
   const persistFromEvent = (event: Event) => {
     const target = event.target as HTMLElement;
-    if (target.id === "settings-search" || target.id === "model-search" || target.id === "language-filter") return;
-    if (target.id === "running-apps") {
-      pickerApp = (target as HTMLSelectElement).value;
-      return;
-    }
+    if (target.id === "settings-search" || target.id === "model-search" || target.id === "engine-filter" || target.id === "language-filter" || target.id === "auto-pause-app") return;
     void persistSettings();
   };
   document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging").forEach(node => {
@@ -843,12 +904,12 @@ function collectSettingsFromDom() {
   if (launch) settings.launchAtLogin = launch.checked;
   const inputDevice = document.querySelector<HTMLSelectElement>("#input-device");
   if (inputDevice) settings.inputDevice = inputDevice.value;
-  const autoPause = document.querySelector<HTMLInputElement>("#auto-pause");
-  if (autoPause) settings.autoPauseEnabled = autoPause.checked;
-  const idleUnload = document.querySelector<HTMLInputElement>("#idle-unload");
-  if (idleUnload) settings.idleUnloadEnabled = idleUnload.checked;
-  const idleSeconds = document.querySelector<HTMLInputElement>("#idle-unload-seconds");
-  if (idleSeconds) settings.idleUnloadSeconds = Number(idleSeconds.value) || 300;
+  const idleUnload = document.querySelector<HTMLSelectElement>("#idle-unload");
+  if (idleUnload) {
+    const seconds = Number(idleUnload.value);
+    settings.idleUnloadEnabled = seconds > 0;
+    if (seconds > 0) settings.idleUnloadSeconds = seconds;
+  }
   const historyEnabled = document.querySelector<HTMLInputElement>("#history-enabled");
   if (historyEnabled) settings.historyEnabled = historyEnabled.checked;
   const debugLogging = document.querySelector<HTMLInputElement>("#debug-logging");
@@ -863,34 +924,32 @@ async function persistSettings(silent = false, skipCollect = false) {
     await refreshRuntime();
     if (view === "debug") await refreshLogs();
     if (!silent) showToast("Settings saved");
+    else render();
   } catch (error) {
     showToast(String(error));
   }
-  render();
 }
 
 async function addWatchedApp() {
-  const select = document.querySelector<HTMLSelectElement>("#running-apps");
-  const name = (select?.value || pickerApp).trim();
-  if (!name) {
-    showToast("Pick a running app first.");
-    render();
-    return;
-  }
+  const select = document.querySelector<HTMLSelectElement>("#auto-pause-app");
+  const name = (select?.value || "").trim();
+  if (!name) return;
   const current = watchedApps();
   if (current.some(entry => entry.toLowerCase() === name.toLowerCase())) {
-    showToast("That app is already on the list.");
-    render();
+    if (select) select.value = "";
     return;
   }
   current.push(name);
   settings.autoPauseApps = current.join("\n");
+  settings.autoPauseEnabled = true;
   pickerApp = "";
   await persistSettings();
 }
 
 async function removeWatchedApp(name: string) {
-  settings.autoPauseApps = watchedApps().filter(entry => entry !== name).join("\n");
+  const remaining = watchedApps().filter(entry => entry !== name);
+  settings.autoPauseApps = remaining.join("\n");
+  settings.autoPauseEnabled = remaining.length > 0;
   await persistSettings();
 }
 
@@ -1098,10 +1157,12 @@ async function toggleMicTest() {
       if (recording || testListening) return;
       await invoke("start_mic_test");
       micTesting = true;
+      micPeak = 0;
       if (micMeterTimer) window.clearInterval(micMeterTimer);
       micMeterTimer = window.setInterval(async () => {
         try {
           micLevel = await invoke<number>("get_mic_level");
+          micPeak = Math.max(micPeak, micLevel);
           document.querySelectorAll<HTMLElement>(".level-meter span").forEach(bar => {
             bar.style.width = `${Math.min(100, Math.round(micLevel * 140))}%`;
           });
@@ -1115,11 +1176,15 @@ async function toggleMicTest() {
     micLevel = 0;
     if (micMeterTimer) { window.clearInterval(micMeterTimer); micMeterTimer = null; }
   } catch (error) {
+    const emptyCapture = String(error).includes("No microphone audio was captured");
     micTesting = false;
     micLevel = 0;
     if (micMeterTimer) { window.clearInterval(micMeterTimer); micMeterTimer = null; }
-    showToast(String(error));
+    if (!(emptyCapture && micPeak > 0)) {
+      showToast(String(error));
+    }
   }
+  micPeak = 0;
   render();
 }
 async function testDictation() {

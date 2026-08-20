@@ -8,7 +8,7 @@
 /// Right Alt is first: it matches VocaLinux hold-default (PTT). The hook leaves
 /// AltGr (Ctrl+Right Alt) alone so layout characters still type.
 pub const PRESETS: &[(&str, &str)] = &[
-    ("AltRight", "Right Alt"),
+    ("AltRight", "Right Alt (Option)"),
     ("ControlRight", "Right Ctrl"),
     ("ShiftRight", "Right Shift"),
     ("F8", "F8"),
@@ -55,7 +55,9 @@ pub fn parse_hotkey(spec: &str) -> Result<HotkeySpec, String> {
         "ControlLeft" | "Left Ctrl" | "LControl" | "LCtrl" => {
             Ok(HotkeySpec::Lone { vk: VK_LCONTROL })
         }
-        "AltRight" | "Right Alt" | "RAlt" | "ROption" => Ok(HotkeySpec::Lone { vk: VK_RMENU }),
+        "AltRight" | "Right Alt" | "Right Alt (Option)" | "RAlt" | "ROption" | "Option" => {
+            Ok(HotkeySpec::Lone { vk: VK_RMENU })
+        }
         "AltLeft" | "Left Alt" | "LAlt" => Ok(HotkeySpec::Lone { vk: VK_LMENU }),
         "ShiftRight" | "Right Shift" | "RShift" => Ok(HotkeySpec::Lone { vk: VK_RSHIFT }),
         "ShiftLeft" | "Left Shift" | "LShift" => Ok(HotkeySpec::Lone { vk: VK_LSHIFT }),
@@ -212,6 +214,7 @@ mod tests {
             HotkeySpec::Lone { vk: VK_RMENU }
         );
         assert_eq!(canonicalize("Right Alt").unwrap(), "AltRight");
+        assert_eq!(canonicalize("Option").unwrap(), "AltRight");
     }
 
     #[test]
