@@ -254,6 +254,64 @@ function paintToast(text: string) {
   node.textContent = text;
 }
 
+function sidebarStatusLabel() {
+  if (recording) return "Listening";
+  if (testingDictation) return "Testing…";
+  if (runtime.parkKind === "idle") return "Unloaded";
+  if (runtime.paused || runtime.parkKind === "autopause") return "Paused";
+  return "Ready";
+}
+
+function paintSidebarStatus() {
+  const node = document.querySelector(".sidebar-status");
+  if (!node) return;
+  const parked = !!runtime.parkKind && !recording;
+  node.classList.toggle("parked", parked);
+  node.classList.toggle("live", recording);
+  const strong = node.querySelector("strong");
+  if (strong) strong.textContent = sidebarStatusLabel();
+  const small = node.querySelector("small");
+  if (small) {
+    small.textContent = runtime.parkDetail && !recording
+      ? runtime.parkDetail
+      : runtime.inputDevice;
+  }
+  const test = document.querySelector<HTMLButtonElement>("#test-dictation");
+  if (test) test.disabled = runtime.paused || micTesting;
+}
+
+function sessionChromeChanged(before: { recording: boolean; parked: boolean; status: string; parkKind: string; paused: boolean }) {
+  const parked = !!runtime.parkKind && !recording;
+  return before.recording !== recording
+    || before.parked !== parked
+    || before.status !== runtime.status
+    || before.parkKind !== runtime.parkKind
+    || before.paused !== runtime.paused;
+}
+
+function applyRuntimeStatus(payload: RuntimeStatus | string) {
+  const before = {
+    recording,
+    parked: !!runtime.parkKind && !recording,
+    status: runtime.status,
+    parkKind: runtime.parkKind,
+    paused: runtime.paused,
+  };
+  if (typeof payload === "string") {
+    runtime = { ...runtime, status: payload, paused: payload === "Paused" };
+  } else {
+    runtime = { ...runtime, ...payload };
+  }
+  recording = !!runtime.recording;
+  if (!runtime.recording) testListening = false;
+  if (sessionChromeChanged(before)) {
+    render();
+    return;
+  }
+  paintSidebarStatus();
+  paintToast(toastText);
+}
+
 function showToast(text: string) {
   if (toastTimer) window.clearTimeout(toastTimer);
   paintToast(text);
@@ -706,15 +764,7 @@ function welcomeOverlay() {
 
 function sidebarFooter() {
   const parked = !!runtime.parkKind && !recording;
-  const statusLabel = recording
-    ? "Listening"
-    : testingDictation
-      ? "Testing…"
-      : runtime.parkKind === "idle"
-        ? "Unloaded"
-        : runtime.paused || runtime.parkKind === "autopause"
-          ? "Paused"
-          : "Ready";
+  const statusLabel = sidebarStatusLabel();
   const result = testResult
     ? `<p class="sidebar-result">${escape(testResult)}</p>`
     : `<p class="sidebar-result muted">Test dictation stays here. If history is on, this take is saved there too.</p>`;
@@ -1245,7 +1295,6 @@ async function toggleRecording() {
 async function toggleMicTest() {
   try {
     if (!micTesting) {
-      if (recording || testListening) return;
       await invoke("start_mic_test");
       micTesting = true;
       micPeak = 0;
@@ -1343,12 +1392,7 @@ listen<string>("dictation-error", event => {
   refreshRuntime().then(render).catch(() => render());
 }).catch(() => undefined);
 listen<RuntimeStatus>("runtime-status", event => {
-  if (typeof event.payload === "string") {
-    runtime = { ...runtime, status: event.payload, paused: event.payload === "Paused" };
-  } else {
-    runtime = { ...runtime, ...event.payload };
-  }
-  render();
+  applyRuntimeStatus(event.payload);
 }).catch(() => undefined);
 listen<Settings>("settings-changed", event => {
   settings = { ...settings, ...event.payload };

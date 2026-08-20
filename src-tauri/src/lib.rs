@@ -595,13 +595,17 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
             let silence_hit = silence_auto_stop && heard && quiet_for >= silence_seconds;
             let max_hit = elapsed >= max_seconds;
             if silence_hit || max_hit {
-                if let Ok((pcm, rate)) =
-                    take_recording(&mut stream, &mut sample_rate, &mut started_ms, &samples)
-                {
-                    let app_for_finish = app.clone();
-                    std::thread::spawn(move || {
-                        finish_captured_audio(&app_for_finish, pcm, rate);
-                    });
+                match take_recording(&mut stream, &mut sample_rate, &mut started_ms, &samples) {
+                    Ok((pcm, rate)) => {
+                        let app_for_finish = app.clone();
+                        std::thread::spawn(move || {
+                            finish_captured_audio(&app_for_finish, pcm, rate);
+                        });
+                    }
+                    Err(_) => {
+                        // take_recording already dropped the stream.
+                        clear_recording_after_capture_drop(&app);
+                    }
                 }
             }
         }
@@ -1802,6 +1806,19 @@ fn recording_after_start_attempt(start_ok: bool) -> bool {
 
 fn recording_after_stop_attempt() -> bool {
     false
+}
+
+/// take_recording drops the stream before it can Err. Auto-stop must
+/// still clear the session flag so Mic Test and Ready stay honest.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn clear_recording_after_capture_drop(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        set_recording_flag(&state, recording_after_stop_attempt());
+        state.session_opening.store(false, Ordering::SeqCst);
+        state.release_during_open.store(false, Ordering::SeqCst);
+    }
+    let _ = app.emit("recording-changed", false);
+    apply_ready_or_parked_tray(app);
 }
 
 fn session_is_live(_recording_flag: bool, capture_live: bool) -> bool {
@@ -3226,6 +3243,13 @@ mod tests {
     #[test]
     fn leftover_test_dictation_session_clears_the_flag() {
         assert!(!recording_after_stop_attempt());
+    }
+
+    #[test]
+    fn auto_stop_take_error_clears_recording() {
+        assert!(!recording_after_stop_attempt());
+        assert!(is_stale_stop_error("No microphone audio was captured"));
+        assert!(is_stale_stop_error("No recording is in progress"));
     }
 
     #[test]

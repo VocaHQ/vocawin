@@ -193,11 +193,8 @@ fn emit_released() {
 
 fn queue_unstick(vk: u32) {
     if let Some(tx) = ACTOR_TX.get() {
-        if tx.send(ActorMsg::Unstick(vk)).is_ok() {
-            return;
-        }
+        let _ = tx.send(ActorMsg::Unstick(vk));
     }
-    unstick_modifier(vk);
 }
 
 fn now_ms() -> u128 {
