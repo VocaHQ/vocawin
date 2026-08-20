@@ -241,15 +241,26 @@ function filteredModels() {
   );
 }
 
-function showToast(text: string) {
+function paintToast(text: string) {
   toastText = text;
+  const node = document.querySelector<HTMLElement>("#sidebar-toast");
+  if (!node) return;
+  if (!text) {
+    node.hidden = true;
+    node.textContent = "";
+    return;
+  }
+  node.hidden = false;
+  node.textContent = text;
+}
+
+function showToast(text: string) {
   if (toastTimer) window.clearTimeout(toastTimer);
+  paintToast(text);
   toastTimer = window.setTimeout(() => {
-    toastText = "";
     toastTimer = null;
-    render();
+    paintToast("");
   }, 1800);
-  render();
 }
 
 function visibleLogs() {
@@ -346,13 +357,16 @@ function deviceOptions() {
 
 function languageOptions() {
   const selectedLanguage = settings.language || "Auto-detect";
-  const options = LANGUAGE_CHOICES.map(language =>
-    `<option value="${escape(language)}" ${language === selectedLanguage ? "selected" : ""}>${escape(language)}</option>`
-  );
-  if (selectedLanguage && !LANGUAGE_CHOICES.includes(selectedLanguage)) {
-    options.unshift(`<option value="${escape(selectedLanguage)}" selected>${escape(selectedLanguage)}</option>`);
-  }
-  return options.join("");
+  const extras = selectedLanguage && !LANGUAGE_CHOICES.includes(selectedLanguage)
+    ? [[selectedLanguage, selectedLanguage] as [string, string]]
+    : [];
+  return extras.concat(LANGUAGE_CHOICES.map(language => [language, language]));
+}
+
+function languageControl() {
+  const current = settings.language || "Auto-detect";
+  return `<div class="language-picker"><input id="language" class="themed-select" type="search" list="language-list" placeholder="Search the list." autocomplete="off" value="${escape(current)}" />
+    ${filterDatalist("language-list", languageOptions())}</div>`;
 }
 
 function dictateMark(kind: "idle" | "listening") {
@@ -474,13 +488,13 @@ function powerSection() {
     <div class="power-block">
       <strong>Pause while these apps are running</strong>
       <p>Voca stays quiet so they can use the mic.</p>
-      <select id="auto-pause-app" class="power-combo">${runningAppOptions()}</select>
-      ${watchedAppChips()}
+      <select id="auto-pause-app" class="themed-select power-combo">${runningAppOptions()}</select>
+      <div id="watched-app-chips">${watchedAppChips()}</div>
       <p class="power-note">Empty list means off. Each chip removes that app.</p>
     </div>
     <div class="setting-row">
       <div><strong>Unload the model after idle</strong><p>Frees RAM. Next dictation loads it again.</p></div>
-      <select id="idle-unload" class="power-combo">${idleUnloadOptions()}</select>
+      <select id="idle-unload" class="themed-select power-combo">${idleUnloadOptions()}</select>
     </div>
   </section>`;
 }
@@ -500,7 +514,7 @@ function settingsItems(): SettingsItem[] {
       title: "Activation hotkey",
       subtitle: "Pick a preset or press Record. New installs default to Right Alt (Option), the same hold-default as VocaLinux. AltGr (Ctrl+Right Alt) is not consumed, so layout characters still type. Escape cancels. The live listener pauses while recording.",
       keywords: "hotkey shortcut keyboard record preset right alt altright",
-      html: `<div class="hotkey-controls"><select id="hotkey-preset">${hotkeyOptions()}</select>
+      html: `<div class="hotkey-controls"><select id="hotkey-preset" class="themed-select">${hotkeyOptions()}</select>
     <button type="button" class="quiet-button" id="record-hotkey">${recordingHotkey ? "Cancel" : "Record"}</button></div>`,
     },
     {
@@ -508,14 +522,14 @@ function settingsItems(): SettingsItem[] {
       title: "Activation style",
       subtitle: "Hold to talk, or tap to toggle. Toggle uses silence auto-stop.",
       keywords: "push to talk toggle mode",
-      html: `<select id="activation"><option value="pushToTalk">Push to talk</option><option value="toggle">Toggle</option></select>`,
+      html: `<select id="activation" class="themed-select"><option value="pushToTalk">Push to talk</option><option value="toggle">Toggle</option></select>`,
     },
     {
       group: "Dictation",
       title: "Dictation language",
       subtitle: "One list. Auto-detect is first, then English, then A to Z.",
       keywords: "language locale english auto detect",
-      html: `<select id="language">${languageOptions()}</select>`,
+      html: languageControl(),
     },
     {
       group: "Dictation",
@@ -543,7 +557,7 @@ function settingsItems(): SettingsItem[] {
       title: "Microphone",
       subtitle: "WASAPI capture device used for dictation.",
       keywords: "mic microphone device wasapi input",
-      html: `<select id="input-device">${deviceOptions()}</select>`,
+      html: `<select id="input-device" class="themed-select">${deviceOptions()}</select>`,
     },
     {
       group: "Audio",
@@ -572,7 +586,7 @@ function settingsItems(): SettingsItem[] {
       title: "Dictation sounds",
       subtitle: "These play when listening starts and stops. Preview is two clicks: start tone, then end tone.",
       keywords: "sound beep audio cue",
-      html: `<div class="sound-theme-controls"><select id="sound-theme">${soundThemeOptions()}</select>
+      html: `<div class="sound-theme-controls"><select id="sound-theme" class="themed-select">${soundThemeOptions()}</select>
       ${previewSoundControl()}</div>`,
     },
     {
@@ -713,8 +727,7 @@ function sidebarFooter() {
 }
 
 function toastMarkup() {
-  if (!toastText) return "";
-  return `<p class="toast" role="status">${escape(toastText)}</p>`;
+  return `<p class="toast" id="sidebar-toast" role="status"${toastText ? "" : " hidden"}>${escape(toastText)}</p>`;
 }
 
 function captureChrome() {
@@ -796,9 +809,7 @@ function bindChrome() {
   document.querySelector("#auto-pause-app")?.addEventListener("change", () => {
     void addWatchedApp();
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-unwatch]").forEach(button => {
-    button.addEventListener("click", () => void removeWatchedApp(button.dataset.unwatch!));
-  });
+  bindWatchedAppChips();
   bindFilterCombo("#engine-filter", ENGINE_FILTERS, value => { engineFilter = value as EngineFilter; });
   bindFilterCombo("#language-filter", LANGUAGE_FILTERS, value => { languageFilter = value as LanguageFilter; });
   bindLiveSearch("#settings-search", value => { settingsQuery = value; });
@@ -825,7 +836,7 @@ function bindChrome() {
       render();
     }
   });
-  const language = document.querySelector<HTMLSelectElement>("#language");
+  const language = document.querySelector<HTMLInputElement>("#language");
   if (language) language.value = settings.language;
   const activation = document.querySelector<HTMLSelectElement>("#activation");
   if (activation) activation.value = settings.activationMode;
@@ -890,8 +901,8 @@ function bindAutosave() {
     if (target.id === "settings-search" || target.id === "model-search" || target.id === "engine-filter" || target.id === "language-filter" || target.id === "auto-pause-app") return;
     void persistSettings();
   };
-  document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging").forEach(node => {
-    if (node.id === "custom-vocabulary") {
+  document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging, #idle-unload").forEach(node => {
+    if (node.id === "custom-vocabulary" || node.id === "language") {
       node.addEventListener("change", persistFromEvent);
       node.addEventListener("blur", persistFromEvent);
       return;
@@ -906,8 +917,13 @@ function bindAutosave() {
 function collectSettingsFromDom() {
   const preset = document.querySelector<HTMLSelectElement>("#hotkey-preset");
   if (preset) settings.hotkey = preset.value;
-  const language = document.querySelector<HTMLSelectElement>("#language");
-  if (language) settings.language = language.value;
+  const language = document.querySelector<HTMLInputElement>("#language");
+  if (language) {
+    const typed = language.value.trim();
+    const match = LANGUAGE_CHOICES.find(item => item.toLowerCase() === typed.toLowerCase())
+      ?? (typed && !LANGUAGE_CHOICES.includes(typed) ? typed : "");
+    if (match) settings.language = match;
+  }
   const activation = document.querySelector<HTMLSelectElement>("#activation");
   if (activation) settings.activationMode = activation.value;
   const silence = document.querySelector<HTMLInputElement>("#silence");
@@ -948,11 +964,50 @@ async function persistSettings(silent = false, skipCollect = false) {
     await invoke("save_settings", { settings });
     settings = await invoke<Settings>("get_settings");
     await refreshRuntime();
-    if (view === "debug") await refreshLogs();
+    if (view === "debug") {
+      await refreshLogs();
+      render();
+      if (!silent) showToast("Settings saved");
+      return;
+    }
+    syncSettingsControls();
     if (!silent) showToast("Settings saved");
-    else render();
   } catch (error) {
     showToast(String(error));
+  }
+}
+
+function syncSettingsControls() {
+  const preset = document.querySelector<HTMLSelectElement>("#hotkey-preset");
+  if (preset && document.activeElement !== preset) preset.value = settings.hotkey;
+  const language = document.querySelector<HTMLInputElement>("#language");
+  if (language && document.activeElement !== language) language.value = settings.language;
+  const activation = document.querySelector<HTMLSelectElement>("#activation");
+  if (activation && document.activeElement !== activation) activation.value = settings.activationMode;
+  const soundTheme = document.querySelector<HTMLSelectElement>("#sound-theme");
+  if (soundTheme && document.activeElement !== soundTheme) soundTheme.value = settings.soundTheme;
+  const inputDevice = document.querySelector<HTMLSelectElement>("#input-device");
+  if (inputDevice && document.activeElement !== inputDevice) inputDevice.value = settings.inputDevice;
+  const idleUnload = document.querySelector<HTMLSelectElement>("#idle-unload");
+  if (idleUnload && document.activeElement !== idleUnload) idleUnload.value = String(idleUnloadValue());
+}
+
+function bindWatchedAppChips() {
+  document.querySelectorAll<HTMLButtonElement>("[data-unwatch]").forEach(button => {
+    button.addEventListener("click", () => void removeWatchedApp(button.dataset.unwatch!));
+  });
+}
+
+function paintPowerApps() {
+  const select = document.querySelector<HTMLSelectElement>("#auto-pause-app");
+  if (select) {
+    select.innerHTML = runningAppOptions();
+    select.value = "";
+  }
+  const chips = document.querySelector("#watched-app-chips");
+  if (chips) {
+    chips.innerHTML = watchedAppChips();
+    bindWatchedAppChips();
   }
 }
 
@@ -969,6 +1024,7 @@ async function addWatchedApp() {
   settings.autoPauseApps = current.join("\n");
   settings.autoPauseEnabled = true;
   await persistSettings();
+  paintPowerApps();
 }
 
 async function removeWatchedApp(name: string) {
@@ -976,6 +1032,7 @@ async function removeWatchedApp(name: string) {
   settings.autoPauseApps = remaining.join("\n");
   settings.autoPauseEnabled = remaining.length > 0;
   await persistSettings();
+  paintPowerApps();
 }
 
 async function openExternal(url: string) {
@@ -1024,7 +1081,10 @@ function finishHotkeyCapture(spec: string, label: string) {
   settings.hotkey = spec;
   recordingHotkey = false;
   void invoke("resume_hotkey_listener").catch(() => undefined);
-  void persistSettings(true, true).then(() => showToast(`Hotkey set to ${label}.`));
+  void persistSettings(true, true).then(() => {
+    syncSettingsControls();
+    showToast(`Hotkey set to ${label}.`);
+  });
 }
 
 function onGlobalKeyDown(event: KeyboardEvent) {
