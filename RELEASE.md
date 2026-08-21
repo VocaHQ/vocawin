@@ -1,6 +1,6 @@
 # Cutting a Windows alpha
 
-This is the checklist we already use. A `v*` tag is what ships a tester build. There is no second path.
+This is the checklist we already use. A `v*` tag is what ships a **named** tester alpha. Nightlies are a second path: `.github/workflows/nightly.yml` publishes a moving `nightly` prerelease from `main` when app source changed. Do not use a `v*` tag for a nightly. Do not retag `nightly` by hand unless you are replacing a broken publish.
 
 ## Tag
 
@@ -14,7 +14,9 @@ Do not retag. Do not use workflow_dispatch. `.github/workflows/windows-alpha-rel
 
 A `v*` tag push runs `windows-alpha-release.yml`. tauri-action builds unsigned NSIS and MSI and attaches them to a GitHub Release named `VocaWin <tag> (Windows alpha)`. The Release is always a prerelease. `includeUpdaterJson` stays off. There is no store signature and no auto-update.
 
-`windows-ci.yml` on main still uploads a workflow artifact. Testers should ignore that and use the GitHub Release.
+`windows-ci.yml` on main still uploads a workflow artifact. Testers should ignore that and use a GitHub Release: the tagged `v*` alpha, or [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) if they want today's `main`.
+
+The nightly Release is always a prerelease named `nightly`. It is deleted and recreated; the URL stays the same. The README release badge uses `sort=semver` so `nightly` does not steal it from `v*`.
 
 tauri-action writes a generic body about vocawin.com and SmartScreen. If you drafted real notes before the job finished, they get overwritten. Put the notes and the Ready screenshot back after the installers land.
 
@@ -32,7 +34,7 @@ You can rename the Release to drop the `v` and the `(Windows alpha)` suffix. Tha
 
 ## Public pages
 
-[vocawin.com](https://vocawin.com) lives in `web/` and publishes from `main` when `web/` changes. Download buttons already go to [Releases](https://github.com/VocaHQ/vocawin/releases). Do not pin a tag in the hero, the FAQ, or JSON-LD. After this checklist landed, the site should not name a specific tag at all. Check the live page still says developer alpha, unsigned, More info then Run anyway, and that every download still hits `/releases`.
+[vocawin.com](https://vocawin.com) lives in `web/` and publishes from `main` when `web/` changes. The hero download still goes to [Releases](https://github.com/VocaHQ/vocawin/releases), not a `v*` tag. A quieter [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) link is allowed because that tag is moving, not a version pin. Do not pin `v0.1.0-alpha.N` in the hero, the FAQ, or JSON-LD. Check the live page still says developer alpha, unsigned, More info then Run anyway.
 
 The README badge is `github/v/release` with `include_prereleases`. It tracks the latest prerelease by itself. Leave it pointed at `/releases`. Do not pin a tag in the README.
 
@@ -48,4 +50,4 @@ VocaHQ owns vocahq.com and the family PRODUCT.md. If that page still lists an ol
 
 ## What not to do
 
-Do not pin a tag in the README or on vocawin.com. Do not bump the `0.1.0` app version for an alpha. Do not tell testers the build is signed, Coming soon, or Available now. Do not cut a release from a branch click.
+Do not pin a `v*` tag in the README or on vocawin.com. Do not bump the `0.1.0` app version for an alpha or a nightly. Do not tell testers the build is signed, Coming soon, or Available now. Do not cut an alpha from a branch click. Nightly may be dispatched by hand.

@@ -148,8 +148,9 @@ jobs:
           CARGO_TARGET_DIR: C:\t
           CMAKE_GENERATOR: Ninja
         with:
-          # Build only. Do not set tagName. Tag Releases live in
-          # windows-alpha-release.yml so main stays artifact-only.
+          # Build only. Do not set tagName. Tagged alpha Releases live in
+          # windows-alpha-release.yml. The moving nightly Release lives in
+          # nightly.yml. This job stays artifact-only.
           args: --bundles nsis,msi
           includeUpdaterJson: false
       # tauri-action with CARGO_TARGET_DIR=C:\t writes:
