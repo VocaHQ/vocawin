@@ -15,7 +15,7 @@
 
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/Website-vocawin.com-informational)](https://vocawin.com)
-[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
+[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/t6muquAJbm)
 [![Follow us](https://img.shields.io/badge/Follow%20us-000000?logo=x&logoColor=white)](https://x.com/vocahq)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 

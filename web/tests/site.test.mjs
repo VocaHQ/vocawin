@@ -84,6 +84,8 @@ test("vocahq.com and the family are linked", () => {
   assert.match(html, /href="https:\/\/vocaphone\.vocahq\.com\/"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin"/);
+  assert.match(html, /href="https:\/\/discord\.gg\/t6muquAJbm"/);
+  assert.match(html, /href="https:\/\/x\.com\/vocahq"/);
   assert.doesNotMatch(html, /jatinkrmalik\/vocawin/);
 });
 
