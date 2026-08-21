@@ -3,6 +3,7 @@
 #
 # Tag push is the only trigger. windows-ci.yml must never set tagName.
 # PRs only cargo test. Main uploads the installer artifact.
+# Nightlies are a different tag (`nightly`) in nightly.yml.
 # Always prerelease: a GitHub Release here is not a public ship.
 # No workflow_dispatch, so a branch click cannot publish.
 # includeUpdaterJson is off so we do not upload latest.json.

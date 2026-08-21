@@ -2,6 +2,8 @@
 
 This is the tester page for the VocaWin alpha. [vocawin.com](https://vocawin.com) points testers at [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). There is no Voca account and no hosted speech API.
 
+The tagged alpha is the last cut we named. If you want today's `main`, use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS and MSI. Say it is a nightly and include the commit from that Release if you file an issue.
+
 The NSIS and MSI are unsigned. That is not a store signature. Windows will likely say the publisher is unknown. That is SmartScreen. Use More info, then Run anyway, only if you trust the GitHub Release you downloaded.
 
 There are two installers. The NSIS `.exe` is a current-user setup. The MSI is the WiX wizard. Use one, not both, on the same PC.

@@ -8,7 +8,8 @@
 
 <div align="center">
 
-[![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases)](https://github.com/VocaHQ/vocawin/releases)
+[![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases&sort=semver)](https://github.com/VocaHQ/vocawin/releases)
+[![Nightly](https://img.shields.io/badge/Nightly-download-blueviolet)](https://github.com/VocaHQ/vocawin/releases/tag/nightly)
 [![Status](https://img.shields.io/badge/status-developer%20alpha-yellow)](#development)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)](#system-requirements)
 [![Privacy](https://img.shields.io/badge/privacy-on%20this%20PC-success)](#key-principles)
@@ -43,6 +44,8 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 ## Try it
 
 Testers can install an unsigned developer alpha today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
+
+Want today's `main` instead of the last tagged alpha? Use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS and MSI, rebuilt when app source on `main` changes. Prefer the tagged alpha if you want the last cut we named.
 
 This is a tester build you can run today. It is not a store listing and not a stable public release.
 
