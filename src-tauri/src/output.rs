@@ -133,7 +133,7 @@ fn inject_send_input(text: &str) -> Result<(), String> {
             continue;
         }
         let mut units = [0u16; 2];
-        for &unit in ch.encode_utf16(&mut units) {
+        for &unit in ch.encode_utf16(&mut units).iter() {
             inputs.extend([
                 INPUT {
                     r#type: INPUT_KEYBOARD,
@@ -383,7 +383,7 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
     use windows::core::HSTRING;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, SetClipboardData};
-    use windows::Win32::System::Memory::{GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     let encoded: Vec<u16> = HSTRING::from(text).as_wide().iter().copied().chain([0]).collect();
     let bytes = encoded.len() * 2;
     unsafe {
@@ -391,13 +391,13 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
             .map_err(|error| format!("clipboard alloc failed: {error}"))?;
         let ptr = GlobalLock(mem) as *mut u16;
         if ptr.is_null() {
-            let _ = GlobalFree(mem);
+            global_free(mem);
             return Err("clipboard lock failed".into());
         }
         std::ptr::copy_nonoverlapping(encoded.as_ptr(), ptr, encoded.len());
         let _ = GlobalUnlock(mem);
         if let Err(error) = open_clipboard_with_retry() {
-            let _ = GlobalFree(mem);
+            global_free(mem);
             return Err(error);
         }
         let result = (|| {
@@ -408,10 +408,17 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
         })();
         let _ = CloseClipboard();
         if result.is_err() {
-            let _ = GlobalFree(mem);
+            global_free(mem);
         }
         result
     }
+}
+
+/// windows 0.58 exports GlobalFree from Foundation, not System::Memory.
+/// A successful free returns a null handle, which the crate reports as Err.
+#[cfg(windows)]
+unsafe fn global_free(mem: windows::Win32::Foundation::HGLOBAL) {
+    let _ = windows::Win32::Foundation::GlobalFree(mem);
 }
 
 #[cfg(windows)]
@@ -467,7 +474,7 @@ fn capture_clipboard_snapshot() -> Result<ClipboardSnapshot, String> {
 fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot) -> Result<(), String> {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, SetClipboardData};
-    use windows::Win32::System::Memory::{GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     if snapshot.formats.is_empty() {
         return clear_clipboard();
     }
@@ -479,13 +486,13 @@ fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot) -> Result<(), String
                 .map_err(|error| format!("clipboard alloc failed: {error}"))?;
             let ptr = GlobalLock(mem) as *mut u8;
             if ptr.is_null() {
-                let _ = GlobalFree(mem);
+                global_free(mem);
                 return Err("clipboard lock failed".into());
             }
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
             let _ = GlobalUnlock(mem);
             if SetClipboardData(*format, HANDLE(mem.0)).is_err() {
-                let _ = GlobalFree(mem);
+                global_free(mem);
             }
         }
         Ok(())
