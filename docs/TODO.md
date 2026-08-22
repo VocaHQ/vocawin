@@ -38,14 +38,14 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] NSIS/MSI installer artifact job (alpha/dev; main/workflow_dispatch only, PRs cargo-test)
 - [x] Tag-triggered GitHub Release for testers (`v*` tags, always prerelease)
 - [x] Official Voca mic app/tray icons (brand book §9 / §10)
-- [x] System tray menu: Start/Stop Voice Typing, Start on Login, Settings, View Logs, About, Quit
+- [x] System tray menu: Start/Stop Voice Typing, Start on Login, Settings, Debug, About, Quit
 - [x] Launch at login and single-instance focus (`--start-minimized` for login / CLI)
 - [x] Whisper Vulkan on Windows builds only; catalog/system_summary match compile-time reality; prefer discrete, skip WARP
 - [x] Auto-pause while listed apps run (opt-in)
 - [x] Idle Whisper unload keep-alive (opt-in, default 300s)
 - [x] Sleep/wake hotkey recovery (WM_POWERBROADCAST)
 - [x] Short first-run welcome (tray + hold hotkey + optional login)
-- [x] Reusable Logs window (single instance)
+- [x] Debug page with GPU readout and in-app logs (warning/error default, optional debug, copy, clear)
 - [ ] Signed release workflow, updater, crash-free upgrade migration
 
 ## Verification

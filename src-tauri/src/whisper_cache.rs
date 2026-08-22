@@ -1,11 +1,14 @@
 //! Whisper keep-alive cache with optional idle unload (opt-in).
+//! Never / disabled keeps the model in RAM. A timeout unloads after quiet time.
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 pub struct WhisperCache {
     commands: mpsc::Sender<CacheCommand>,
+    loaded: Arc<AtomicBool>,
 }
 
 enum CacheCommand {
@@ -16,6 +19,7 @@ enum CacheCommand {
         use_gpu: bool,
         gpu_device: i32,
         keep_alive: bool,
+        initial_prompt: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
     Unload,
@@ -28,11 +32,17 @@ enum CacheCommand {
 impl WhisperCache {
     pub fn new() -> Self {
         let (commands, receiver) = mpsc::channel();
+        let loaded = Arc::new(AtomicBool::new(false));
+        let loaded_for_thread = loaded.clone();
         std::thread::Builder::new()
             .name("vocawin-whisper".into())
-            .spawn(move || cache_thread_main(receiver))
+            .spawn(move || cache_thread_main(receiver, loaded_for_thread))
             .expect("Could not start Whisper cache thread");
-        Self { commands }
+        Self { commands, loaded }
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        self.loaded.load(Ordering::Relaxed)
     }
 
     pub fn transcribe(
@@ -43,6 +53,7 @@ impl WhisperCache {
         use_gpu: bool,
         gpu_device: i32,
         keep_alive: bool,
+        initial_prompt: String,
     ) -> Result<String, String> {
         let (reply, response) = mpsc::channel();
         self.commands
@@ -53,6 +64,7 @@ impl WhisperCache {
                 use_gpu,
                 gpu_device,
                 keep_alive,
+                initial_prompt,
                 reply,
             })
             .map_err(|_| "Whisper cache thread is not running".to_string())?;
@@ -72,7 +84,7 @@ impl WhisperCache {
     }
 }
 
-fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
+fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicBool>) {
     let mut loaded_path: Option<PathBuf> = None;
     let mut context: Option<whisper_rs::WhisperContext> = None;
     let mut last_used = Instant::now();
@@ -88,6 +100,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
                 use_gpu,
                 gpu_device,
                 keep_alive,
+                initial_prompt,
                 reply,
             }) => {
                 let result = run_transcribe(
@@ -99,7 +112,9 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
                     use_gpu,
                     gpu_device,
                     keep_alive,
+                    &initial_prompt,
                 );
+                loaded.store(context.is_some(), Ordering::Relaxed);
                 if result.is_ok() {
                     last_used = Instant::now();
                 }
@@ -109,6 +124,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
             Ok(CacheCommand::Unload) => {
                 loaded_path = None;
                 context = None;
+                loaded.store(false, Ordering::Relaxed);
                 false
             }
             Ok(CacheCommand::ConfigureIdle { enabled, seconds }) => {
@@ -127,6 +143,9 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>) {
         {
             loaded_path = None;
             context = None;
+            loaded.store(false, Ordering::Relaxed);
+        } else {
+            loaded.store(context.is_some(), Ordering::Relaxed);
         }
     }
 }
@@ -140,6 +159,7 @@ fn run_transcribe(
     use_gpu: bool,
     gpu_device: i32,
     keep_alive: bool,
+    initial_prompt: &str,
 ) -> Result<String, String> {
     let needs_reload = context.is_none()
         || loaded_path
@@ -172,6 +192,14 @@ fn run_transcribe(
     parameters.set_print_progress(false);
     parameters.set_print_realtime(false);
     parameters.set_print_timestamps(false);
+    // Engine field is initial_prompt (whisper.cpp has no vocabulary param).
+    // Phone Android also sets carry_initial_prompt so the list survives
+    // later 30s windows. whisper-rs 0.16 does not expose that flag; a single
+    // PTT take is one window, so the prompt still reaches the decoder.
+    let prompt = initial_prompt.replace('\0', "");
+    if !prompt.is_empty() {
+        parameters.set_initial_prompt(&prompt);
+    }
     session
         .full(parameters, pcm)
         .map_err(|error| format!("Transcription failed: {error}"))?;
