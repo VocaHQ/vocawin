@@ -47,7 +47,7 @@ Rust modules (keep work in the matching file):
 | `devices.rs` | WASAPI mic list via cpal |
 | `whisper_cache.rs` | whisper.cpp keep-alive + optional idle unload |
 | `gpu.rs` / `hardware.rs` | DXGI GPU pick (skip WARP) and starting-model hint |
-| `output.rs` | Clipboard paste + restore; `SendInput` fallback |
+| `output.rs` | `SendInput` first (clipboard left alone); clipboard paste + restore fallback; optional copy-to-clipboard |
 | `autopause.rs` / `power.rs` | Opt-in app pause; sleep/wake hotkey rebind |
 | `sounds.rs` / `logbuf.rs` | PlaySound themes; in-memory logs (not a file) |
 
@@ -91,7 +91,7 @@ src/main.ts (dictation / models / history / settings; #logs window)
       ├─ whisper.cpp (GGML .bin) via whisper_cache
       ├─ ONNX (Parakeet TDT, Moonshine, SenseVoice, GigaAM, Canary)
       ├─ Tray (idle / listening / processing)
-      └─ inject: clipboard Ctrl+V + restore, else SendInput
+      └─ inject: SendInput (no clipboard); clipboard Ctrl+V + restore fallback
 ```
 
 Do not add a frontend framework. Add Tauri commands next to the existing `invoke_handler` list and call them with `invoke()` from `src/main.ts`.
