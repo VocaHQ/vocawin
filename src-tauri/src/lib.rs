@@ -242,6 +242,10 @@ struct Settings {
     /// `CustomVocabulary`, then sent to whisper.cpp as `initial_prompt`.
     #[serde(default)]
     custom_vocabulary: String,
+    /// VocaLinux `copy_to_clipboard`: leave the transcript on the clipboard.
+    /// Off by default so insertion does not take over whatever was copied.
+    #[serde(default)]
+    copy_to_clipboard: bool,
 }
 
 fn default_true() -> bool {
@@ -279,6 +283,7 @@ impl Default for Settings {
             history_enabled: true,
             debug_logging: false,
             custom_vocabulary: String::new(),
+            copy_to_clipboard: false,
         }
     }
 }
@@ -861,7 +866,7 @@ fn finish_captured_audio(app: &AppHandle, samples: Vec<f32>, sample_rate: u32) {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             if inject {
-                let _ = output::inject(&text);
+                let _ = inject_transcript(&*state, &text);
                 let _ = app.emit("dictation-finished", text);
             } else {
                 let _ = app.emit("test-dictation-finished", text);
@@ -2049,7 +2054,7 @@ fn finish_voice_session(handle: &AppHandle) {
         Ok(Some(text)) if !text.is_empty() => {
             sounds::play_if_enabled(&settings.sound_theme, false);
             if inject {
-                let _ = output::inject(&text);
+                let _ = inject_transcript(&*state, &text);
                 let _ = handle.emit("dictation-finished", text);
             } else {
                 let _ = handle.emit("test-dictation-finished", text);
@@ -2305,15 +2310,24 @@ fn list_running_apps() -> Vec<autopause::RunningApp> {
     autopause::list_running_apps()
 }
 
+fn inject_transcript(state: &AppState, text: &str) -> Result<(), String> {
+    let copy_to_clipboard = state
+        .settings
+        .lock()
+        .map(|settings| settings.copy_to_clipboard)
+        .unwrap_or(false);
+    output::inject(text, output::InjectOptions { copy_to_clipboard })
+}
+
 /// On Windows this is the final platform boundary: the recognizer gives us
 /// text, then the injector enters it at the focused application. It is kept
 /// separate from recognition so every engine gets identical insertion behavior.
 #[tauri::command]
-fn inject_text(text: String) -> Result<(), String> {
+fn inject_text(text: String, state: State<'_, AppState>) -> Result<(), String> {
     if text.trim().is_empty() {
         return Ok(());
     }
-    output::inject(&text)
+    inject_transcript(&*state, &text)
 }
 
 #[tauri::command]
@@ -2822,7 +2836,7 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
         Ok(text) => {
             sounds::play_if_enabled(&sound, false);
             if !text.is_empty() {
-                let _ = output::inject(&text);
+                let _ = inject_transcript(&*state, &text);
             }
             let _ = app.emit("dictation-finished", text);
             let _ = app.emit("recording-changed", false);
@@ -3036,6 +3050,19 @@ mod tests {
         let settings = Settings::default();
         assert!(settings.history_enabled);
         assert!(!settings.debug_logging);
+    }
+
+    #[test]
+    fn copy_to_clipboard_stays_off_by_default() {
+        assert!(!Settings::default().copy_to_clipboard);
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy.json");
+        fs::write(
+            &path,
+            r#"{"hotkey":"AltRight","activationMode":"pushToTalk","language":"Auto-detect","silenceSeconds":1.5,"maxRecordingSeconds":60.0,"launchAtLogin":false,"soundEffects":true,"appendTrailingSpace":true,"autoCapitalize":true,"selectedModel":"whisper-tiny"}"#,
+        )
+        .unwrap();
+        assert!(!load_settings(&path).copy_to_clipboard);
     }
 
     #[test]

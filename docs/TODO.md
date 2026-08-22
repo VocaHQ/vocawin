@@ -23,7 +23,7 @@ This checklist tracks the path from the current local-recognition foundation to 
 - [x] New-install default hotkey Right Alt (VocaLinux hold-default; AltGr left alone). Existing TROOPER Ctrl+Alt+Space settings kept until changed
 - [x] Silence energy auto-stop in toggle mode only (PTT stops on key-up); `silence_seconds` wired
 - [x] Trailing space and auto-capitalize output polish
-- [x] Clipboard + paste inject with restore (SendInput fallback)
+- [x] SendInput inject by default (clipboard left alone); clipboard paste + restore fallback; optional copy-to-clipboard (off by default)
 - [x] Start/stop/error sound cues when enabled (PlaySound WAV; not silent Beep)
 - [x] Local transcription history with clear-history control
 - [x] Tray idle / listening / processing icons and full tray menu

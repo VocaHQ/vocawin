@@ -32,6 +32,7 @@ type Settings = {
   historyEnabled: boolean;
   debugLogging: boolean;
   customVocabulary: string;
+  copyToClipboard: boolean;
 };
 type View = "dictation" | "models" | "history" | "settings" | "debug" | "about";
 type HistoryEntry = { id: number; text: string; modelId: string; createdAtMs: number };
@@ -610,6 +611,13 @@ function settingsItems(): SettingsItem[] {
     },
     {
       group: "Dictation",
+      title: "Copy to clipboard",
+      subtitle: "Leave recognized text on the clipboard after each take. Off by default so dictation does not replace what you already copied.",
+      keywords: "clipboard paste preserve copy output",
+      html: `<label class="switch"><input id="copy-to-clipboard" type="checkbox" ${settings.copyToClipboard ? "checked" : ""}/><span></span></label>`,
+    },
+    {
+      group: "Dictation",
       title: "Custom Vocabulary",
       subtitle: "Bias Whisper toward names and jargon. It is a hint, not a guarantee.",
       keywords: "custom vocabulary dictionary glossary names jargon initial prompt whisper",
@@ -995,6 +1003,8 @@ function collectSettingsFromDom() {
   if (autoCap) settings.autoCapitalize = autoCap.checked;
   const trailing = document.querySelector<HTMLInputElement>("#trailing-space");
   if (trailing) settings.appendTrailingSpace = trailing.checked;
+  const copyToClipboard = document.querySelector<HTMLInputElement>("#copy-to-clipboard");
+  if (copyToClipboard) settings.copyToClipboard = copyToClipboard.checked;
   const launch = document.querySelector<HTMLInputElement>("#launch-login");
   if (launch) settings.launchAtLogin = launch.checked;
   const inputDevice = document.querySelector<HTMLSelectElement>("#input-device");
@@ -1445,6 +1455,7 @@ Promise.all([
     historyEnabled: saved.historyEnabled ?? true,
     debugLogging: saved.debugLogging ?? false,
     customVocabulary: saved.customVocabulary ?? "",
+    copyToClipboard: saved.copyToClipboard ?? false,
   };
   statuses = installs;
   history = entries;
