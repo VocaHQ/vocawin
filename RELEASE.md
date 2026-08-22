@@ -4,7 +4,7 @@ This is the checklist we already use. A `v*` tag is what ships a **named** teste
 
 ## Tag
 
-The next alpha is the next `v0.1.0-alpha.N` after the current GitHub Release. Today that is `v0.1.0-alpha.2`, so the next tag is `v0.1.0-alpha.3` unless Jatin picks another name. Tag the commit you want testers to run, then push it. That is the only trigger.
+The next alpha is the next `v0.1.0-alpha.N` after the current GitHub Release. Today that is `v0.1.0-alpha.3`, so the next tag is `v0.1.0-alpha.4` unless Jatin picks another name. Tag the commit you want testers to run, then push it. That is the only trigger.
 
 `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` stay at `0.1.0` across these alphas. The installers keep the `VocaWin_0.1.0_*` filenames. The Git tag is the public version. Do not bump the app version for an alpha.
 
@@ -30,7 +30,7 @@ Upload a real Ready-screen shot as a release asset (alpha.2 used `vocawin-ready.
 ![VocaWin Ready](https://github.com/VocaHQ/vocawin/releases/download/<tag>/vocawin-ready.png)
 ```
 
-You can rename the Release to drop the `v` and the `(Windows alpha)` suffix. That is what we did on alpha.2.
+You can rename the Release to drop the `v` and the `(Windows alpha)` suffix. That is what we did on alpha.2 and alpha.3.
 
 ## Public pages
 
