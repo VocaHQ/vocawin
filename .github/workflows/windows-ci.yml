@@ -103,7 +103,7 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
   installer:
-    name: Windows installer (alpha)
+    name: Windows installer (beta)
     needs: changes
     # PRs never package. Main packages only when app/workflow source
     # changed. workflow_dispatch still builds test + installer.
@@ -148,7 +148,7 @@ jobs:
           CARGO_TARGET_DIR: C:\t
           CMAKE_GENERATOR: Ninja
         with:
-          # Build only. Do not set tagName. Tagged alpha Releases live in
+          # Build only. Do not set tagName. Tagged beta Releases live in
           # windows-alpha-release.yml. The moving nightly Release lives in
           # nightly.yml. This job stays artifact-only.
           args: --bundles nsis,msi
@@ -158,10 +158,10 @@ jobs:
       #   C:\t\release\bundle\msi\VocaWin_*_x64_en-US.msi
       # Confirmed on the 2026-08-18 installer job (run 32196306136).
       # Installers stay unsigned. Self-sign hung on Authenticode timestamps.
-      - name: Upload Windows alpha installers
+      - name: Upload Windows beta installers
         uses: actions/upload-artifact@v4
         with:
-          name: VocaWin-windows-alpha
+          name: VocaWin-windows-beta
           path: |
             C:/t/release/bundle/nsis/*-setup.exe
             C:/t/release/bundle/msi/*.msi

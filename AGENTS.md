@@ -4,7 +4,7 @@ Instructions for coding agents on **VocaWin** (`VocaHQ/vocawin`). Default branch
 
 Native Windows voice typing: hold a hotkey, speak, text at the caret. After a Whisper or ONNX model is on disk, capture and transcription stay on this PC. No Voca account, no hosted speech API, no product telemetry, no gateway mode.
 
-This is a **developer alpha**. Installers are **unsigned**. Do not call it signed, Store-ready, stable, or a public ship.
+This is a **beta**. Installers are **unsigned**. Do not call it signed, Store-ready, stable, or a public ship.
 
 ## Critical: git worktrees for every branch and PR
 
@@ -53,7 +53,7 @@ Rust modules (keep work in the matching file):
 
 Windows builds enable `whisper-rs` **Vulkan** and `transcribe-rs` **DirectML**. Non-Windows keeps CPU-only whisper so `cargo test` still runs. `build.rs` sets `cfg(vocawin_whisper_vulkan)` only for Windows targets — catalog strings must match that cfg.
 
-App data: `%APPDATA%\com.vocahq.vocawin\` (`settings.json`, `history.json`, `models/`). Window title says Alpha. Close hides to tray; Quit is tray-only. Autostart uses `--start-minimized`.
+App data: `%APPDATA%\com.vocahq.vocawin\` (`settings.json`, `history.json`, `models/`). Window title says Beta. Close hides to tray; Quit is tray-only. Autostart uses `--start-minimized`.
 
 ## Commands
 
@@ -116,7 +116,7 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 ## Releases and CI
 
-App version stays **`0.1.0`** in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` across alphas. The Git tag is the public version. Do not bump the app version for an alpha or a nightly. Do not pin a `v*` tag in README or on vocawin.com.
+App version stays **`0.1.0`** in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` across betas. The Git tag is the public version. Do not bump the app version for a beta or a nightly. Do not pin a `v*` tag in README or on vocawin.com.
 
 | Workflow | Trigger | Effect |
 | --- | --- | --- |
@@ -125,13 +125,13 @@ App version stays **`0.1.0`** in `package.json`, `src-tauri/Cargo.toml`, and `sr
 | `nightly.yml` | cron + dispatch | Moving `nightly` prerelease from `main` when app source changed. Not a `v*` tag. |
 | `deploy-pages.yml` | `web/**` on `main` | Publishes vocawin.com. |
 
-Named tester cuts: `v0.1.0-alpha.N` via `RELEASE.md`. Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard — one installer per PC, not both.
+Named tester cuts: `v0.1.0-beta.N` via `RELEASE.md`. Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard. Use one installer per PC, not both.
 
-Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named alpha must not.
+Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named beta must not be cut from a branch click.
 
 ## Website (`web/`)
 
-Static HTML/CSS/JS. Hero download goes to `/releases`, with a quieter nightly link. `web/tests/site.test.mjs` enforces honesty: developer alpha, unsigned, SmartScreen, no `v*` pin, no “coming soon”, no telemetry snippets, AGPL-3.0-or-later.
+Static HTML/CSS/JS. Hero download goes to `/releases`, with a quieter nightly link. `web/tests/site.test.mjs` enforces honesty: beta, unsigned, SmartScreen, no `v*` pin, no "coming soon", no telemetry snippets, AGPL-3.0-or-later.
 
 If you change landing copy, run `node --test tests/site.test.mjs` from `web/`. Do not edit the VocaHQ directory repo from here.
 

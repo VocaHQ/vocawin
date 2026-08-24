@@ -1,4 +1,4 @@
-# Windows alpha for testers. Unsigned installers.
+# Windows tagged prerelease for testers. Unsigned installers.
 # Not a purchased CA / store build. vocawin.com points at GitHub Releases.
 #
 # Tag push is the only trigger. windows-ci.yml must never set tagName.
@@ -8,7 +8,7 @@
 # No workflow_dispatch, so a branch click cannot publish.
 # includeUpdaterJson is off so we do not upload latest.json.
 
-name: Windows alpha release
+name: Windows tagged prerelease
 
 on:
   push:
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   release:
-    name: Windows alpha installers
+    name: Windows tagged installers
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     permissions:
@@ -70,9 +70,9 @@ jobs:
           CMAKE_GENERATOR: Ninja
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: VocaWin ${{ github.ref_name }} (Windows alpha)
+          releaseName: VocaWin ${{ github.ref_name }} (Windows beta)
           releaseBody: |
-            This is a Windows alpha for testers. vocawin.com points at GitHub Releases. It is not a store build and not a stable public ship.
+            This is a Windows beta for testers. vocawin.com points at GitHub Releases. It is not a store build and not a stable public ship.
 
             The installers are unsigned. Windows will say the publisher is unknown. That is expected. More info, then Run anyway if you trust the file.
           releaseDraft: false

@@ -1,6 +1,6 @@
 # Moving GitHub Release tagged `nightly` for testers who want today's main.
-# Does not replace the v* alpha. windows-alpha-release.yml still owns tagged cuts.
-# Tag name is `nightly`, not v*, so it cannot fire the alpha workflow.
+# Does not replace the last tagged tester cut. windows-alpha-release.yml still owns v* tags.
+# Tag name is `nightly`, not v*, so it cannot fire the tagged prerelease workflow.
 # Installers stay unsigned. SmartScreen is expected.
 
 name: Nightly
@@ -174,11 +174,11 @@ jobs:
           $sums = (Get-Content nightly-out\checksums.txt -Raw).Trim()
           $fence = '```'
           $notes = @(
-            "Unsigned installer from ``main`` @ ``$($env:SHORT_SHA)``. This is not the tagged alpha.",
+            "Unsigned installer from ``main`` @ ``$($env:SHORT_SHA)``. This is not the last tagged tester cut.",
             "",
             "Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. There is no store signature and no auto-update.",
             "",
-            "Prefer the latest ``v*`` alpha if you want the last cut we named. Use nightly if you want today's tree.",
+            "Prefer the latest tagged Release if you want the last cut we named. Use nightly if you want today's tree.",
             "",
             "## Install",
             "",
