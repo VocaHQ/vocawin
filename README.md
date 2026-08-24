@@ -17,7 +17,7 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/Website-vocawin.com-informational)](https://vocawin.com)
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/t6muquAJbm)
-[![Follow us](https://img.shields.io/badge/Follow%20us-000000?logo=x&logoColor=white)](https://x.com/vocahq)
+[![Follow on X](https://img.shields.io/badge/Follow%20%40vocahq-000000?style=flat&logo=x&logoColor=white)](https://x.com/vocahq)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
 Beta. Unsigned. Testers can grab a build from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). This is not a signed store build and not a stable public release.
@@ -108,9 +108,9 @@ Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) 
 | Family | **VocaHQ** | [vocahq.com](https://vocahq.com) | [VocaHQ](https://github.com/VocaHQ) | Directory |
 | Linux | **VocaLinux** | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available |
 | macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
-| iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Beta / source build |
+| iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight |
 | Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta |
-| Infrastructure | **VocaGateway** | | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
+| Infrastructure | **VocaGateway** | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
 
