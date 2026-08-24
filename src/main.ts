@@ -714,7 +714,7 @@ function debugPage() {
 }
 
 function aboutPage() {
-  return `<header><div><p class="overline">ABOUT</p><h1>VocaWin <em>alpha.</em></h1></div></header>
+  return `<header><div><p class="overline">ABOUT</p><h1>VocaWin <em>beta.</em></h1></div></header>
     <section class="about-hero">
       <img class="about-logo" src="${familyLogo}" width="96" height="96" alt="Voca" />
       <h2>VocaWin</h2>
@@ -724,7 +724,7 @@ function aboutPage() {
     <section class="settings-card">
       <p class="settings-group">This build</p>
       <div class="about-copy">
-        <p>This is an unsigned developer alpha. It is not a store listing and not a stable public release. Windows will likely say the publisher is unknown. That is SmartScreen. Use More info, then Run anyway, only if you trust the GitHub Release you downloaded.</p>
+        <p>This is an unsigned beta. It is not a store listing and not a stable public release. Windows will likely say the publisher is unknown. That is SmartScreen. Use More info, then Run anyway, only if you trust the GitHub Release you downloaded.</p>
         <p>The community is expected to help improve it. If something breaks, file an issue.</p>
       </div>
     </section>
@@ -816,7 +816,7 @@ function render() {
     about: aboutPage,
   };
   app.innerHTML = `<aside>
-    <div class="brand"><span class="mark">${sidebarMark}</span><span>VocaWin</span><span class="brand-tag" title="Developer-only build">Alpha</span></div>
+    <div class="brand"><span class="mark">${sidebarMark}</span><span>VocaWin</span><span class="brand-tag" title="Unsigned tester build">Beta</span></div>
     <p class="brand-subtitle">Voice dictation, kept private.</p>
     <nav>${nav("dictation", "Dictation", "◉")}${nav("models", "Models", "◇")}${nav("history", "History", "≡")}${nav("settings", "Settings", "⚙")}${nav("debug", "Debug", "⌗")}${nav("about", "About", "ⓘ")}</nav>
     ${sidebarFooter()}

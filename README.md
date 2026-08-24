@@ -10,7 +10,7 @@
 
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocawin?include_prereleases&sort=semver)](https://github.com/VocaHQ/vocawin/releases)
 [![Nightly](https://img.shields.io/badge/Nightly-download-blueviolet)](https://github.com/VocaHQ/vocawin/releases/tag/nightly)
-[![Status](https://img.shields.io/badge/status-developer%20alpha-yellow)](#development)
+[![Status](https://img.shields.io/badge/status-beta-yellow)](#development)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)](#system-requirements)
 [![Privacy](https://img.shields.io/badge/privacy-on%20this%20PC-success)](#key-principles)
 
@@ -20,7 +20,7 @@
 [![Follow us](https://img.shields.io/badge/Follow%20us-000000?logo=x&logoColor=white)](https://x.com/vocahq)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
-Developer alpha. Unsigned. Testers can grab a build from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). This is not a signed store build and not a stable public release.
+Beta. Unsigned. Testers can grab a build from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). This is not a signed store build and not a stable public release.
 
 </div>
 
@@ -39,13 +39,13 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 - **Open source** - The repository is public
 - **No telemetry in the product** - The app does not phone home
 - **Windows native** - Tray app, hotkey, WASAPI, text at the caret
-- **Honest status** - Developer alpha. Unsigned. Windows will likely say the publisher is unknown.
+- **Honest status** - Beta. Unsigned. Windows will likely say the publisher is unknown.
 
 ## Try it
 
-Testers can install an unsigned developer alpha today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
+Testers can install an unsigned beta today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
 
-Want today's `main` instead of the last tagged alpha? Use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS and MSI, rebuilt when app source on `main` changes. Prefer the tagged alpha if you want the last cut we named.
+Want today's `main` instead of the last tagged Release? Use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS and MSI, rebuilt when app source on `main` changes. Prefer the latest tagged Release if you want the last cut we named.
 
 This is a tester build you can run today. It is not a store listing and not a stable public release.
 
@@ -109,7 +109,7 @@ Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) 
 | Linux | **VocaLinux** | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available |
 | macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Beta / source build |
-| Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Developer alpha |
+| Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta |
 | Infrastructure | **VocaGateway** | | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
@@ -159,7 +159,7 @@ GitHub Actions publishes `web/` on pushes to `main`. The `web/CNAME` file maps `
 
 ## Contributing
 
-VocaWin is in early development. Download the unsigned alpha from [Releases](https://github.com/VocaHQ/vocawin/releases) if you want to try it. File bugs on [Issues](https://github.com/VocaHQ/vocawin/issues). The family directory is [vocahq.com](https://vocahq.com).
+VocaWin is in early development. Download the unsigned beta from [Releases](https://github.com/VocaHQ/vocawin/releases) if you want to try it. File bugs on [Issues](https://github.com/VocaHQ/vocawin/issues). The family directory is [vocahq.com](https://vocahq.com).
 
 ## Project references
 

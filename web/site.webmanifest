@@ -1,7 +1,7 @@
 {
   "name": "VocaWin",
   "short_name": "VocaWin",
-  "description": "Windows voice typing that stays on this PC. Unsigned developer alpha.",
+  "description": "Windows voice typing that stays on this PC. Unsigned beta.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f1e8",

@@ -30,7 +30,7 @@ test("document ids are unique", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("unsigned alpha download is explicit and not oversold", () => {
+test("unsigned beta download is explicit and not oversold", () => {
   assert.match(
     html,
     /class="hero-copy"[\s\S]*class="button button-primary" href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases"/,
@@ -42,15 +42,18 @@ test("unsigned alpha download is explicit and not oversold", () => {
   );
   assert.doesNotMatch(html, /\/releases\/tag\/v/);
   assert.doesNotMatch(html, /softwareVersion/);
+  assert.doesNotMatch(html, /v0\.1\.0-beta\.1/);
+  assert.doesNotMatch(html, /v0\.1\.0-alpha/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/issues"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/blob\/main\/docs\/setup\.md"/);
   assert.match(html, /unsigned/i);
   assert.match(html, /SmartScreen|publisher is unknown/i);
   assert.match(html, /More info, then Run anyway/i);
-  assert.match(html, /developer alpha/i);
-  assert.match(html, /Windows · developer alpha/);
+  assert.match(html, /\bbeta\b/i);
+  assert.match(html, /Windows · beta/);
+  assert.doesNotMatch(html, /developer alpha/i);
   assert.doesNotMatch(html, /href="\/setup"/);
-  assert.match(html, /download the alpha/i);
+  assert.match(html, /download the beta/i);
   assert.match(html, /NSIS current-user setup\.exe and (an )?MSI/i);
   assert.match(html, /LimitedAvailability/);
   assert.doesNotMatch(html, /PreOrder/);
