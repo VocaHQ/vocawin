@@ -24,6 +24,7 @@
   --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
     monospace;
   --measure: 1180px;
+  --sticky-offset: 7.5rem;
 }
 
 * {
@@ -33,18 +34,25 @@
 html {
   overflow-x: clip;
   scroll-behavior: smooth;
-  scroll-padding-top: 76px;
+  scroll-padding-top: var(--sticky-offset);
 }
 
 body {
   margin: 0;
   overflow-x: clip;
+  scroll-padding-top: var(--sticky-offset);
   color: var(--ink);
   background: var(--paper);
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+h2,
+h3,
+[id] {
+  scroll-margin-top: var(--sticky-offset);
 }
 
 ::selection {
@@ -1018,7 +1026,7 @@ code {
   letter-spacing: 0.08em;
 }
 
-.note-page h4 {
+.note-page .note-title {
   margin: 10px 0 12px;
   font-family: var(--font-display);
   font-size: 28px;
@@ -1785,6 +1793,10 @@ code {
 }
 
 @media (max-width: 920px) {
+  :root {
+    --sticky-offset: 6.75rem;
+  }
+
   .menu-bar {
     grid-template-columns: 1fr auto;
   }
