@@ -89,11 +89,48 @@ test("vocahq.com and the family are linked", () => {
   assert.match(html, /href="https:\/\/vocalinux\.com\/"/);
   assert.match(html, /href="https:\/\/vocamac\.com\/"/);
   assert.match(html, /href="https:\/\/vocaphone\.vocahq\.com\/"/);
+  assert.match(html, /href="https:\/\/vocagateway\.vocahq\.com\/"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin"/);
   assert.match(html, /href="https:\/\/discord\.gg\/t6muquAJbm"/);
   assert.match(html, /href="https:\/\/x\.com\/vocahq"/);
   assert.doesNotMatch(html, /jatinkrmalik\/vocawin/);
+});
+
+test("family cards match PRODUCT.md phone and gateway status", () => {
+  assert.match(html, /href="https:\/\/vocagateway\.vocahq\.com\/"/);
+  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
+  assert.match(html, /href="https:\/\/vocaphone\.vocahq\.com\/"/);
+  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocaphone"/);
+  assert.match(html, /TestFlight/);
+  assert.match(html, /1,000\s+seats/);
+  assert.match(html, /Android 13\+/);
+  assert.match(html, /iOS 17\+/);
+  assert.match(html, /phone · beta \/ testflight/);
+  assert.match(html, /<small>beta \/ testflight<\/small>/);
+  assert.doesNotMatch(html, /iPhone currently needs an iOS 17\+ source build/);
+  assert.doesNotMatch(html, /beta \/ source build/);
+  assert.doesNotMatch(html, /phone · beta \/ source</);
+  const gatewayCard = html.slice(html.indexOf("<h3>VocaGateway</h3>"));
+  assert.ok(
+    gatewayCard.indexOf("vocagateway.vocahq.com") <
+      gatewayCard.indexOf("github.com/VocaHQ/vocagateway"),
+    "VocaGateway site link should come before source",
+  );
+});
+
+test("decorative mockups stay out of the heading outline", () => {
+  assert.match(html, /Standup notes/);
+  assert.doesNotMatch(html, /<h[1-6][^>]*>\s*Standup notes\s*<\/h[1-6]>/);
+  assert.doesNotMatch(html, /<h4\b/);
+});
+
+test("sticky header leaves room for in-page headings", () => {
+  assert.match(css, /--sticky-offset:\s*7\.5rem/);
+  assert.match(css, /scroll-padding-top:\s*var\(--sticky-offset\)/);
+  assert.match(css, /h2,\s*\n\s*h3,\s*\n\s*\[id\]\s*\{/);
+  assert.match(css, /scroll-margin-top:\s*var\(--sticky-offset\)/);
+  assert.doesNotMatch(css, /scroll-padding-top:\s*76px/);
 });
 
 test("Windows chrome is used instead of macOS traffic lights", () => {
