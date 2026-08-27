@@ -125,9 +125,9 @@ main{height:100vh;overflow-y:auto;padding:36px 48px 48px;position:relative;--scr
 .about-copy p{margin:0 0 10px;color:#5a615d;font-size:13px;line-height:1.55}
 .about-links{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:10px 16px}
 .about-links .text-button{margin:0}
-.about-report{display:inline-flex;align-items:center;gap:8px;margin:8px 0 12px;color:#f2f6f2}
+.about-report{display:inline-flex;align-items:center;gap:8px;margin:0;color:#f2f6f2}
 .about-report svg{width:16px;height:16px;display:block;flex:none}
-.about-talk{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.about-talk{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .about-talk-btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #c6cdc8;border-radius:8px;background:#fff;color:#0f6b57;font-size:12px;font-weight:700}
 .about-talk-btn:hover{background:#f1f4f1}
 .about-talk-btn:focus-visible{outline:2px solid #0f6b57;outline-offset:2px}
