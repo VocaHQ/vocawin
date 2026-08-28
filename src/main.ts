@@ -745,8 +745,8 @@ function aboutPage() {
       <p class="settings-group">Talk to us</p>
       <div class="about-copy">
         <p>Bugs, feedback, and feature ideas open a new GitHub issue. You pick the template on the next screen.</p>
-        <button type="button" class="primary about-report" data-open="https://github.com/VocaHQ/vocawin/issues/new/choose">${githubMark}<span>Report a bug or idea</span></button>
         <ul class="about-talk" role="list">
+          <li><button type="button" class="primary about-report" data-open="https://github.com/VocaHQ/vocawin/issues/new/choose">${githubMark}<span>Report a bug or idea</span></button></li>
           <li><button type="button" class="about-talk-btn" data-open="https://discord.gg/UMJduhcqn">${discordMark}<span>Discord</span></button></li>
           <li><button type="button" class="about-talk-btn" data-open="https://x.com/vocahq">${xMark}<span>X</span></button></li>
           <li><button type="button" class="about-talk-btn" data-open="mailto:hello@vocahq.com">${mailMark}<span>Email</span></button></li>
