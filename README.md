@@ -56,7 +56,7 @@ This is a tester build you can run today. It is not a store listing and not a st
 - **Settings** - Hotkeys, models, languages, silence detection, sounds, start on login.
 - **Local models** - In-app Download for Whisper/whisper.cpp, Distil-Whisper, Parakeet, Moonshine, SenseVoice, GigaAM, and Canary.
 - **GPU** - whisper.cpp on Vulkan with CPU fallback. ONNX Runtime on DirectML with CPU fallback.
-- **Clipboard restore** after injection.
+- **Clipboard stays yours.** Insertion types at the caret and does not replace what you copied. Turn on Copy to clipboard in Settings if you want the transcript left there. Clipboard paste is only a fallback, and that path restores the previous clipboard.
 
 ### Still rough
 
