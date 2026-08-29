@@ -2348,7 +2348,7 @@ fn allowed_external_url(url: &str) -> bool {
         "https://vocamac.com",
         "https://vocaphone.vocahq.com",
         "https://vocagateway.vocahq.com",
-        "https://discord.gg/UMJduhcqn",
+        "https://discord.gg/t6muquAJbm",
         "https://x.com/vocahq",
         "https://github.com/VocaHQ/vocawin",
         "https://github.com/VocaHQ/vocawin/issues/new/choose",
