@@ -40,9 +40,12 @@ test("unsigned beta download is explicit and not oversold", () => {
     html,
     /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases\/tag\/nightly"/,
   );
-  assert.doesNotMatch(html, /\/releases\/tag\/v/);
-  assert.doesNotMatch(html, /softwareVersion/);
-  assert.doesNotMatch(html, /v0\.1\.0-beta\.1/);
+  assert.match(
+    html,
+    /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases\/tag\/v0\.1\.0-beta\.1"/,
+  );
+  assert.match(html, /"softwareVersion": "v0\.1\.0-beta\.1"/);
+  assert.match(html, /v0\.1\.0-beta\.1/);
   assert.doesNotMatch(html, /v0\.1\.0-alpha/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/issues"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/blob\/main\/docs\/setup\.md"/);
@@ -51,6 +54,10 @@ test("unsigned beta download is explicit and not oversold", () => {
   assert.match(html, /More info, then Run anyway/i);
   assert.match(html, /\bbeta\b/i);
   assert.match(html, /Windows · beta/);
+  assert.match(html, /gateway · beta/);
+  assert.doesNotMatch(html, /gateway · early/);
+  assert.doesNotMatch(html, /Treat it as\s+early/i);
+  assert.doesNotMatch(html, /Treat the beta as early/i);
   assert.doesNotMatch(html, /developer alpha/i);
   assert.doesNotMatch(html, /href="\/setup"/);
   assert.match(html, /download the beta/i);
@@ -108,6 +115,8 @@ test("family cards match PRODUCT.md phone and gateway status", () => {
   assert.match(html, /iOS 17\+/);
   assert.match(html, /phone · beta \/ testflight/);
   assert.match(html, /<small>beta \/ testflight<\/small>/);
+  assert.match(html, /<small>beta<\/small>/);
+  assert.doesNotMatch(html, /<small>early<\/small>/);
   assert.doesNotMatch(html, /iPhone currently needs an iOS 17\+ source build/);
   assert.doesNotMatch(html, /beta \/ source build/);
   assert.doesNotMatch(html, /phone · beta \/ source</);
