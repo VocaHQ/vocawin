@@ -4,7 +4,7 @@ This is the checklist we already use. A `v*` tag is what ships a **named** teste
 
 ## Tag
 
-The next named tester tag is `v0.1.0-beta.1`. Cut it only after Jatin asks. The latest tagged Release today is still `v0.1.0-alpha.3`. Do not treat `v0.1.0-beta.1` as live until that tag is pushed. Tag the commit you want testers to run, then push it. That is the only trigger.
+The latest tagged tester cut is `v0.1.0-beta.1`. It is live on GitHub Releases. Cut the next `v*` tag only after Jatin asks. Tag the commit testers should run, then push it. That is the only trigger.
 
 `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` stay at `0.1.0` across these cuts. The installers keep the `VocaWin_0.1.0_*` filenames. The Git tag is the public version. Do not bump the app version for a beta.
 
@@ -34,7 +34,7 @@ You can rename the Release to drop the `v` and the `(Windows beta)` suffix. That
 
 ## Public pages
 
-[vocawin.com](https://vocawin.com) lives in `web/` and publishes from `main` when `web/` changes. The hero download still goes to [Releases](https://github.com/VocaHQ/vocawin/releases), not a `v*` tag. A quieter [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) link is allowed because that tag is moving, not a version pin. Do not pin `v0.1.0-beta.1` or any other `v*` tag in the hero, the FAQ, or JSON-LD. Check the live page still says beta, unsigned, More info then Run anyway.
+[vocawin.com](https://vocawin.com) lives in `web/` and publishes from `main` when `web/` changes. Name the current tagged cut (`v0.1.0-beta.1`) next to the download facts and in JSON-LD `softwareVersion`, and link [that tag](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1). The primary download button can still go to [Releases](https://github.com/VocaHQ/vocawin/releases). Nightly stays on the moving [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) tag. When we cut the next named tag, bump those pins in the same site PR. Check the live page still says beta, unsigned, More info then Run anyway.
 
 The README badge is `github/v/release` with `include_prereleases`. It tracks the latest prerelease by itself. Leave it pointed at `/releases`. Do not pin a tag in the README.
 
@@ -50,4 +50,4 @@ VocaHQ owns vocahq.com and the family PRODUCT.md. If that page still lists an ol
 
 ## What not to do
 
-Do not pin a `v*` tag in the README or on vocawin.com. Do not bump the `0.1.0` app version for a beta or a nightly. Do not tell testers the build is signed, Coming soon, or Available now. Do not cut a named beta from a branch click. Nightly may be dispatched by hand.
+Do not pin a `v*` tag in the README. vocawin.com should name the current tagged cut and get updated on the next tag. Do not bump the `0.1.0` app version for a beta or a nightly. Do not tell testers the build is signed, Coming soon, or Available now. Do not cut a named beta from a branch click. Nightly may be dispatched by hand.
