@@ -58,6 +58,8 @@ type Settings = {
   historyKeepAudio: boolean;
   insertionMode: string;
   pasteApps: string;
+  gatewayEnabled: boolean;
+  gatewayPublicUrl: string;
 };
 type Replacement = { heard: string; replacement: string };
 type Snippet = { trigger: string; expansion: string };
@@ -127,6 +129,29 @@ type DebugReport = {
 type RunningApp = { name: string; label: string };
 type EngineFilter = "all" | "whisper" | "onnx";
 type LanguageFilter = "any" | "english" | "multilingual";
+type GatewayPhase = "dockerMissing" | "stopped" | "starting" | "liveNotReady" | "ready";
+type GatewayStatus = {
+  phase: GatewayPhase;
+  phaseLabel: string;
+  dockerAvailable: boolean;
+  dockerDetail: string;
+  publicUrl: string;
+  suggestedPublicUrl: string;
+  pairable: boolean;
+  live: boolean;
+  ready: boolean;
+  message: string;
+  webuiUrl: string;
+  dockerInstallUrl: string;
+  gatewaySiteUrl: string;
+  image: string;
+  releaseTag: string;
+};
+type GatewayPairing = {
+  url: string;
+  payload: string;
+  qrSvg?: string | null;
+};
 
 /** One searchable settings row. `page` is the sidebar page it lives on;
  *  `card` groups rows inside that page. */
@@ -352,6 +377,10 @@ let previewStartNext = true;
 let runningApps: RunningApp[] = [];
 let focusRestore: { id: string; start: number; end: number } | null = null;
 let paneScroll = 0;
+let gatewayStatus: GatewayStatus | null = null;
+let gatewayPairing: GatewayPairing | null = null;
+let gatewayBusy = false;
+let gatewayPollTimer: number | null = null;
 let resetPaneScroll = false;
 let micPeak = 0;
 
@@ -752,6 +781,77 @@ function idleUnloadOptions() {
   return IDLE_PRESETS.map(([value, label]) =>
     `<option value="${value}" ${value === current ? "selected" : ""}>${label}</option>`
   ).join("");
+}
+
+function gatewayMatches(query: string) {
+  if (!query) return true;
+  const hay = "gateway docker desktop wsl compose pair qr phone vocagateway public url start stop container not on-device";
+  return query.split(/\s+/).every(part => hay.includes(part));
+}
+
+function gatewaySection() {
+  const status = gatewayStatus;
+  const phase = status?.phaseLabel ?? (settings.gatewayEnabled ? "Checking…" : "Off");
+  const message = status?.message
+    ?? "Optional local VocaGateway for phones and other Voca clients. VocaWin dictation stays on this PC.";
+  const dockerOk = status?.dockerAvailable ?? false;
+  const hasUrl = Boolean((settings.gatewayPublicUrl || "").trim());
+  const canStart = settings.gatewayEnabled && dockerOk && hasUrl && !gatewayBusy;
+  const canStop = settings.gatewayEnabled && dockerOk && !gatewayBusy;
+  const pairable = Boolean(status?.pairable);
+  const publicValue = settings.gatewayPublicUrl || status?.suggestedPublicUrl || "";
+  const dockerLink = status?.dockerInstallUrl
+    ?? "https://docs.docker.com/desktop/setup/install/windows-install/";
+  const siteLink = status?.gatewaySiteUrl ?? "https://vocagateway.vocahq.com";
+  const webui = status?.webuiUrl ?? "http://127.0.0.1:8765/";
+  const qr = gatewayPairing?.qrSvg
+    ? `<div class="gateway-qr" aria-label="Pairing QR">${gatewayPairing.qrSvg}</div>`
+    : "";
+  const pairUrl = gatewayPairing?.url
+    ? `<div class="gateway-pair-url"><code>${escape(gatewayPairing.url)}</code>
+        <button type="button" class="quiet-button" id="gateway-copy-url">Copy URL</button></div>`
+    : pairable
+      ? `<p class="gateway-note">Pairing is available. Refresh if the QR does not appear.</p>`
+      : "";
+
+  return `<section class="settings-card gateway-card" data-settings-group="Gateway"><p class="settings-group">Gateway</p>
+    <div class="gateway-lede about-copy">
+      <p>Optional. Starts a local <button type="button" class="text-button" data-open="${escape(siteLink)}">VocaGateway</button> container so phones and other Voca clients can pair with this PC. This is <strong>not on-device</strong>: audio that uses Gateway leaves this PC for the container. VocaWin’s own dictation still runs locally.</p>
+    </div>
+    <div class="setting-row">
+      <div><strong>Enable Gateway</strong><p>Opt in to manage a local Compose project named vocagateway.</p></div>
+      <label class="switch"><input id="gateway-enabled" type="checkbox" ${settings.gatewayEnabled ? "checked" : ""}/><span></span></label>
+    </div>
+    <div class="setting-row">
+      <div><strong>Status</strong><p>${escape(message)}</p></div>
+      <div class="gateway-status-readout"><strong>${escape(phase)}</strong><span>${escape(status?.dockerDetail || (dockerOk ? "Docker ready" : "Docker Desktop + WSL2 required"))}</span></div>
+    </div>
+    ${dockerOk ? "" : `<div class="setting-row"><div><strong>Docker Desktop</strong><p>Install Docker Desktop for Windows. WSL2 is required. Start stays off until Docker answers.</p></div>
+      <button type="button" class="quiet-button" data-open="${escape(dockerLink)}">Install Docker</button></div>`}
+    <div class="setting-row">
+      <div><strong>Public URL</strong><p>Phone-reachable base URL (LAN or Tailscale). Never 127.0.0.1 or localhost. Required under Docker Desktop.</p></div>
+      <div class="stacked-control">
+        <input id="gateway-public-url" type="url" placeholder="http://192.168.1.20:8765" value="${escape(publicValue)}" ${settings.gatewayEnabled ? "" : "disabled "}/>
+        ${status?.suggestedPublicUrl && !settings.gatewayPublicUrl ? `<button type="button" class="quiet-button" id="gateway-use-suggested">Use suggested</button>` : ""}
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><strong>Container</strong><p>Pinned image ${escape(status?.image ?? "ghcr.io/vocahq/vocagateway:v0.1.0")}. Stop keeps model volumes.</p></div>
+      <div class="status-actions">
+        <button type="button" class="quiet-button" id="gateway-start" ${canStart ? "" : "disabled"}>${gatewayBusy ? "Working…" : "Start"}</button>
+        <button type="button" class="quiet-button" id="gateway-stop" ${canStop ? "" : "disabled"}>Stop</button>
+        <button type="button" class="quiet-button" id="gateway-open-webui" ${status?.live ? "" : "disabled"} data-open="${escape(webui)}">Open WebUI</button>
+      </div>
+    </div>
+    ${pairable || gatewayPairing ? `<div class="gateway-pairing">
+      <p class="settings-group">Pairing</p>
+      <p class="gateway-note">Scan with VocaPhone once Gateway is live. Pairing can work before Ready while a model downloads.</p>
+      ${qr}${pairUrl}
+      <div class="status-actions gateway-pair-actions">
+        <button type="button" class="quiet-button" id="gateway-refresh-pair">Refresh QR</button>
+      </div>
+    </div>` : ""}
+  </section>`;
 }
 
 function previewSoundControl() {
@@ -1304,8 +1404,9 @@ function statsPage() {
 }
 
 function generalPage() {
+  const gateway = gatewayMatches(searchQuery()) ? gatewaySection() : "";
   return `${pageHeader("GENERAL", "Make it <em>yours.</em>", "VocaWin only stores these choices locally on this PC. Each change is saved as you make it.")}
-  ${settingsCards("settings")}`;
+  ${settingsCards("settings")}${gateway}`;
 }
 
 function powerPage() {
@@ -1386,7 +1487,7 @@ function aboutPage() {
     <section class="settings-card">
       <p class="settings-group">Part of VocaHQ</p>
       <div class="about-copy">
-        <p>VocaWin is one of the VocaHQ apps. The same private dictation already runs on Linux as VocaLinux, on macOS as VocaMac, and on phones as VocaPhone. VocaGateway is optional self-hosted compute for other Voca clients.</p>
+        <p>VocaWin is one of the VocaHQ apps. The same private dictation already runs on Linux as VocaLinux, on macOS as VocaMac, and on phones as VocaPhone. VocaGateway is optional self-hosted compute for other Voca clients; Settings can start a local container for pairing. Win dictation stays on this PC.</p>
         <ul class="about-family" role="list">
           ${familyRow("https://vocahq.com", "about-mark-hq", hqMark, "VocaHQ", "vocahq.com")}
           ${familyRow("https://vocalinux.com", "about-mark-platform", linuxMark, "VocaLinux", "vocalinux.com")}
@@ -1645,6 +1746,14 @@ function openView(next: View) {
     settingsQuery = "";
     pageBeforeSearch = null;
   }
+  stopGatewayPolling();
+  if (next === "settings") {
+    void Promise.all([refreshRunningApps(), refreshRuntime(), refreshGatewayStatus()]).then(() => {
+      render();
+      startGatewayPolling();
+    });
+    return;
+  }
   if (next === "power" || next === "formatting") {
     void Promise.all([refreshRunningApps(), refreshRuntime()]).then(render);
     return;
@@ -1685,6 +1794,7 @@ function bindChrome() {
     void addWatchedApp();
   });
   bindWatchedAppChips();
+  bindGatewayControls();
   bindFilterCombo("#engine-filter", ENGINE_FILTERS, value => { engineFilter = value as EngineFilter; });
   bindFilterCombo("#language-filter", LANGUAGE_FILTERS, value => { languageFilter = value as LanguageFilter; });
   bindLiveSearch("#settings-search", applySettingsSearch);
@@ -1791,13 +1901,13 @@ function bindAutosave() {
     void persistSettings();
   };
   document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging, #idle-unload").forEach(node => {
-    if (node.id === "custom-vocabulary" || node.id === "language") {
+    if (node.id === "custom-vocabulary" || node.id === "language" || node.id === "gateway-public-url") {
       node.addEventListener("change", persistFromEvent);
       node.addEventListener("blur", persistFromEvent);
       return;
     }
     node.addEventListener("change", persistFromEvent);
-    if (node instanceof HTMLInputElement && (node.type === "number" || node.type === "search")) {
+    if (node instanceof HTMLInputElement && (node.type === "number" || node.type === "search" || node.type === "url")) {
       node.addEventListener("blur", persistFromEvent);
     }
   });
@@ -1847,6 +1957,7 @@ function collectSettingsFromDom() {
   if (debugLogging) settings.debugLogging = debugLogging.checked;
   const customVocabulary = document.querySelector<HTMLTextAreaElement>("#custom-vocabulary");
   if (customVocabulary) settings.customVocabulary = customVocabulary.value;
+<<<<<<< HEAD
   const pick = (id: string) => document.querySelector<HTMLSelectElement>(`#${id}`)?.value;
   settings.insertionMode = pick("insertion-mode") ?? settings.insertionMode;
   const checked = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)?.checked;
@@ -1867,6 +1978,10 @@ function collectSettingsFromDom() {
   settings.spokenEmoji = checked("spoken-emoji") ?? settings.spokenEmoji;
   settings.historyKeepAudio = checked("history-keep-audio") ?? settings.historyKeepAudio;
   settings.readyPill = checked("ready-pill") ?? settings.readyPill;
+  const gatewayEnabled = document.querySelector<HTMLInputElement>("#gateway-enabled");
+  if (gatewayEnabled) settings.gatewayEnabled = gatewayEnabled.checked;
+  const gatewayPublicUrl = document.querySelector<HTMLInputElement>("#gateway-public-url");
+  if (gatewayPublicUrl) settings.gatewayPublicUrl = gatewayPublicUrl.value.trim();
 }
 
 async function persistSettings(silent = false, skipCollect = false) {
@@ -1949,6 +2064,150 @@ async function removeWatchedApp(name: string) {
   settings.autoPauseEnabled = remaining.length > 0;
   await persistSettings();
   paintPowerApps();
+}
+
+async function refreshGatewayStatus(opts: { quiet?: boolean } = {}) {
+  try {
+    const next = await invoke<GatewayStatus>("gateway_status");
+    const wasPairable = gatewayStatus?.pairable;
+    gatewayStatus = next;
+    if (next.publicUrl && !settings.gatewayPublicUrl) {
+      settings.gatewayPublicUrl = next.publicUrl;
+    }
+    if (next.pairable && (!gatewayPairing || !wasPairable)) {
+      await refreshGatewayPairing(opts);
+    }
+    if (!next.pairable) {
+      gatewayPairing = null;
+    }
+  } catch (error) {
+    if (!opts.quiet) showToast(String(error));
+  }
+}
+
+async function refreshGatewayPairing(opts: { quiet?: boolean } = {}) {
+  try {
+    gatewayPairing = await invoke<GatewayPairing>("gateway_pairing");
+  } catch (error) {
+    gatewayPairing = null;
+    if (!opts.quiet) showToast(String(error));
+  }
+}
+
+function startGatewayPolling() {
+  stopGatewayPolling();
+  if (view !== "settings") return;
+  gatewayPollTimer = window.setInterval(() => {
+    if (view !== "settings" || gatewayBusy) return;
+    const before = JSON.stringify({
+      phase: gatewayStatus?.phase,
+      message: gatewayStatus?.message,
+      pairable: gatewayStatus?.pairable,
+      live: gatewayStatus?.live,
+      ready: gatewayStatus?.ready,
+      docker: gatewayStatus?.dockerAvailable,
+    });
+    void refreshGatewayStatus({ quiet: true }).then(() => {
+      if (view !== "settings") return;
+      const after = JSON.stringify({
+        phase: gatewayStatus?.phase,
+        message: gatewayStatus?.message,
+        pairable: gatewayStatus?.pairable,
+        live: gatewayStatus?.live,
+        ready: gatewayStatus?.ready,
+        docker: gatewayStatus?.dockerAvailable,
+      });
+      if (before !== after) render();
+    });
+  }, 4000);
+}
+
+function stopGatewayPolling() {
+  if (gatewayPollTimer !== null) {
+    window.clearInterval(gatewayPollTimer);
+    gatewayPollTimer = null;
+  }
+}
+
+function bindGatewayControls() {
+  document.querySelector("#gateway-start")?.addEventListener("click", () => {
+    void (async () => {
+      gatewayBusy = true;
+      render();
+      try {
+        collectSettingsFromDom();
+        if (settings.gatewayPublicUrl) {
+          settings.gatewayPublicUrl = await invoke<string>("gateway_set_public_url", {
+            url: settings.gatewayPublicUrl,
+          });
+        }
+        await invoke("gateway_start");
+        showToast("Gateway starting…");
+        await refreshGatewayStatus();
+      } catch (error) {
+        showToast(String(error));
+      } finally {
+        gatewayBusy = false;
+        render();
+        startGatewayPolling();
+      }
+    })();
+  });
+  document.querySelector("#gateway-stop")?.addEventListener("click", () => {
+    void (async () => {
+      gatewayBusy = true;
+      render();
+      try {
+        await invoke("gateway_stop");
+        gatewayPairing = null;
+        showToast("Gateway stopped.");
+        await refreshGatewayStatus({ quiet: true });
+      } catch (error) {
+        showToast(String(error));
+      } finally {
+        gatewayBusy = false;
+        render();
+        startGatewayPolling();
+      }
+    })();
+  });
+  document.querySelector("#gateway-use-suggested")?.addEventListener("click", () => {
+    const suggested = gatewayStatus?.suggestedPublicUrl;
+    if (!suggested) return;
+    settings.gatewayPublicUrl = suggested;
+    const input = document.querySelector<HTMLInputElement>("#gateway-public-url");
+    if (input) input.value = suggested;
+    void (async () => {
+      try {
+        settings.gatewayPublicUrl = await invoke<string>("gateway_set_public_url", { url: suggested });
+        await persistSettings(true, true);
+        showToast("Public URL saved.");
+        render();
+      } catch (error) {
+        showToast(String(error));
+      }
+    })();
+  });
+  document.querySelector("#gateway-refresh-pair")?.addEventListener("click", () => {
+    void refreshGatewayPairing().then(render);
+  });
+  document.querySelector("#gateway-copy-url")?.addEventListener("click", () => {
+    const url = gatewayPairing?.url;
+    if (!url) return;
+    void (async () => {
+      try {
+        await invoke("copy_text", { text: url });
+        showToast("Pairing URL copied.");
+      } catch {
+        try {
+          await navigator.clipboard.writeText(url);
+          showToast("Pairing URL copied.");
+        } catch {
+          showToast("Could not copy pairing URL.");
+        }
+      }
+    })();
+  });
 }
 
 async function openExternal(url: string) {
@@ -2565,6 +2824,7 @@ Promise.all([
     debugLogging: saved.debugLogging ?? false,
     customVocabulary: saved.customVocabulary ?? "",
     copyToClipboard: saved.copyToClipboard ?? false,
+<<<<<<< HEAD
     cleanupLevel: saved.cleanupLevel ?? "medium",
     numbersAsDigits: saved.numbersAsDigits ?? false,
     numberSymbols: saved.numberSymbols ?? false,
@@ -2585,6 +2845,8 @@ Promise.all([
     historyKeepAudio: saved.historyKeepAudio ?? true,
     insertionMode: saved.insertionMode ?? "type",
     pasteApps: saved.pasteApps ?? "",
+    gatewayEnabled: saved.gatewayEnabled ?? false,
+    gatewayPublicUrl: saved.gatewayPublicUrl ?? "",
   };
   statuses = installs;
   history = entries;

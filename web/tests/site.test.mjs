@@ -87,8 +87,8 @@ test("privacy language states where processing happens", () => {
   assert.match(html, /on-device/i);
   assert.match(html, /first model download/i);
   assert.match(html, /not a Voca cloud/i);
-  assert.match(html, /VocaWin does not offer a gateway mode today/i);
-  assert.match(html, /Gateway mode is not on-device/i);
+  assert.match(html, /VocaWin[\s\S]*local Gateway container from Settings/i);
+  assert.match(html, /Gateway is not on-device/i);
 });
 
 test("vocahq.com and the family are linked", () => {
