@@ -110,9 +110,9 @@ Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) 
 | macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight |
 | Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta |
-| Infrastructure | **VocaGateway** | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
+| Infrastructure | **VocaGateway** | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Beta |
 
-VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
+VocaGateway is optional self-hosted compute. VocaWin can start a local Gateway container from Settings for pairing phones and other clients. Win dictation itself stays on this PC. Gateway is not on-device: audio that uses it leaves this machine for the container.
 
 ## Tech Stack
 

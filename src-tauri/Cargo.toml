@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["fs", "io-util", "rt"] }
 tar = "0.4"
 flate2 = "1"
 thiserror = "2"
+getrandom = "0.2"
 
 # Non-Windows keeps CPU-only whisper for shared unit tests.
 [target.'cfg(not(windows))'.dependencies]
