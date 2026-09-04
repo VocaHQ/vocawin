@@ -88,7 +88,6 @@ type GatewayStatus = {
 };
 type GatewayPairing = {
   url: string;
-  payload: string;
   qrSvg?: string | null;
 };
 
@@ -227,7 +226,15 @@ let gatewayPollTimer: number | null = null;
 let resetPaneScroll = false;
 let micPeak = 0;
 
-const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;
+/** Gateway QR SVG only. Strip script-ish markup before innerHTML. */
+const sanitizeGatewayQrSvg = (svg: string) => {
+  if (!svg.includes("<svg")) return "";
+  return svg
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, "");
+};", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const selected = () => models.find(model => model.id === settings.selectedModel);
 const modelInstalled = () => !!statuses[settings.selectedModel]?.installed;
 const formatBytes = (bytes?: number) => {
@@ -596,8 +603,9 @@ function gatewaySection() {
     ?? "https://docs.docker.com/desktop/setup/install/windows-install/";
   const siteLink = status?.gatewaySiteUrl ?? "https://vocagateway.vocahq.com";
   const webui = status?.webuiUrl ?? "http://127.0.0.1:8765/";
-  const qr = gatewayPairing?.qrSvg
-    ? `<div class="gateway-qr" aria-label="Pairing QR">${gatewayPairing.qrSvg}</div>`
+  const qrSvg = gatewayPairing?.qrSvg ? sanitizeGatewayQrSvg(gatewayPairing.qrSvg) : "";
+  const qr = qrSvg
+    ? `<div class="gateway-qr" aria-label="Pairing QR">${qrSvg}</div>`
     : "";
   const pairUrl = gatewayPairing?.url
     ? `<div class="gateway-pair-url"><code>${escape(gatewayPairing.url)}</code>
