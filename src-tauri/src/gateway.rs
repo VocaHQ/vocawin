@@ -61,7 +61,6 @@ pub struct GatewayStatus {
 #[serde(rename_all = "camelCase")]
 pub struct GatewayPairing {
     pub url: String,
-    pub payload: String,
     pub qr_svg: Option<String>,
 }
 
@@ -523,7 +522,6 @@ pub async fn pairing(dir: &Path, public_url: &str) -> Result<GatewayPairing, Str
     let qr_svg = fetch_qr_svg(&client, &token, &url).await;
     Ok(GatewayPairing {
         url: parsed.url.unwrap_or(url),
-        payload: parsed.payload,
         qr_svg,
     })
 }

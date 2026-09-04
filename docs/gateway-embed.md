@@ -41,8 +41,8 @@ If GHCR has no public image for that tag yet, fall back to a shallow clone of `V
 | `GET http://127.0.0.1:8765/health/live` | Process up |
 | `GET …/health/ready` | Ready for dictation (`503` = not yet) |
 | Pairable | live + non-loopback `PUBLIC_URL` + token (pairable **before** Ready) |
-| Pairing | `Authorization: Bearer <token>` `GET /v1/admin/pairing?url=…` |
-| QR | Prefer `GET /v1/admin/pairing/qr.svg` |
+| Pairing | `Authorization: Bearer <token>` `GET /v1/admin/pairing?url=…` (Rust only; UI gets URL + QR, not the raw payload/token) |
+| QR | Prefer `GET /v1/admin/pairing/qr.svg` (sanitized before Settings HTML) |
 
 Never put `127.0.0.1` / `localhost` in the QR or public URL.
 
