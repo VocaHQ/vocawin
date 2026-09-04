@@ -2,7 +2,7 @@
 
 Instructions for coding agents on **VocaWin** (`VocaHQ/vocawin`). Default branch is `main`. License: AGPL-3.0-or-later.
 
-Native Windows voice typing: hold a hotkey, speak, text at the caret. After a Whisper or ONNX model is on disk, capture and transcription stay on this PC. No Voca account, no hosted speech API, no product telemetry, no gateway mode.
+Native Windows voice typing: hold a hotkey, speak, text at the caret. After a Whisper or ONNX model is on disk, capture and transcription stay on this PC. No Voca account, no hosted speech API, no product telemetry. Optional Settings → Gateway can start a local VocaGateway container for pairing other clients; that path is not on-device and is not used for VocaWin dictation.
 
 This is a **beta**. Installers are **unsigned**. Do not call it signed, Store-ready, stable, or a public ship.
 
@@ -146,7 +146,8 @@ If you change landing copy, run `node --test tests/site.test.mjs` from `web/`. D
 ## Do not
 
 - Claim Store, signed, stable, auto-update, or “100% offline” (the first model download uses the network).
-- Add Voca cloud, gateway mode, telemetry, or `latest.json`.
+- Add Voca cloud, telemetry, or `latest.json`.
+- Route VocaWin dictation through Gateway (Settings → Gateway is pair-helper only).
 - Offer a catalog Download that cannot transcribe.
 - Change installer copy in `src-tauri/windows/nsis-hooks.nsh` without matching README honesty.
 - Leave the primary checkout on a feature branch or dirty.

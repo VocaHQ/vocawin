@@ -350,8 +350,9 @@
             <h3>Windows is one desk in a larger room.</h3>
             <p>
               VocaLinux, VocaMac, and VocaPhone already exist for other
-              machines. VocaGateway is optional self-hosted compute for those
-              clients. VocaWin does not offer a gateway mode today. The shared
+              machines. VocaGateway is optional self-hosted compute. VocaWin
+              can start a local Gateway container from Settings for pairing
+              other clients; Win dictation stays on this PC. The shared
               home is
               <a href="https://vocahq.com/">vocahq.com</a>.
             </p>
@@ -472,8 +473,9 @@
               <h2 id="privacy-title">on this Windows PC.<br />not a Voca cloud.</h2>
               <p>
                 The beta records with WASAPI on this machine and runs a local
-                speech-to-text model. That is on-device. It is not self-hosted
-                gateway mode, and it is not a hosted speech API.
+                speech-to-text model. That is on-device. It is not a hosted
+                speech API. An optional local Gateway container is separate and
+                is not on-device.
               </p>
               <div class="gateway-paths">
                 <article class="gateway-path">
@@ -738,10 +740,11 @@
           <details>
             <summary>Do I need VocaGateway?<span aria-hidden="true">＋</span></summary>
             <p>
-              Not for VocaWin. VocaWin is an on-device Windows app. VocaGateway
-              is optional self-hosted infrastructure for other Voca clients.
-              Gateway mode is not on-device: configured audio travels to the
-              host you chose.
+              Not for VocaWin dictation. VocaWin speech-to-text stays on this
+              PC. Settings can optionally start a local VocaGateway container
+              so phones and other clients can pair with this machine.
+              Gateway is not on-device: audio that uses it leaves this PC for
+              the container.
             </p>
           </details>
           <details>
