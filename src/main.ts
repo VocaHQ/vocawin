@@ -226,15 +226,16 @@ let gatewayPollTimer: number | null = null;
 let resetPaneScroll = false;
 let micPeak = 0;
 
-const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;
+const escape = (value: string) => value.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 /** Gateway QR SVG only. Strip script-ish markup before innerHTML. */
 const sanitizeGatewayQrSvg = (svg: string) => {
   if (!svg.includes("<svg")) return "";
   return svg
     .replace(/<script\b[\s\S]*?<\/script>/gi, "")
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript\s*:/gi, "")
     .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, "");
-};", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+};
 const selected = () => models.find(model => model.id === settings.selectedModel);
 const modelInstalled = () => !!statuses[settings.selectedModel]?.installed;
 const formatBytes = (bytes?: number) => {
@@ -594,8 +595,10 @@ function gatewaySection() {
   const message = status?.message
     ?? "Optional local VocaGateway for phones and other Voca clients. VocaWin dictation stays on this PC.";
   const dockerOk = status?.dockerAvailable ?? false;
-  const hasUrl = Boolean((settings.gatewayPublicUrl || "").trim());
-  const canStart = settings.gatewayEnabled && dockerOk && hasUrl && !gatewayBusy;
+  const publicUrlTrimmed = (settings.gatewayPublicUrl || "").trim();
+  const hasUrl = Boolean(publicUrlTrimmed);
+  const urlLooksLoopback = /:\/\/(localhost|127\.|\[::1\]|0\.0\.0\.0)\b/i.test(publicUrlTrimmed);
+  const canStart = settings.gatewayEnabled && dockerOk && hasUrl && !urlLooksLoopback && !gatewayBusy;
   const canStop = settings.gatewayEnabled && dockerOk && !gatewayBusy;
   const pairable = Boolean(status?.pairable);
   const publicValue = settings.gatewayPublicUrl || status?.suggestedPublicUrl || "";
@@ -1157,6 +1160,12 @@ async function persistSettings(silent = false, skipCollect = false) {
     if (!silent) showToast("Settings saved");
   } catch (error) {
     showToast(String(error));
+    try {
+      settings = await invoke<Settings>("get_settings");
+      render();
+    } catch {
+      /* keep prior in-memory settings if reload fails */
+    }
   }
 }
 

@@ -175,5 +175,3 @@ main{height:100vh;overflow-y:auto;padding:36px 48px 48px;position:relative;--scr
   .gateway-pairing,.gateway-qr{border-color:#3c403d}
   .gateway-qr{background:#292c29}
 }
-
-.gateway-lede{padding:4px 22px 12px}.gateway-lede p{margin:0;color:#5a615d;font-size:12px;line-height:1.55}.gateway-lede .text-button{margin:0;display:inline;font-size:inherit}.gateway-status-readout{text-align:right;max-width:240px}.gateway-status-readout strong,.gateway-status-readout span{display:block}.gateway-status-readout span{margin-top:4px;color:#5a615d;font-size:11px;font-weight:400}.gateway-pairing{padding:8px 22px 18px;border-top:1px solid #e3e9e5}.gateway-note{margin:0 0 12px;color:#5a615d;font-size:12px;line-height:1.45}.gateway-qr{width:min(220px,100
