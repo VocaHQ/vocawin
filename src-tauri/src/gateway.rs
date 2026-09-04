@@ -100,6 +100,15 @@ pub fn validate_public_url(raw: &str) -> Result<String, String> {
     if url.is_empty() {
         return Err("Set a phone-reachable public URL first (LAN or Tailscale).".into());
     }
+    // Defend .env writes: reject CR/LF and other characters that can inject keys
+    // or break Compose env parsing when the value is written unquoted.
+    if url.chars().any(|c| {
+        c.is_control()
+            || c.is_whitespace()
+            || matches!(c, '#' | '"' | '\'' | '`' | '$' | '=' | '@' | '\\' | ';')
+    }) {
+        return Err("Public URL contains invalid characters.".into());
+    }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err("Public URL must start with http:// or https://.".into());
     }
@@ -519,9 +528,15 @@ pub async fn pairing(dir: &Path, public_url: &str) -> Result<GatewayPairing, Str
             );
         }
     }
-    let qr_svg = fetch_qr_svg(&client, &token, &url).await;
+    let display_url = parsed.url.unwrap_or(url);
+    if is_loopback_public_url(&display_url) {
+        return Err(
+            "Pairing response returned a loopback URL. Check VOCAGATEWAY_PUBLIC_URL.".into(),
+        );
+    }
+    let qr_svg = fetch_qr_svg(&client, &token, &display_url).await;
     Ok(GatewayPairing {
-        url: parsed.url.unwrap_or(url),
+        url: display_url,
         qr_svg,
     })
 }
@@ -647,6 +662,9 @@ mod tests {
     fn validate_public_url_requires_scheme_and_non_loopback() {
         assert!(validate_public_url("192.168.1.20:8765").is_err());
         assert!(validate_public_url("http://127.0.0.1:8765").is_err());
+        assert!(validate_public_url("http://192.168.1.20:8765\nVOCAGATEWAY_TOKEN=ab").is_err());
+        assert!(validate_public_url("http://192.168.1.20:8765#frag").is_err());
+        assert!(validate_public_url("http://192.168.1.20@127.0.0.1:8765").is_err());
         assert_eq!(
             validate_public_url("http://192.168.1.20:8765/").unwrap(),
             "http://192.168.1.20:8765"
