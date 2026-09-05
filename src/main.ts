@@ -464,13 +464,17 @@ function dictationPage() {
         ? "Model unloaded to save RAM"
         : "Ready when you are";
   const hint = recording
-    ? (holdMode
-      ? `Release ${escape(keyLabel)} when you finish speaking.`
-      : `Tap ${escape(keyLabel)} again to stop and type.`)
+    ? (testListening
+      ? "Practice take in progress. Stop it from the sidebar Test control."
+      : holdMode
+        ? `Release ${escape(keyLabel)} when you finish speaking.`
+        : `Tap ${escape(keyLabel)} again to stop and type.`)
     : (holdMode
       ? `Hold ${escape(keyLabel)} in any app. Text lands at the caret.`
       : `Tap ${escape(keyLabel)} in any app to start, tap again to finish.`);
-  const finishControl = recording
+  // Escape hatch for hotkey/window takes only. Sidebar Test uses its own Stop
+  // and must not call inject_text via #record.
+  const finishControl = recording && !testListening
     ? `<button type="button" class="quiet-button" id="record" ${runtime.paused ? "disabled" : ""}>Stop &amp; type</button>`
     : "";
   const modelState = installed
