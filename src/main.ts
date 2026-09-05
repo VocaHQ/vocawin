@@ -391,6 +391,12 @@ function modelCards() {
   }).join("");
 }
 
+function hotkeyLabel(spec = settings.hotkey) {
+  const preset = presets.find(entry => entry.id === spec);
+  if (preset) return preset.label;
+  return spec || "your hotkey";
+}
+
 function hotkeyOptions() {
   const known = new Set(presets.map(preset => preset.id));
   const options = presets.map(preset => `<option value="${escape(preset.id)}" ${settings.hotkey === preset.id ? "selected" : ""}>${escape(preset.label)}</option>`).join("");
@@ -446,7 +452,9 @@ function dictationParkBanner() {
 function dictationPage() {
   const model = selected();
   const installed = modelInstalled();
-  const modeLabel = settings.activationMode === "toggle" ? "Toggle on and off" : "Press and hold to dictate";
+  const holdMode = settings.activationMode !== "toggle";
+  const modeLabel = holdMode ? "Hold to dictate" : "Tap to toggle";
+  const keyLabel = hotkeyLabel();
   const parked = !!runtime.parkKind;
   const heading = recording
     ? "Listening…"
@@ -454,7 +462,17 @@ function dictationPage() {
       ? "Paused for a watched app"
       : runtime.parkKind === "idle"
         ? "Model unloaded to save RAM"
-        : "Ready to dictate";
+        : "Ready when you are";
+  const hint = recording
+    ? (holdMode
+      ? `Release ${escape(keyLabel)} when you finish speaking.`
+      : `Tap ${escape(keyLabel)} again to stop and type.`)
+    : (holdMode
+      ? `Hold ${escape(keyLabel)} in any app. Text lands at the caret.`
+      : `Tap ${escape(keyLabel)} in any app to start, tap again to finish.`);
+  const finishControl = recording
+    ? `<button type="button" class="quiet-button" id="record" ${runtime.paused ? "disabled" : ""}>Stop &amp; type</button>`
+    : "";
   const modelState = installed
     ? `${escape(model?.engine ?? "")} · ${escape(model?.languages ?? "")} · On this PC`
     : "Not on this PC yet. Open Models to download it.";
@@ -462,8 +480,18 @@ function dictationPage() {
   const stateLabel = recording ? "Listening" : parked ? (runtime.parkKind === "idle" ? "Unloaded" : "Paused") : "Ready";
   return `<header><div><p class="overline">VOICE DICTATION</p><h1>Speak naturally.<br><em>Keep it private.</em></h1><p class="lede">VocaWin turns your voice into text on your own computer, never in the cloud.</p></div><span class="state ${parked ? "parked" : ""}"><i></i>${stateLabel}</span></header>
   ${dictationParkBanner()}
-  <section class="record-panel"><div class="mic ${recording ? "listening" : parked ? "parked" : ""}">${dictateMark(recording ? "listening" : "idle")}</div><h2>${heading}</h2><p>${recording ? "Speak now, then stop when you are finished." : `Use ${escape(settings.hotkey)} or start below.`}</p><button class="primary" id="record" ${runtime.paused && !recording ? "disabled" : ""}>${recording ? "Stop & transcribe" : "Start dictation"}</button><small>Everything is processed locally on this device.</small></section>
-  <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button><div class="info-card"><p class="card-label">ACTIVATION</p><strong>${escape(settings.hotkey)}</strong><span>${modeLabel}</span><button class="text-button" data-go="settings">Edit shortcut</button></div></section>`;
+  <section class="record-panel" aria-live="polite">
+    <div class="mic ${recording ? "listening" : parked ? "parked" : ""}">${dictateMark(recording ? "listening" : "idle")}</div>
+    <h2>${heading}</h2>
+    <p class="record-hint">${hint}</p>
+    <div class="hotkey-hero" aria-label="Activation hotkey">
+      <span class="hotkey-hero-key">${escape(keyLabel)}</span>
+      <span class="hotkey-hero-mode">${escape(modeLabel)}</span>
+    </div>
+    <p class="record-actions"><button type="button" class="text-button" data-go="settings">Change shortcut</button>${finishControl ? ` · ${finishControl}` : ""}</p>
+    <small>Dictation is meant for other apps via the hotkey. Use Test dictation in the sidebar to practice inside VocaWin.</small>
+  </section>
+  <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button><div class="info-card"><p class="card-label">SHORTCUT</p><strong>${escape(keyLabel)}</strong><span>${escape(modeLabel)}. Works while VocaWin is in the tray.</span><button class="text-button" data-go="settings">Edit in Settings</button></div></section>`;
 }
 
 function filterLabel<T extends string>(options: Array<[T, string]>, value: T) {
@@ -769,7 +797,7 @@ function welcomeOverlay() {
     <div class="welcome-card">
       <p class="overline">WELCOME</p>
       <h2 id="welcome-title">VocaWin is in your tray</h2>
-      <p>Hold your hotkey (Right Alt by default, like VocaLinux) to dictate into any app. Optional: turn on Start on Login from the tray menu or Settings.</p>
+      <p>Hold Right Alt (or your chosen hotkey) to dictate into any app. Keep VocaWin in the tray and talk where the caret already is. Optional: turn on Start on Login from the tray or Settings.</p>
       <button class="primary" id="welcome-dismiss">Got it</button>
     </div>
   </div>`;
@@ -780,11 +808,11 @@ function sidebarFooter() {
   const statusLabel = sidebarStatusLabel();
   const result = testResult
     ? `<p class="sidebar-result">${escape(testResult)}</p>`
-    : `<p class="sidebar-result muted">Test dictation stays here. If history is on, this take is saved there too.</p>`;
+    : `<p class="sidebar-result muted">Practice here. This take does not type into other apps.</p>`;
   return `<div class="sidebar-footer">
     <div class="sidebar-status ${parked ? "parked" : recording ? "live" : ""}"><i></i><div><strong>${statusLabel}</strong>${runtime.parkDetail && !recording ? `<small>${escape(runtime.parkDetail)}</small>` : `<small>${escape(runtime.inputDevice)}</small>`}</div></div>
     ${toastMarkup()}
-    <button type="button" class="quiet-button sidebar-test" id="test-dictation" ${runtime.paused || micTesting ? "disabled" : ""}>${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test dictation"}</button>
+    <button type="button" class="quiet-button sidebar-test" id="test-dictation" ${runtime.paused || micTesting ? "disabled" : ""} aria-label="${testListening ? "Stop test dictation" : "Test dictation inside VocaWin"}">${testListening ? "Stop test" : testingDictation ? "Testing…" : "Test dictation"}</button>
     ${result}
   </div>`;
 }
