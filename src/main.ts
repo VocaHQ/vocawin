@@ -852,8 +852,8 @@ function aboutPage() {
     <section class="settings-card">
       <p class="settings-group">This app</p>
       <div class="about-copy">
-        <p>This is an unsigned beta. It is not a store listing and not a stable public release. Windows will likely say the publisher is unknown. That is SmartScreen. Use More info, then Run anyway, only if you trust the GitHub Release you downloaded.</p>
-        <p>The community is expected to help improve it. If something breaks, file an issue.</p>
+        <p>Voice-to-text for Windows. After a Whisper or ONNX model is on disk, recording and speech-to-text stay on this PC. No Voca account, and no hosted speech API for dictation.</p>
+        <p>Hold the hotkey (Right Alt by default) to dictate into any app. Download models on the Models page. Debug has machine details and a copyable support report. This is still an unsigned beta. File bugs from Talk to us below.</p>
       </div>
     </section>
     <section class="settings-card">
