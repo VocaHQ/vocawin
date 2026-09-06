@@ -77,21 +77,13 @@ Debug logging: {flag}\n",
 
 /// The report is meant to be pasted into a GitHub issue. Strip profile
 /// directories so a log line with an APPDATA model path does not leak a
-/// Windows user name.
+/// Windows user name. Users/home are matched case-insensitively with `/` or `\`.
 fn redact_home_paths(text: &str) -> String {
-    let mut out = text.to_string();
-    for prefix in [r"\Users\", "/Users/", "/home/"] {
-        out = redact_after_prefix(&out, prefix);
-    }
-    out
-}
-
-fn redact_after_prefix(text: &str, prefix: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut rest = text;
-    while let Some(idx) = rest.find(prefix) {
-        result.push_str(&rest[..idx + prefix.len()]);
-        let after = &rest[idx + prefix.len()..];
+    while let Some((idx, prefix_len)) = find_profile_prefix(rest) {
+        result.push_str(&rest[..idx + prefix_len]);
+        let after = &rest[idx + prefix_len..];
         let end = after
             .find(|c: char| c == '/' || c == '\\' || c.is_whitespace() || c == '"' || c == '\'')
             .unwrap_or(after.len());
@@ -104,6 +96,35 @@ fn redact_after_prefix(text: &str, prefix: &str) -> String {
     }
     result.push_str(rest);
     result
+}
+
+fn find_profile_prefix(text: &str) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if let Some(prefix_len) = profile_prefix_len(&bytes[i..]) {
+            return Some((i, prefix_len));
+        }
+        i += text[i..].chars().next()?.len_utf8();
+    }
+    None
+}
+
+fn profile_prefix_len(bytes: &[u8]) -> Option<usize> {
+    let sep = *bytes.first()?;
+    if sep != b'/' && sep != b'\\' {
+        return None;
+    }
+    for marker in [b"users".as_slice(), b"home".as_slice()] {
+        let marker_end = 1 + marker.len();
+        if bytes.len() > marker_end
+            && bytes[1..marker_end].eq_ignore_ascii_case(marker)
+            && (bytes[marker_end] == b'/' || bytes[marker_end] == b'\\')
+        {
+            return Some(marker_end + 1);
+        }
+    }
+    None
 }
 
 fn os_name() -> String {
@@ -369,15 +390,49 @@ mod tests {
             sample_gpu(),
             true,
             r"[error] Model missing at C:\Users\Ada\AppData\Roaming\com.vocahq.vocawin\models\x.bin
+[error] also C:/Users/Ada/AppData/Roaming/com.vocahq.vocawin/models/x.bin
+[error] also C:\users\Ada\AppData\Roaming\com.vocahq.vocawin\models\x.bin
+[error] also C:/Users\Ada\AppData\Roaming\com.vocahq.vocawin\models\x.bin
 [error] also /home/ada/.local/share/vocawin/models/x.bin
 [error] also /Users/ada/Library/Application Support/vocawin/x.bin",
         );
         assert!(report.text.contains(r"C:\Users\<user>\AppData"));
+        assert!(report.text.contains("C:/Users/<user>/AppData"));
+        assert!(report.text.contains(r"C:\users\<user>\AppData"));
+        assert!(report.text.contains(r"C:/Users\<user>\AppData"));
         assert!(report.text.contains("/home/<user>/.local"));
         assert!(report.text.contains("/Users/<user>/Library"));
+        assert!(report.text.contains("<user>"));
         assert!(!report.text.contains(r"\Users\Ada\"));
+        assert!(!report.text.contains(r"/Users/Ada/"));
+        assert!(!report.text.contains(r"\users\Ada\"));
+        assert!(!report.text.contains(r"/Users\Ada\"));
         assert!(!report.text.contains("/home/ada/"));
         assert!(!report.text.contains("/Users/ada/"));
+    }
+
+    #[test]
+    fn redact_home_paths_accepts_case_and_separator_variants() {
+        let out = redact_home_paths(
+            r"C:\Users\Ada\x.bin
+C:/Users/Ada/x.bin
+C:\users\Ada\x.bin
+C:/Users\Ada\x.bin
+/home/ada/x.bin
+/Users/ada/x.bin",
+        );
+        assert_eq!(
+            out,
+            r"C:\Users\<user>\x.bin
+C:/Users/<user>/x.bin
+C:\users\<user>\x.bin
+C:/Users\<user>\x.bin
+/home/<user>/x.bin
+/Users/<user>/x.bin"
+        );
+        assert!(!out.contains("Ada"));
+        assert!(!out.contains("ada"));
+        assert!(out.contains("<user>"));
     }
 
     #[test]
