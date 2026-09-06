@@ -116,7 +116,7 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 ## Releases and CI
 
-Keep the app version and the public Git tag aligned including the beta marker (`0.1.1-beta` / `v0.1.1-beta` for this cut) in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump both together on a named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
+Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-beta` marker, no `-beta.N`). For this cut that is `0.1.1-beta` / `v0.1.1-beta` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump the numeric part and keep `-beta` on the next named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
 
 | Workflow | Trigger | Effect |
 | --- | --- | --- |
