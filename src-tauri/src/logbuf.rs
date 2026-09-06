@@ -66,6 +66,10 @@ pub fn debug(line: impl Into<String>) {
     push_level(Level::Debug, line);
 }
 
+pub fn info(line: impl Into<String>) {
+    push(line);
+}
+
 pub fn warn(line: impl Into<String>) {
     push_level(Level::Warn, line);
 }
@@ -126,9 +130,16 @@ pub fn push_and_emit(app: &AppHandle, line: impl Into<String>) {
     push_level_and_emit(app, Level::Info, line);
 }
 
+fn is_visible(level: Level) -> bool {
+    debug_enabled() || level.rank() >= Level::Warn.rank()
+}
+
 pub fn push_level_and_emit(app: &AppHandle, level: Level, line: impl Into<String>) {
     let text = line.into();
     push_level(level, text.clone());
+    if !is_visible(level) {
+        return;
+    }
     let _ = app.emit(
         "log-line",
         LogLine {
@@ -148,6 +159,10 @@ pub fn warn_and_emit(app: &AppHandle, line: impl Into<String>) {
 
 pub fn debug_and_emit(app: &AppHandle, line: impl Into<String>) {
     push_level_and_emit(app, Level::Debug, line);
+}
+
+pub fn info_and_emit(app: &AppHandle, line: impl Into<String>) {
+    push_level_and_emit(app, Level::Info, line);
 }
 
 pub fn clear() {
@@ -181,5 +196,25 @@ mod tests {
         assert_eq!(all.len(), 4);
         assert_eq!(snapshot_text(false), "[warn] hotkey busy\n[error] download failed");
         clear();
+    }
+
+    #[test]
+    fn info_is_hidden_until_debug_logging_is_on() {
+        let _guard = TEST_LOCK.lock().expect("log test lock");
+        clear();
+        set_debug_enabled(false);
+        info("VocaWin ready.");
+        debug("mic opened");
+        assert!(snapshot().is_empty());
+        set_debug_enabled(true);
+        assert_eq!(
+            snapshot()
+                .iter()
+                .map(|line| line.level.as_str())
+                .collect::<Vec<_>>(),
+            vec!["info", "debug"]
+        );
+        clear();
+        set_debug_enabled(false);
     }
 }

@@ -8,6 +8,7 @@ mod hardware;
 mod hook;
 mod hotkey;
 mod logbuf;
+mod machine;
 mod output;
 mod power;
 mod sounds;
@@ -1062,6 +1063,10 @@ fn save_settings(
         }
     }
     logbuf::set_debug_enabled(settings.debug_logging);
+    logbuf::debug(format!(
+        "Settings saved (model {}, hotkey {}, debug={})",
+        settings.selected_model, settings.hotkey, settings.debug_logging
+    ));
     let paused = *state
         .dictation_paused
         .lock()
@@ -1588,14 +1593,17 @@ async fn download_model(
     .await;
 
     let status = match &result {
-        Ok(()) => ModelInstallStatus {
-            installed: true,
-            downloadable: true,
-            downloading: false,
-            progress: 100,
-            message: Some("Installed".into()),
-            bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
-        },
+        Ok(()) => {
+            logbuf::info_and_emit(&app, format!("Downloaded {model_id}"));
+            ModelInstallStatus {
+                installed: true,
+                downloadable: true,
+                downloading: false,
+                progress: 100,
+                message: Some("Installed".into()),
+                bytes_on_disk: model_bytes_on_disk(&state.models_path, &model_id),
+            }
+        }
         Err(error) => {
             logbuf::error_and_emit(&app, format!("Download {model_id} failed: {error}"));
             ModelInstallStatus {
@@ -1869,7 +1877,15 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
         .clone();
     logbuf::debug_and_emit(
         app,
-        format!("Start dictation ({})", settings.selected_model),
+        format!(
+            "Start {} ({})",
+            if inject {
+                "dictation"
+            } else {
+                "test dictation"
+            },
+            settings.selected_model
+        ),
     );
     if !model_is_installed(&state.models_path, &settings.selected_model) {
         set_recording_flag(&state, recording_after_start_attempt(false));
@@ -1929,7 +1945,15 @@ fn transcribe_samples(
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
     let pcm = resample_to_16khz(&samples, sample_rate);
+    logbuf::debug(format!(
+        "Transcribe {} ({} samples at {} Hz, lang {})",
+        settings.selected_model,
+        pcm.len(),
+        sample_rate,
+        settings.language
+    ));
     if pcm.len() < 4_000 {
+        logbuf::warn("Recording is too short.");
         return Err("Recording is too short. Hold the hotkey and speak for a moment.".into());
     }
     let language_code = match settings.language.as_str() {
@@ -2005,17 +2029,15 @@ fn transcribe_samples(
         append_history(
             &state.history_path,
             text.trim().to_string(),
-            settings.selected_model,
+            settings.selected_model.clone(),
         )?;
     }
+    logbuf::info(format!(
+        "Transcribed {} chars with {}",
+        text.chars().count(),
+        settings.selected_model
+    ));
     Ok(text)
-}
-
-fn transcribe_recording(state: &AppState) -> Result<String, String> {
-    match end_voice_session(state)? {
-        Some(text) => Ok(text),
-        None => Ok(String::new()),
-    }
 }
 
 /// Stop capture and clear the session flag even when stop() fails.
@@ -2124,6 +2146,20 @@ fn get_log_lines() -> Vec<logbuf::LogLine> {
 }
 
 #[tauri::command]
+fn get_debug_report(state: State<'_, AppState>) -> machine::DebugReport {
+    let debug_logging = state
+        .settings
+        .lock()
+        .map(|settings| settings.debug_logging)
+        .unwrap_or(false);
+    machine::debug_report(
+        gpu::detect_gpu(),
+        debug_logging,
+        &logbuf::snapshot_text(debug_logging),
+    )
+}
+
+#[tauri::command]
 fn clear_log_lines() {
     logbuf::clear();
 }
@@ -2184,7 +2220,11 @@ async fn start_mic_test(app: AppHandle) -> Result<(), String> {
             .lock()
             .map(|settings| settings.input_device.clone())
             .unwrap_or_default();
-        state.recorder.start_meter(device)
+        let result = state.recorder.start_meter(device);
+        if result.is_ok() {
+            logbuf::debug_and_emit(&app, "Mic test started.");
+        }
+        result
     })
     .await
     .map_err(|error| format!("Mic Test was cancelled: {error}"))?
@@ -2194,7 +2234,8 @@ async fn start_mic_test(app: AppHandle) -> Result<(), String> {
 async fn stop_mic_test(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let _ = state.recorder.stop()?;
+        state.recorder.stop()?;
+        logbuf::debug_and_emit(&app, "Mic test stopped.");
         Ok(())
     })
     .await
@@ -2316,7 +2357,17 @@ fn inject_transcript(state: &AppState, text: &str) -> Result<(), String> {
         .lock()
         .map(|settings| settings.copy_to_clipboard)
         .unwrap_or(false);
-    output::inject(text, output::InjectOptions { copy_to_clipboard })
+    logbuf::debug(format!(
+        "Inject {} chars (copy_to_clipboard={copy_to_clipboard})",
+        text.chars().count()
+    ));
+    match output::inject(text, output::InjectOptions { copy_to_clipboard }) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            logbuf::error(format!("Inject failed: {error}"));
+            Err(error)
+        }
+    }
 }
 
 /// On Windows this is the final platform boundary: the recognizer gives us
@@ -2455,7 +2506,9 @@ pub fn run() {
                     .unwrap_or_else(|_| "AltRight".into());
                 if let Err(error) = register_dictation_hotkey(&app, &hotkey) {
                     eprintln!("VocaWin hotkey re-register after wake failed: {error}");
+                    logbuf::error(format!("Hotkey re-register after wake failed: {error}"));
                 } else {
+                    logbuf::info("Hotkey re-registered after wake.");
                     emit_runtime(&app);
                 }
             });
@@ -2471,7 +2524,9 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
-            logbuf::push("VocaWin ready.");
+            let gpu = gpu::detect_gpu();
+            logbuf::debug(format!("GPU: {} ({})", gpu.name, gpu.backend));
+            logbuf::info("VocaWin ready.");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2486,6 +2541,7 @@ pub fn run() {
             system_summary,
             get_gpu_status,
             get_log_lines,
+            get_debug_report,
             clear_log_lines,
             dismiss_welcome,
             selected_model_installed,
@@ -2513,6 +2569,7 @@ pub fn run() {
 fn register_dictation_hotkey(app: &AppHandle, hotkey_spec: &str) -> Result<(), String> {
     let binding = hotkey::parse_hotkey(hotkey_spec)?;
     hook::set_binding(binding);
+    logbuf::debug(format!("Hotkey bound to {hotkey_spec}"));
     if let Some(state) = app.try_state::<AppState>() {
         if let Ok(settings) = state.settings.lock() {
             hook::set_safety_timeout(safety_timeout_for(settings.max_recording_seconds));
@@ -2552,6 +2609,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             match ptt_pressed_action(flag, live) {
                 PttPressedAction::Ignore => {}
                 PttPressedAction::Start => {
+                    logbuf::debug_and_emit(handle, "Hotkey pressed.");
                     if let Err(error) = begin_voice_session(handle, true) {
                         if error.contains("No speech model is installed") {
                             sounds::play_error_if_enabled(&settings.sound_theme);
@@ -2566,6 +2624,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             if toggle {
                 return;
             }
+            logbuf::debug_and_emit(handle, "Hotkey released.");
             let recording = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
             if recording {
                 finish_voice_session(handle);
@@ -2606,9 +2665,11 @@ fn start_auto_pause_watcher(app: AppHandle) {
                 abandon_voice_session(&state);
                 let _ = app.emit("recording-changed", false);
                 state.whisper_cache.unload();
+                let app_name = hit.clone().unwrap_or_else(|| "a watched app".into());
                 if let Ok(mut park) = state.park_reason.lock() {
-                    *park = ParkReason::AutoPause(hit.unwrap_or_else(|| "a watched app".into()));
+                    *park = ParkReason::AutoPause(app_name.clone());
                 }
+                logbuf::info_and_emit(&app, format!("Paused while {app_name} is running."));
                 tray_dirty = true;
             } else if !should_pause && *paused {
                 *paused = false;
@@ -2621,6 +2682,12 @@ fn start_auto_pause_watcher(app: AppHandle) {
                 }
                 if let Err(error) = register_dictation_hotkey(&app, &settings.hotkey) {
                     eprintln!("VocaWin hotkey restore after auto-pause failed: {error}");
+                    logbuf::error_and_emit(
+                        &app,
+                        format!("Hotkey restore after auto-pause failed: {error}"),
+                    );
+                } else {
+                    logbuf::info_and_emit(&app, "Auto-pause cleared. Hotkey restored.");
                 }
                 tray_dirty = true;
             } else {
@@ -2640,6 +2707,7 @@ fn start_auto_pause_watcher(app: AppHandle) {
                     if let Ok(mut park) = state.park_reason.lock() {
                         if *park == ParkReason::None {
                             *park = ParkReason::IdleTimeout;
+                            logbuf::info_and_emit(&app, "Unloaded Whisper after idle.");
                             tray_dirty = true;
                         }
                     }
@@ -2826,32 +2894,8 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
     {
         return Ok(());
     }
-    set_tray_phase(app, TrayPhase::Processing);
-    let sound = state
-        .settings
-        .lock()
-        .map(|settings| settings.sound_theme.clone())
-        .unwrap_or_else(|_| "voca".into());
-    match transcribe_recording(&state) {
-        Ok(text) => {
-            sounds::play_if_enabled(&sound, false);
-            if !text.is_empty() {
-                let _ = inject_transcript(&*state, &text);
-            }
-            let _ = app.emit("dictation-finished", text);
-            let _ = app.emit("recording-changed", false);
-            apply_ready_or_parked_tray(app);
-            Ok(())
-        }
-        Err(error) => {
-            let _ = app.emit("recording-changed", false);
-            apply_ready_or_parked_tray(app);
-            sounds::play_error_if_enabled(&sound);
-            logbuf::error_and_emit(app, format!("Dictation error: {error}"));
-            let _ = app.emit("dictation-error", error.clone());
-            Err(error)
-        }
-    }
+    finish_voice_session(app);
+    Ok(())
 }
 
 fn tray_toggle_login(app: &AppHandle) -> Result<(), String> {
@@ -3085,8 +3129,114 @@ mod tests {
             "https://github.com/VocaHQ/vocawin/issues/new/choose"
         ));
         assert!(allowed_external_url("https://x.com/vocahq"));
+        assert!(allowed_external_url("https://discord.gg/t6muquAJbm"));
         assert!(!allowed_external_url("https://x.com/jatinkrmalik"));
         assert!(!allowed_external_url("https://example.com"));
+    }
+
+    #[test]
+    fn about_uses_brand_kit_not_simple_icons() {
+        let src = include_str!("../../src/main.ts");
+        assert!(src.contains("web/assets/brand/vocahq/voca-mark.svg"));
+        assert!(src.contains("web/assets/brand/promo/cards/platform/linux.svg"));
+        assert!(src.contains("web/assets/brand/promo/cards/platform/apple.svg"));
+        assert!(src.contains("web/assets/brand/promo/cards/platform/android.svg"));
+        assert!(src.contains("web/assets/brand/vocagateway/vocagateway-1u.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/discord.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/github.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/x.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/mail.svg"));
+        assert!(!src.contains("web/assets/icons/"));
+        assert!(!src.contains("./assets/social/"));
+        assert!(src.contains("themeBrandSvg(hqMarkRaw)"));
+        assert!(src.contains("themeBrandSvg(gatewayMarkRaw, { dropPlate: true })"));
+        assert!(src.contains("fill=\"#0[Bb]1[Aa]15\""));
+        assert!(src.contains("fill=\"#0[Ff]6[Bb]57\""));
+        assert!(src.contains("'fill=\"currentColor\"'"));
+        let hq = include_str!("../../web/assets/brand/vocahq/voca-mark.svg");
+        let gateway = include_str!("../../web/assets/brand/vocagateway/vocagateway-1u.svg");
+        assert!(
+            hq.contains("#0B1A15"),
+            "HQ mark still has baked ink for About to recolor"
+        );
+        assert!(
+            gateway.contains("#0F6B57") && gateway.contains(r#"width="1024""#),
+            "Gateway 1U still has the baked plate for dropPlate"
+        );
+    }
+
+    #[test]
+    fn dictation_page_is_hotkey_first_without_start_cta() {
+        let src = include_str!("../../src/main.ts");
+        assert!(src.contains("recording && !testListening"));
+        assert!(src.contains("Stop &amp; type"));
+        assert!(src.contains("dictation-bento"));
+        assert!(!src.contains(">Start dictation<"));
+        assert!(src.contains("Practice via sidebar Test"));
+    }
+
+    #[test]
+    fn test_dictation_marks_practice_before_capture_and_never_injects() {
+        let src = include_str!("../../src/main.ts");
+        let start = src
+            .find("async function testDictation()")
+            .expect("testDictation");
+        let rest = &src[start..];
+        let end = rest[1..]
+            .find("\nasync function ")
+            .map(|idx| start + 1 + idx)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+        let mark = body
+            .find("testListening = true")
+            .expect("practice take must set testListening");
+        let invoke = body
+            .find("start_recording")
+            .expect("practice take must start capture");
+        assert!(
+            mark < invoke,
+            "testListening must be set before start_recording so Stop & type stays hidden"
+        );
+        assert!(!body.contains("inject_text"));
+        assert!(body.contains("noInject: true"));
+
+        let toggle_start = src
+            .find("async function toggleRecording()")
+            .expect("toggleRecording");
+        let toggle_rest = &src[toggle_start..];
+        let toggle_end = toggle_rest[1..]
+            .find("\nasync function ")
+            .map(|idx| toggle_start + 1 + idx)
+            .unwrap_or(src.len());
+        let toggle = &src[toggle_start..toggle_end];
+        assert!(
+            toggle.contains("if (testListening) return;"),
+            "Stop & type must not inject a practice take"
+        );
+    }
+
+    #[test]
+    fn hotkey_repeat_while_live_is_silent() {
+        let src = include_str!("lib.rs");
+        let needle = format!("{}{}", "Hotkey press ", "ignored");
+        assert!(
+            !src.contains(&needle),
+            "typematic Ignore must not write a log line"
+        );
+    }
+
+    #[test]
+    fn tray_stop_does_not_inject_on_its_own() {
+        let src = include_str!("lib.rs");
+        let start = src.find("fn tray_stop_voice").expect("tray_stop_voice");
+        let rest = &src[start..];
+        let end = rest[1..]
+            .find("\nfn ")
+            .map(|idx| start + 1 + idx)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+        assert!(body.contains("finish_voice_session"));
+        assert!(!body.contains("inject_transcript"));
     }
 
     #[test]
