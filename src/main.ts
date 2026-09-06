@@ -1351,7 +1351,9 @@ async function copyLogs() {
     debugReport = report;
     text = report.text;
   } catch {
-    text = visibleLogs().map(line => `[${line.level}] ${line.text}`).join("\n");
+    showToast("Could not build the debug report.");
+    render();
+    return;
   }
   if (!text.trim()) {
     showToast("Nothing to copy.");
