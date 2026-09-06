@@ -12,7 +12,9 @@ Do not retag. Do not use workflow_dispatch. `.github/workflows/windows-alpha-rel
 
 ## What CI does
 
-A `v*` tag push runs `windows-alpha-release.yml`. tauri-action builds unsigned NSIS and MSI and attaches them to a GitHub Release named `VocaWin <tag> (Windows beta)`. For named `v*` cuts the Release is published as **Latest** (`prerelease: false`) so it appears on the repo homepage. Do not check the GitHub prerelease box for these cuts. `includeUpdaterJson` stays off. There is no store signature and no auto-update.
+A `v*` tag push runs `windows-alpha-release.yml`. tauri-action builds an unsigned NSIS installer and attaches it to a GitHub Release named `VocaWin <tag> (Windows beta)`. For named `v*` cuts the Release is published as **Latest** (`prerelease: false`) so it appears on the repo homepage. Do not check the GitHub prerelease box for these cuts. `includeUpdaterJson` stays off. There is no store signature and no auto-update.
+
+Named `X.Y.Z-beta` cuts ship **NSIS only**. WiX/MSI rejects non-numeric prerelease identifiers like `-beta`, so MSI is not part of tagged beta cuts (or nightly/CI installer jobs) while the app version keeps that marker. MSI can return when a cut uses a numeric-only version.
 
 `windows-ci.yml` on main still uploads a workflow artifact. Testers should ignore that and use a GitHub Release: the latest tagged `v*` cut, or [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) if they want today's `main`.
 
@@ -22,7 +24,7 @@ tauri-action writes a generic body about vocawin.com and SmartScreen. If you dra
 
 ## Release notes
 
-Paste short, honest notes. What changed. Hold Right Alt. Audio stays on this PC. Unsigned. Windows will say the publisher is unknown. More info, then Run anyway. [vocawin.com](https://vocawin.com) points here. NSIS is current-user. MSI is the wizard. Use one. File an issue if it breaks. Say beta in the notes.
+Paste short, honest notes. What changed. Hold Right Alt. Audio stays on this PC. Unsigned. Windows will say the publisher is unknown. More info, then Run anyway. [vocawin.com](https://vocawin.com) points here. NSIS is current-user. MSI is paused for X.Y.Z-beta cuts. File an issue if it breaks. Say beta in the notes.
 
 Upload a real Ready-screen shot as a release asset (alpha.2 used `vocawin-ready.png`) and embed it in the body:
 
