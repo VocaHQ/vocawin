@@ -453,8 +453,7 @@ function dictationPage() {
   const model = selected();
   const installed = modelInstalled();
   const holdMode = settings.activationMode !== "toggle";
-  const modeLabel = holdMode ? "Hold to dictate" : "Tap to toggle";
-  const keyLabel = hotkeyLabel();
+  const keycap = `<kbd>${escape(hotkeyLabel())}</kbd>`;
   const parked = !!runtime.parkKind;
   const heading = recording
     ? "Listening…"
@@ -467,11 +466,11 @@ function dictationPage() {
     ? (testListening
       ? "Practice take in progress. Stop it from the sidebar Test control."
       : holdMode
-        ? `Release ${escape(keyLabel)} when you finish speaking.`
-        : `Tap ${escape(keyLabel)} again to stop and type.`)
+        ? `Release ${keycap} when you finish speaking.`
+        : `Tap ${keycap} again to stop and type.`)
     : (holdMode
-      ? `Hold ${escape(keyLabel)} in any app. Text lands at the caret.`
-      : `Tap ${escape(keyLabel)} in any app to start, tap again to finish.`);
+      ? `Hold ${keycap} in any app. Text lands at the caret.`
+      : `Tap ${keycap} in any app to start, tap again to finish.`);
   // Escape hatch for hotkey/window takes only. Sidebar Test uses its own Stop
   // and must not call inject_text via #record.
   const finishControl = recording && !testListening
@@ -488,14 +487,10 @@ function dictationPage() {
     <div class="mic ${recording ? "listening" : parked ? "parked" : ""}">${dictateMark(recording ? "listening" : "idle")}</div>
     <h2>${heading}</h2>
     <p class="record-hint">${hint}</p>
-    <div class="hotkey-hero" aria-label="Activation hotkey">
-      <span class="hotkey-hero-key">${escape(keyLabel)}</span>
-      <span class="hotkey-hero-mode">${escape(modeLabel)}</span>
-    </div>
     <p class="record-actions"><button type="button" class="text-button" data-go="settings">Change shortcut</button>${finishControl ? ` · ${finishControl}` : ""}</p>
-    <small>Dictation is meant for other apps via the hotkey. Use Test dictation in the sidebar to practice inside VocaWin.</small>
+    <small>Practice via sidebar Test.</small>
   </section>
-  <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button><div class="info-card"><p class="card-label">SHORTCUT</p><strong>${escape(keyLabel)}</strong><span>${escape(modeLabel)}. Works while VocaWin is in the tray.</span><button class="text-button" data-go="settings">Edit in Settings</button></div></section>`;
+  <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button></section>`;
 }
 
 function filterLabel<T extends string>(options: Array<[T, string]>, value: T) {
