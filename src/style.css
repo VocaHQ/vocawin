@@ -162,7 +162,50 @@ main{height:100vh;overflow-y:auto;padding:36px 48px 48px;position:relative;--scr
 .record-actions{margin:8px 0 0;color:#5a615d;font-size:12px}
 .record-actions .text-button{margin:0;display:inline}
 .record-actions .quiet-button{margin-left:4px;vertical-align:baseline}
+.dictation-bento{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(260px,1fr);gap:14px;align-items:stretch}
+.record-panel{text-align:left;display:flex;align-items:center;gap:18px;padding:24px 26px;min-height:0}
+.record-panel .mic{margin:0;flex:none}
+.record-copy{min-width:0}
+.record-panel h2{margin:0 0 6px;font-size:18px;letter-spacing:-.5px}
+.hotkey-panel{background:#fff;border:1px solid #e3e9e5;border-radius:18px;box-shadow:0 6px 22px #173a3008;padding:24px 26px;display:flex;flex-direction:column;justify-content:center;gap:8px;text-align:left}
+.hotkey-panel .card-label{margin:0}
+.hotkey-hero{margin:0}
+.hotkey-hero kbd{display:inline-block;padding:8px 14px;border:1px solid #c6cdc8;border-bottom-width:3px;border-radius:10px;background:#f1f4f1;color:#093e32;font:inherit;font-size:22px;font-weight:750;letter-spacing:-.4px;line-height:1.2}
+.hotkey-panel small{display:block;color:#5a615d;font-size:10px;margin-top:4px}
+.machine-facts{margin:0;padding:4px 22px 8px;display:grid}
+.machine-facts div{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;padding:11px 0;border-bottom:1px solid #e3e9e5;align-items:start}
+.machine-facts div:last-child{border-bottom:0}
+.machine-facts dt{font-size:11px;font-weight:700;color:#5a615d;padding-top:2px}
+.machine-facts dd{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.machine-gpu-detail{margin:0;padding:0 22px 16px;color:#5a615d;font-size:12px;line-height:1.45}
+.log-line.level-debug .log-level{color:#5a615d}
+.log-line.level-info .log-level{color:#0f6b57}
+.about-family{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+.about-family-btn{width:100%;display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 10px;border:1px solid #e3e9e5;border-radius:10px;background:#fff;color:#093e32;text-align:left}
+.about-family-btn:hover{background:#f1f4f1}
+.about-family-btn:focus-visible{outline:2px solid #0f6b57;outline-offset:2px}
+.about-family-mark{display:grid;place-items:center;width:28px;height:28px;flex:none;color:currentColor;background:transparent}
+.about-family-mark svg{display:block;width:22px;height:22px;fill:currentColor}
+.about-mark-hq svg{width:20px;height:24px}
+.about-mark-phone{display:flex;align-items:center;justify-content:center;gap:2px;width:36px}
+.about-mark-phone svg{width:15px;height:15px}
+.about-mark-gateway{width:40px;height:28px}
+.about-mark-gateway svg{width:40px;height:22px}
+.about-family-copy{display:grid;gap:1px;min-width:0}
+.about-family-copy strong{font-size:13px;letter-spacing:-.2px}
+.about-family-copy span{font-size:11px;color:#5a615d}
+.about-talk-btn svg,.about-report svg{width:16px;height:16px}
+@media(max-width:850px){
+  .dictation-bento{grid-template-columns:1fr}
+}
 @media(prefers-color-scheme:dark){
-  .record-hint kbd{background:#292c29;border-color:#3c403d;color:#c3f3e0}
-  .record-hint{color:#c2c8c3}
+  .record-hint kbd,.hotkey-hero kbd{background:#292c29;border-color:#3c403d;color:#c3f3e0}
+  .record-hint,.hotkey-panel small,.machine-facts dt,.machine-gpu-detail,.about-family-copy span{color:#c2c8c3}
+  .hotkey-panel,.about-family-btn{background:#1f211f;border-color:#3c403d}
+  .about-family-btn{color:#f2f6f2}
+  .about-family-btn:hover{background:#34463d}
+  .about-family-btn:focus-visible{outline-color:#77d0b2}
+  .machine-facts div{border-color:#3c403d}
+  .log-line.level-info .log-level{color:#77d0b2}
+  .log-line.level-debug .log-level{color:#c2c8c3}
 }

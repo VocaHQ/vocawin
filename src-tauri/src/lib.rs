@@ -3164,6 +3164,32 @@ mod tests {
     }
 
     #[test]
+    fn about_uses_brand_kit_not_simple_icons() {
+        let src = include_str!("../../src/main.ts");
+        assert!(src.contains("web/assets/brand/vocahq/voca-mark.svg"));
+        assert!(src.contains("web/assets/brand/promo/cards/platform/linux.svg"));
+        assert!(src.contains("web/assets/brand/promo/cards/platform/apple.svg"));
+        assert!(src.contains("web/assets/brand/promo/cards/platform/android.svg"));
+        assert!(src.contains("web/assets/brand/vocagateway/vocagateway-1u.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/discord.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/github.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/x.svg"));
+        assert!(src.contains("web/assets/brand/vocahq/social/mail.svg"));
+        assert!(!src.contains("web/assets/icons/"));
+        assert!(!src.contains("./assets/social/"));
+    }
+
+    #[test]
+    fn dictation_page_is_hotkey_first_without_start_cta() {
+        let src = include_str!("../../src/main.ts");
+        assert!(src.contains("recording && !testListening"));
+        assert!(src.contains("Stop &amp; type"));
+        assert!(src.contains("dictation-bento"));
+        assert!(!src.contains(">Start dictation<"));
+        assert!(src.contains("Practice via sidebar Test"));
+    }
+
+    #[test]
     fn audio_reply_timeout_returns_a_clear_error() {
         assert!(AUDIO_REPLY_TIMEOUT >= std::time::Duration::from_secs(2));
         let (_tx, rx) = std::sync::mpsc::channel::<()>();

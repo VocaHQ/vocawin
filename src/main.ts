@@ -4,11 +4,16 @@ import "./style.css";
 import sidebarMark from "./assets/voca-logo.svg?raw";
 import dictateIdle from "./assets/vocawin-dictate-idle.svg?raw";
 import dictateListening from "./assets/vocawin-dictate-listening.svg?raw";
-import discordMark from "./assets/social/discord.svg?raw";
-import githubMark from "./assets/social/github.svg?raw";
-import mailMark from "./assets/social/mail.svg?raw";
-import xMark from "./assets/social/x.svg?raw";
 import familyLogo from "../web/assets/brand/voca-logo-512.png";
+import hqMarkRaw from "../web/assets/brand/vocahq/voca-mark.svg?raw";
+import linuxMarkRaw from "../web/assets/brand/promo/cards/platform/linux.svg?raw";
+import appleMarkRaw from "../web/assets/brand/promo/cards/platform/apple.svg?raw";
+import androidMarkRaw from "../web/assets/brand/promo/cards/platform/android.svg?raw";
+import gatewayMarkRaw from "../web/assets/brand/vocagateway/vocagateway-1u.svg?raw";
+import discordMark from "../web/assets/brand/vocahq/social/discord.svg?raw";
+import githubMark from "../web/assets/brand/vocahq/social/github.svg?raw";
+import mailMark from "../web/assets/brand/vocahq/social/mail.svg?raw";
+import xMark from "../web/assets/brand/vocahq/social/x.svg?raw";
 
 type Model = { id: string; name: string; engine: string; size: string; languages: string; acceleration: string; description: string };
 type Settings = {
@@ -63,6 +68,16 @@ type RuntimeStatus = {
   gpuDetail?: string;
 };
 type LogLine = { level: string; text: string };
+type DebugReport = {
+  version: string;
+  hostname: string;
+  os: string;
+  cpu: string;
+  ram: string;
+  gpu: GpuStatus;
+  debugLogging: boolean;
+  text: string;
+};
 type RunningApp = { name: string; label: string };
 type EngineFilter = "all" | "whisper" | "onnx";
 type LanguageFilter = "any" | "english" | "multilingual";
@@ -146,6 +161,35 @@ const ICON_CHECK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="curr
 const ICON_PLAY = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#0F6B57" stroke="#0F6B57" stroke-width="1" stroke-linejoin="round" d="M4.2 2.4v11.2L13.6 8z"/></svg>`;
 const ICON_STOP = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#0F6B57" stroke="#0F6B57" stroke-width="1" d="M4 4h8v8H4z"/></svg>`;
 
+function themeBrandSvg(svg: string, opts: { dropPlate?: boolean } = {}) {
+  let out = svg;
+  if (opts.dropPlate) {
+    out = out.replace(/<rect width="1024" height="1024"[^>]*\/?>\s*/i, "");
+    out = out.replace(/viewBox="0 0 1024 1024"/i, 'viewBox="80 350 864 330"');
+  }
+  out = out
+    .replace(/fill="#0[Bb]1[Aa]15"/g, 'fill="currentColor"')
+    .replace(/stroke="#0[Bb]1[Aa]15"/g, 'stroke="currentColor"')
+    .replace(/fill="#0[Ff]6[Bb]57"/g, 'fill="currentColor"')
+    .replace(/stroke="#0[Ff]6[Bb]57"/g, 'stroke="currentColor"')
+    .replace(/fill="#F2F6F2"/gi, 'fill="currentColor" fill-opacity="0.16"');
+  const openTagEnd = out.indexOf(">");
+  const openTag = openTagEnd >= 0 ? out.slice(0, openTagEnd) : out;
+  if (!/\sfill=/i.test(openTag)) {
+    out = out.replace(/<svg\b/i, '<svg fill="currentColor"');
+  }
+  if (!/aria-hidden=/i.test(out)) {
+    out = out.replace(/<svg\b/i, '<svg aria-hidden="true"');
+  }
+  return out;
+}
+
+const hqMark = themeBrandSvg(hqMarkRaw);
+const linuxMark = themeBrandSvg(linuxMarkRaw);
+const appleMark = themeBrandSvg(appleMarkRaw);
+const androidMark = themeBrandSvg(androidMarkRaw);
+const gatewayMark = themeBrandSvg(gatewayMarkRaw, { dropPlate: true });
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let models: Model[] = [];
 let statuses: Record<string, ModelStatus> = {};
@@ -191,6 +235,7 @@ let view: View = "dictation";
 let toastText = "";
 let toastTimer: number | null = null;
 let logLines: LogLine[] = [];
+let debugReport: DebugReport | null = null;
 let previewStartNext = true;
 let runningApps: RunningApp[] = [];
 let focusRestore: { id: string; start: number; end: number } | null = null;
@@ -456,21 +501,29 @@ function dictationPage() {
   const keycap = `<kbd>${escape(hotkeyLabel())}</kbd>`;
   const parked = !!runtime.parkKind;
   const heading = recording
-    ? "Listening…"
+    ? (testListening ? "Practice take" : "Listening…")
     : runtime.parkKind === "autopause"
       ? "Paused for a watched app"
       : runtime.parkKind === "idle"
         ? "Model unloaded to save RAM"
         : "Ready when you are";
-  const hint = recording
+  const statusHint = recording
     ? (testListening
-      ? "Practice take in progress. Stop it from the sidebar Test control."
+      ? "This take stays in VocaWin. Stop it from the sidebar Test control."
+      : "Speak now. Text lands at the caret when you finish.")
+    : "Text lands at the caret in the focused app.";
+  const hotkeyLabelText = recording
+    ? (testListening ? "PRACTICE" : "LISTENING")
+    : (holdMode ? "HOLD TO TALK" : "TAP TO TOGGLE");
+  const hotkeyHint = recording
+    ? (testListening
+      ? "Use Stop test in the sidebar. This take does not type into other apps."
       : holdMode
-        ? `Release ${keycap} when you finish speaking.`
-        : `Tap ${keycap} again to stop and type.`)
+        ? "Release it when you finish speaking."
+        : "Tap it again to stop and type.")
     : (holdMode
-      ? `Hold ${keycap} in any app. Text lands at the caret.`
-      : `Tap ${keycap} in any app to start, tap again to finish.`);
+      ? "Hold it in any app."
+      : "Tap it in any app to start, tap again to finish.");
   // Escape hatch for hotkey/window takes only. Sidebar Test uses its own Stop
   // and must not call inject_text via #record.
   const finishControl = recording && !testListening
@@ -483,13 +536,22 @@ function dictationPage() {
   const stateLabel = recording ? "Listening" : parked ? (runtime.parkKind === "idle" ? "Unloaded" : "Paused") : "Ready";
   return `<header><div><p class="overline">VOICE DICTATION</p><h1>Speak naturally.<br><em>Keep it private.</em></h1><p class="lede">VocaWin turns your voice into text on your own computer, never in the cloud.</p></div><span class="state ${parked ? "parked" : ""}"><i></i>${stateLabel}</span></header>
   ${dictationParkBanner()}
-  <section class="record-panel" aria-live="polite">
-    <div class="mic ${recording ? "listening" : parked ? "parked" : ""}">${dictateMark(recording ? "listening" : "idle")}</div>
-    <h2>${heading}</h2>
-    <p class="record-hint">${hint}</p>
-    <p class="record-actions"><button type="button" class="text-button" data-go="settings">Change shortcut</button>${finishControl ? ` · ${finishControl}` : ""}</p>
-    <small>Practice via sidebar Test.</small>
-  </section>
+  <div class="dictation-bento">
+    <section class="record-panel" aria-live="polite">
+      <div class="mic ${recording ? "listening" : parked ? "parked" : ""}">${dictateMark(recording ? "listening" : "idle")}</div>
+      <div class="record-copy">
+        <h2>${heading}</h2>
+        <p class="record-hint">${statusHint}</p>
+      </div>
+    </section>
+    <section class="hotkey-panel">
+      <p class="card-label">${hotkeyLabelText}</p>
+      <p class="hotkey-hero">${keycap}</p>
+      <p class="record-hint">${hotkeyHint}</p>
+      <p class="record-actions"><button type="button" class="text-button" data-go="settings">Change shortcut</button>${finishControl ? ` · ${finishControl}` : ""}</p>
+      <small>Practice via sidebar Test. That take stays in VocaWin.</small>
+    </section>
+  </div>
   <section class="overview"><button class="info-card model-cta ${installed ? "" : "needs-download"}" data-go="models" type="button"><p class="card-label">ACTIVE MODEL</p><strong>${escape(model?.name ?? "Choose a model")}</strong><span>${modelState}</span><span class="text-button">${modelAction}</span></button></section>`;
 }
 
@@ -726,26 +788,56 @@ function settingsPage() {
   ${recordingHotkey ? `<p class="recording-hint">Press a key combo, or Escape to cancel.</p>` : ""}`;
 }
 
+function debugFact(label: string, value: string) {
+  return `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`;
+}
+
 function debugPage() {
   const lines = visibleLogs();
   const body = lines.length
     ? lines.map(line => `<div class="log-line level-${escape(line.level)}"><span class="log-level">${escape(line.level)}</span>${escape(line.text)}</div>`).join("")
     : `<div class="empty-history">No warning or error lines yet.${settings.debugLogging ? "" : " Turn on debug logging to see the quieter chatter."}</div>`;
-  return `<header><div><p class="overline">DEBUG</p><h1>GPU and <em>logs.</em></h1><p class="lede">This is for testers. Debug logging stays off unless you turn it on. Clear only wipes the in-memory buffer, not files on disk.</p></div></header>
-    <section class="settings-card"><p class="settings-group">GPU</p>
-      <div class="setting-row"><div><strong>${escape(gpu.name)}</strong><p>${escape(gpu.detail || gpu.backend)}</p></div>
-      <div class="gpu-readout"><span>${escape(gpu.backend)}${gpu.discrete ? " · discrete" : ""}${gpu.vramMb ? ` · ~${gpu.vramMb} MB` : ""}</span></div></div>
+  const report = debugReport;
+  const gpuName = report?.gpu.name ?? gpu.name;
+  const gpuBackend = report?.gpu.backend ?? gpu.backend;
+  const gpuDetail = report?.gpu.detail ?? gpu.detail;
+  const gpuDiscrete = report?.gpu.discrete ?? gpu.discrete;
+  const gpuVram = report?.gpu.vramMb ?? gpu.vramMb;
+  const gpuValue = [
+    gpuName,
+    gpuDiscrete ? "discrete" : "",
+    gpuVram ? `~${gpuVram} MB` : "",
+    gpuBackend,
+  ].filter(Boolean).join(" · ");
+  return `<header><div><p class="overline">DEBUG</p><h1>This PC and <em>logs.</em></h1><p class="lede">This is for testers. Debug logging stays off unless you turn it on. Copy report gathers version, OS, CPU, RAM, GPU, the debug flag, then the in-memory log. Clear only wipes that buffer, not files on disk.</p></div></header>
+    <section class="settings-card"><p class="settings-group">This PC</p>
+      <dl class="machine-facts">
+        ${debugFact("Version", `VocaWin ${report?.version ?? "0.1.0"} beta`)}
+        ${debugFact("Machine", report?.hostname ?? "…")}
+        ${debugFact("OS", report?.os ?? "…")}
+        ${debugFact("CPU", report?.cpu ?? "…")}
+        ${debugFact("RAM", report?.ram ?? "…")}
+        ${debugFact("GPU", gpuValue)}
+      </dl>
+      <p class="machine-gpu-detail">${escape(gpuDetail || gpuBackend)}</p>
     </section>
     <section class="settings-card"><p class="settings-group">Logs</p>
       <div class="setting-row"><div><strong>Debug logging</strong><p>Off shows warning and error. On also shows debug and info.</p></div>
         <label class="switch"><input id="debug-logging" type="checkbox" ${settings.debugLogging ? "checked" : ""}/><span></span></label>
       </div>
       <div class="log-toolbar">
-        <button type="button" class="quiet-button" id="copy-logs">Copy</button>
+        <button type="button" class="quiet-button" id="copy-logs">Copy report</button>
         <button type="button" class="quiet-button" id="clear-logs">Clear</button>
       </div>
       <section class="log-panel">${body}</section>
     </section>`;
+}
+
+function familyRow(href: string, markClass: string, mark: string, name: string, host: string) {
+  return `<li><button type="button" class="about-family-btn" data-open="${href}">
+      <span class="about-family-mark ${markClass}">${mark}</span>
+      <span class="about-family-copy"><strong>${name}</strong><span>${host}</span></span>
+    </button></li>`;
 }
 
 function aboutPage() {
@@ -757,7 +849,7 @@ function aboutPage() {
       <button type="button" class="text-button" data-open="https://vocawin.com">vocawin.com</button>
     </section>
     <section class="settings-card">
-      <p class="settings-group">This build</p>
+      <p class="settings-group">This app</p>
       <div class="about-copy">
         <p>This is an unsigned beta. It is not a store listing and not a stable public release. Windows will likely say the publisher is unknown. That is SmartScreen. Use More info, then Run anyway, only if you trust the GitHub Release you downloaded.</p>
         <p>The community is expected to help improve it. If something breaks, file an issue.</p>
@@ -767,12 +859,12 @@ function aboutPage() {
       <p class="settings-group">Part of VocaHQ</p>
       <div class="about-copy">
         <p>VocaWin is one of the VocaHQ apps. The same private dictation already runs on Linux as VocaLinux, on macOS as VocaMac, and on phones as VocaPhone. VocaGateway is optional self-hosted compute for other Voca clients.</p>
-        <ul class="about-links">
-          <li><button type="button" class="text-button" data-open="https://vocahq.com">vocahq.com</button></li>
-          <li><button type="button" class="text-button" data-open="https://vocalinux.com">vocalinux.com</button></li>
-          <li><button type="button" class="text-button" data-open="https://vocamac.com">vocamac.com</button></li>
-          <li><button type="button" class="text-button" data-open="https://vocaphone.vocahq.com">vocaphone.vocahq.com</button></li>
-          <li><button type="button" class="text-button" data-open="https://vocagateway.vocahq.com">vocagateway.vocahq.com</button></li>
+        <ul class="about-family" role="list">
+          ${familyRow("https://vocahq.com", "about-mark-hq", hqMark, "VocaHQ", "vocahq.com")}
+          ${familyRow("https://vocalinux.com", "about-mark-platform", linuxMark, "VocaLinux", "vocalinux.com")}
+          ${familyRow("https://vocamac.com", "about-mark-platform", appleMark, "VocaMac", "vocamac.com")}
+          ${familyRow("https://vocaphone.vocahq.com", "about-mark-phone", `${androidMark}${appleMark}`, "VocaPhone", "vocaphone.vocahq.com")}
+          ${familyRow("https://vocagateway.vocahq.com", "about-mark-gateway", gatewayMark, "VocaGateway", "vocagateway.vocahq.com")}
         </ul>
       </div>
     </section>
@@ -873,7 +965,7 @@ function openView(next: View) {
     return;
   }
   if (next === "debug") {
-    void refreshLogs().then(render);
+    void Promise.all([refreshLogs(), refreshDebugReport()]).then(render);
     return;
   }
   render();
@@ -1057,7 +1149,7 @@ async function persistSettings(silent = false, skipCollect = false) {
     settings = await invoke<Settings>("get_settings");
     await refreshRuntime();
     if (view === "debug") {
-      await refreshLogs();
+      await Promise.all([refreshLogs(), refreshDebugReport()]);
       render();
       if (!silent) showToast("Settings saved");
       return;
@@ -1241,6 +1333,9 @@ async function refreshRuntime() {
 async function refreshLogs() {
   try { logLines = await invoke<LogLine[]>("get_log_lines"); } catch { logLines = []; }
 }
+async function refreshDebugReport() {
+  try { debugReport = await invoke<DebugReport>("get_debug_report"); } catch { debugReport = null; }
+}
 async function refreshRunningApps() {
   try { runningApps = await invoke<RunningApp[]>("list_running_apps"); } catch { runningApps = []; }
 }
@@ -1249,21 +1344,28 @@ async function clearHistory() {
   render();
 }
 async function copyLogs() {
-  const text = visibleLogs().map(line => `[${line.level}] ${line.text}`).join("\n");
-  if (!text) {
-    showToast("No logs to copy.");
+  let text = "";
+  try {
+    const report = await invoke<DebugReport>("get_debug_report");
+    debugReport = report;
+    text = report.text;
+  } catch {
+    text = visibleLogs().map(line => `[${line.level}] ${line.text}`).join("\n");
+  }
+  if (!text.trim()) {
+    showToast("Nothing to copy.");
     render();
     return;
   }
   try {
     await invoke("copy_text", { text });
-    showToast("Logs copied.");
+    showToast("Debug report copied.");
   } catch {
     try {
       await navigator.clipboard.writeText(text);
-      showToast("Logs copied.");
+      showToast("Debug report copied.");
     } catch {
-      showToast("Could not copy logs.");
+      showToast("Could not copy the debug report.");
     }
   }
 }
