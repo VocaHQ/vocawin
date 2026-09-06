@@ -70,7 +70,6 @@ type RuntimeStatus = {
 type LogLine = { level: string; text: string };
 type DebugReport = {
   version: string;
-  hostname: string;
   os: string;
   cpu: string;
   ram: string;
@@ -167,12 +166,15 @@ function themeBrandSvg(svg: string, opts: { dropPlate?: boolean } = {}) {
     out = out.replace(/<rect width="1024" height="1024"[^>]*\/?>\s*/i, "");
     out = out.replace(/viewBox="0 0 1024 1024"/i, 'viewBox="80 350 864 330"');
   }
+  // Kit marks bake HQ ink (#0B1A15), plate green (#0F6B57), and paper (#F2F6F2).
+  // Swap those fills so About follows the row's currentColor on light and dark.
   out = out
     .replace(/fill="#0[Bb]1[Aa]15"/g, 'fill="currentColor"')
     .replace(/stroke="#0[Bb]1[Aa]15"/g, 'stroke="currentColor"')
     .replace(/fill="#0[Ff]6[Bb]57"/g, 'fill="currentColor"')
     .replace(/stroke="#0[Ff]6[Bb]57"/g, 'stroke="currentColor"')
-    .replace(/fill="#F2F6F2"/gi, 'fill="currentColor" fill-opacity="0.16"');
+    .replace(/fill="#F2F6F2"/gi, 'fill="currentColor" fill-opacity="0.16"')
+    .replace(/stroke="#F2F6F2"/gi, 'stroke="currentColor"');
   const openTagEnd = out.indexOf(">");
   const openTag = openTagEnd >= 0 ? out.slice(0, openTagEnd) : out;
   if (!/\sfill=/i.test(openTag)) {
@@ -809,11 +811,10 @@ function debugPage() {
     gpuVram ? `~${gpuVram} MB` : "",
     gpuBackend,
   ].filter(Boolean).join(" · ");
-  return `<header><div><p class="overline">DEBUG</p><h1>This PC and <em>logs.</em></h1><p class="lede">This is for testers. Debug logging stays off unless you turn it on. Copy report gathers version, OS, CPU, RAM, GPU, the debug flag, then the in-memory log. Clear only wipes that buffer, not files on disk.</p></div></header>
+  return `<header><div><p class="overline">DEBUG</p><h1>This PC and <em>logs.</em></h1><p class="lede">This is for testers. Debug logging stays off unless you turn it on. Copy report gathers version, OS, CPU, RAM, GPU, the debug flag, then the in-memory log. It leaves the PC name out. Clear only wipes that buffer, not files on disk.</p></div></header>
     <section class="settings-card"><p class="settings-group">This PC</p>
       <dl class="machine-facts">
         ${debugFact("Version", `VocaWin ${report?.version ?? "0.1.0"} beta`)}
-        ${debugFact("Machine", report?.hostname ?? "…")}
         ${debugFact("OS", report?.os ?? "…")}
         ${debugFact("CPU", report?.cpu ?? "…")}
         ${debugFact("RAM", report?.ram ?? "…")}
@@ -1415,6 +1416,7 @@ async function selectModel(id: string) {
   try { await invoke("save_settings", { settings }); showToast(`${selected()?.name ?? "Model"} is active.`); render(); } catch (error) { showToast(String(error)); render(); }
 }
 async function toggleRecording() {
+  if (testListening) return;
   try {
     if (!recording) {
       if (!modelInstalled()) {
@@ -1481,11 +1483,12 @@ async function testDictation() {
         return;
       }
       testingDictation = true;
-      await invoke("start_recording", { noInject: true });
-      recording = true;
       testListening = true;
-      testingDictation = false;
+      recording = true;
       testResult = "";
+      render();
+      await invoke("start_recording", { noInject: true });
+      testingDictation = false;
       await refreshRuntime();
       render();
       return;

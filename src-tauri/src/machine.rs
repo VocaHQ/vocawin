@@ -9,7 +9,6 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[serde(rename_all = "camelCase")]
 pub struct DebugReport {
     pub version: String,
-    pub hostname: String,
     pub os: String,
     pub cpu: String,
     pub ram: String,
@@ -19,23 +18,12 @@ pub struct DebugReport {
 }
 
 pub fn debug_report(gpu: GpuStatus, debug_logging: bool, logs: &str) -> DebugReport {
-    let hostname = hostname();
     let os = os_name();
     let cpu = cpu_name();
     let ram = ram_summary();
-    let text = format_report(
-        APP_VERSION,
-        &hostname,
-        &os,
-        &cpu,
-        &ram,
-        &gpu,
-        debug_logging,
-        logs,
-    );
+    let text = format_report(APP_VERSION, &os, &cpu, &ram, &gpu, debug_logging, logs);
     DebugReport {
         version: APP_VERSION.into(),
-        hostname,
         os,
         cpu,
         ram,
@@ -47,7 +35,6 @@ pub fn debug_report(gpu: GpuStatus, debug_logging: bool, logs: &str) -> DebugRep
 
 fn format_report(
     version: &str,
-    hostname: &str,
     os: &str,
     cpu: &str,
     ram: &str,
@@ -70,7 +57,6 @@ fn format_report(
     let flag = if debug_logging { "on" } else { "off" };
     let mut body = format!(
         "VocaWin {version}\n\
-Machine: {hostname}\n\
 OS: {os}\n\
 CPU: {cpu}\n\
 RAM: {ram}\n\
@@ -83,21 +69,41 @@ Debug logging: {flag}\n",
     if logs.trim().is_empty() {
         body.push_str("No log lines.\n");
     } else {
-        body.push_str(logs.trim_end());
+        body.push_str(&redact_home_paths(logs.trim_end()));
         body.push('\n');
     }
     body
 }
 
-fn hostname() -> String {
-    std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .or_else(|_| {
-            std::fs::read_to_string("/etc/hostname").map(|value| value.trim().to_string())
-        })
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "unknown".into())
+/// The report is meant to be pasted into a GitHub issue. Strip profile
+/// directories so a log line with an APPDATA model path does not leak a
+/// Windows user name.
+fn redact_home_paths(text: &str) -> String {
+    let mut out = text.to_string();
+    for prefix in [r"\Users\", "/Users/", "/home/"] {
+        out = redact_after_prefix(&out, prefix);
+    }
+    out
+}
+
+fn redact_after_prefix(text: &str, prefix: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(prefix) {
+        result.push_str(&rest[..idx + prefix.len()]);
+        let after = &rest[idx + prefix.len()..];
+        let end = after
+            .find(|c: char| c == '/' || c == '\\' || c.is_whitespace() || c == '"' || c == '\'')
+            .unwrap_or(after.len());
+        if end > 0 {
+            result.push_str("<user>");
+            rest = &after[end..];
+        } else {
+            rest = after;
+        }
+    }
+    result.push_str(rest);
+    result
 }
 
 fn os_name() -> String {
@@ -201,11 +207,7 @@ fn unix_total_ram_bytes() -> Option<u64> {
     let text = std::fs::read_to_string("/proc/meminfo").ok()?;
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("MemTotal:") {
-            let kb: u64 = rest
-                .split_whitespace()
-                .next()?
-                .parse()
-                .ok()?;
+            let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
             return Some(kb.saturating_mul(1024));
         }
     }
@@ -338,18 +340,44 @@ mod tests {
     #[test]
     fn report_lists_version_os_cpu_ram_gpu_and_debug_flag() {
         let report = debug_report(sample_gpu(), false, "[warn] hotkey busy\n[error] boom");
-        assert!(report.text.starts_with("VocaWin 0.1.0\n"), "{}", report.text);
-        assert!(report.text.contains("Machine: "));
+        assert!(
+            report.text.starts_with("VocaWin 0.1.0\n"),
+            "{}",
+            report.text
+        );
+        assert!(!report.text.contains("Machine:"));
+        assert!(!report.text.to_ascii_lowercase().contains("hostname"));
         assert!(report.text.contains("OS: "));
         assert!(report.text.contains("CPU: "));
         assert!(report.text.contains("RAM: "));
-        assert!(report.text.contains("GPU: NVIDIA GeForce RTX 3080 (discrete, ~10240 MB)"));
-        assert!(report.text.contains("GPU backend: Vulkan (whisper.cpp) · DirectML (ONNX)"));
+        assert!(report
+            .text
+            .contains("GPU: NVIDIA GeForce RTX 3080 (discrete, ~10240 MB)"));
+        assert!(report
+            .text
+            .contains("GPU backend: Vulkan (whisper.cpp) · DirectML (ONNX)"));
         assert!(report.text.contains("Debug logging: off"));
         assert!(report.text.contains("[warn] hotkey busy"));
         assert!(report.text.contains("[error] boom"));
         assert_eq!(report.version, "0.1.0");
         assert!(!report.debug_logging);
+    }
+
+    #[test]
+    fn report_redacts_profile_directories_in_logs() {
+        let report = debug_report(
+            sample_gpu(),
+            true,
+            r"[error] Model missing at C:\Users\Ada\AppData\Roaming\com.vocahq.vocawin\models\x.bin
+[error] also /home/ada/.local/share/vocawin/models/x.bin
+[error] also /Users/ada/Library/Application Support/vocawin/x.bin",
+        );
+        assert!(report.text.contains(r"C:\Users\<user>\AppData"));
+        assert!(report.text.contains("/home/<user>/.local"));
+        assert!(report.text.contains("/Users/<user>/Library"));
+        assert!(!report.text.contains(r"\Users\Ada\"));
+        assert!(!report.text.contains("/home/ada/"));
+        assert!(!report.text.contains("/Users/ada/"));
     }
 
     #[test]
@@ -381,7 +409,6 @@ mod tests {
             false,
             "",
         );
-        assert!(!report.hostname.trim().is_empty());
         assert!(!report.os.trim().is_empty());
         assert!(!report.cpu.trim().is_empty());
         assert!(!report.ram.trim().is_empty());

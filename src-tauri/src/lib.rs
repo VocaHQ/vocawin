@@ -1879,7 +1879,11 @@ fn begin_voice_session(app: &AppHandle, inject: bool) -> Result<(), String> {
         app,
         format!(
             "Start {} ({})",
-            if inject { "dictation" } else { "test dictation" },
+            if inject {
+                "dictation"
+            } else {
+                "test dictation"
+            },
             settings.selected_model
         ),
     );
@@ -2034,13 +2038,6 @@ fn transcribe_samples(
         settings.selected_model
     ));
     Ok(text)
-}
-
-fn transcribe_recording(state: &AppState) -> Result<String, String> {
-    match end_voice_session(state)? {
-        Some(text) => Ok(text),
-        None => Ok(String::new()),
-    }
 }
 
 /// Stop capture and clear the session flag even when stop() fails.
@@ -2528,10 +2525,7 @@ pub fn run() {
                 }
             }
             let gpu = gpu::detect_gpu();
-            logbuf::debug(format!(
-                "GPU: {} ({})",
-                gpu.name, gpu.backend
-            ));
+            logbuf::debug(format!("GPU: {} ({})", gpu.name, gpu.backend));
             logbuf::info("VocaWin ready.");
             Ok(())
         })
@@ -2613,9 +2607,7 @@ pub(crate) fn on_hotkey_event(handle: &AppHandle, event: hook::HookEvent) {
             let flag = *state.recording.lock().unwrap_or_else(|e| e.into_inner());
             let live = state.recorder.capture_live();
             match ptt_pressed_action(flag, live) {
-                PttPressedAction::Ignore => {
-                    logbuf::debug("Hotkey press ignored (already live).");
-                }
+                PttPressedAction::Ignore => {}
                 PttPressedAction::Start => {
                     logbuf::debug_and_emit(handle, "Hotkey pressed.");
                     if let Err(error) = begin_voice_session(handle, true) {
@@ -2690,7 +2682,10 @@ fn start_auto_pause_watcher(app: AppHandle) {
                 }
                 if let Err(error) = register_dictation_hotkey(&app, &settings.hotkey) {
                     eprintln!("VocaWin hotkey restore after auto-pause failed: {error}");
-                    logbuf::error_and_emit(&app, format!("Hotkey restore after auto-pause failed: {error}"));
+                    logbuf::error_and_emit(
+                        &app,
+                        format!("Hotkey restore after auto-pause failed: {error}"),
+                    );
                 } else {
                     logbuf::info_and_emit(&app, "Auto-pause cleared. Hotkey restored.");
                 }
@@ -2899,32 +2894,8 @@ fn tray_stop_voice(app: &AppHandle) -> Result<(), String> {
     {
         return Ok(());
     }
-    set_tray_phase(app, TrayPhase::Processing);
-    let sound = state
-        .settings
-        .lock()
-        .map(|settings| settings.sound_theme.clone())
-        .unwrap_or_else(|_| "voca".into());
-    match transcribe_recording(&state) {
-        Ok(text) => {
-            sounds::play_if_enabled(&sound, false);
-            if !text.is_empty() {
-                let _ = inject_transcript(&*state, &text);
-            }
-            let _ = app.emit("dictation-finished", text);
-            let _ = app.emit("recording-changed", false);
-            apply_ready_or_parked_tray(app);
-            Ok(())
-        }
-        Err(error) => {
-            let _ = app.emit("recording-changed", false);
-            apply_ready_or_parked_tray(app);
-            sounds::play_error_if_enabled(&sound);
-            logbuf::error_and_emit(app, format!("Dictation error: {error}"));
-            let _ = app.emit("dictation-error", error.clone());
-            Err(error)
-        }
-    }
+    finish_voice_session(app);
+    Ok(())
 }
 
 fn tray_toggle_login(app: &AppHandle) -> Result<(), String> {
@@ -3177,6 +3148,21 @@ mod tests {
         assert!(src.contains("web/assets/brand/vocahq/social/mail.svg"));
         assert!(!src.contains("web/assets/icons/"));
         assert!(!src.contains("./assets/social/"));
+        assert!(src.contains("themeBrandSvg(hqMarkRaw)"));
+        assert!(src.contains("themeBrandSvg(gatewayMarkRaw, { dropPlate: true })"));
+        assert!(src.contains("fill=\"#0[Bb]1[Aa]15\""));
+        assert!(src.contains("fill=\"#0[Ff]6[Bb]57\""));
+        assert!(src.contains("'fill=\"currentColor\"'"));
+        let hq = include_str!("../../web/assets/brand/vocahq/voca-mark.svg");
+        let gateway = include_str!("../../web/assets/brand/vocagateway/vocagateway-1u.svg");
+        assert!(
+            hq.contains("#0B1A15"),
+            "HQ mark still has baked ink for About to recolor"
+        );
+        assert!(
+            gateway.contains("#0F6B57") && gateway.contains(r#"width="1024""#),
+            "Gateway 1U still has the baked plate for dropPlate"
+        );
     }
 
     #[test]
@@ -3187,6 +3173,70 @@ mod tests {
         assert!(src.contains("dictation-bento"));
         assert!(!src.contains(">Start dictation<"));
         assert!(src.contains("Practice via sidebar Test"));
+    }
+
+    #[test]
+    fn test_dictation_marks_practice_before_capture_and_never_injects() {
+        let src = include_str!("../../src/main.ts");
+        let start = src
+            .find("async function testDictation()")
+            .expect("testDictation");
+        let rest = &src[start..];
+        let end = rest[1..]
+            .find("\nasync function ")
+            .map(|idx| start + 1 + idx)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+        let mark = body
+            .find("testListening = true")
+            .expect("practice take must set testListening");
+        let invoke = body
+            .find("start_recording")
+            .expect("practice take must start capture");
+        assert!(
+            mark < invoke,
+            "testListening must be set before start_recording so Stop & type stays hidden"
+        );
+        assert!(!body.contains("inject_text"));
+        assert!(body.contains("noInject: true"));
+
+        let toggle_start = src
+            .find("async function toggleRecording()")
+            .expect("toggleRecording");
+        let toggle_rest = &src[toggle_start..];
+        let toggle_end = toggle_rest[1..]
+            .find("\nasync function ")
+            .map(|idx| toggle_start + 1 + idx)
+            .unwrap_or(src.len());
+        let toggle = &src[toggle_start..toggle_end];
+        assert!(
+            toggle.contains("if (testListening) return;"),
+            "Stop & type must not inject a practice take"
+        );
+    }
+
+    #[test]
+    fn hotkey_repeat_while_live_is_silent() {
+        let src = include_str!("lib.rs");
+        let needle = format!("{}{}", "Hotkey press ", "ignored");
+        assert!(
+            !src.contains(&needle),
+            "typematic Ignore must not write a log line"
+        );
+    }
+
+    #[test]
+    fn tray_stop_does_not_inject_on_its_own() {
+        let src = include_str!("lib.rs");
+        let start = src.find("fn tray_stop_voice").expect("tray_stop_voice");
+        let rest = &src[start..];
+        let end = rest[1..]
+            .find("\nfn ")
+            .map(|idx| start + 1 + idx)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+        assert!(body.contains("finish_voice_session"));
+        assert!(!body.contains("inject_transcript"));
     }
 
     #[test]
