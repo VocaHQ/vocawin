@@ -42,10 +42,10 @@ test("unsigned beta download is explicit and not oversold", () => {
   );
   assert.match(
     html,
-    /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases\/tag\/v0\.1\.1"/,
+    /href="https:\/\/github\.com\/VocaHQ\/vocawin\/releases\/tag\/v0\.1\.1-beta\.1"/,
   );
-  assert.match(html, /"softwareVersion": "v0\.1\.1"/);
-  assert.match(html, /v0\.1\.1/);
+  assert.match(html, /"softwareVersion": "v0\.1\.1-beta\.1"/);
+  assert.match(html, /v0\.1\.1-beta\.1/);
   assert.doesNotMatch(html, /v0\.1\.0-alpha/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/issues"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocawin\/blob\/main\/docs\/setup\.md"/);
