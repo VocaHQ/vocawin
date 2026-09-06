@@ -116,7 +116,7 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 ## Releases and CI
 
-Keep the app version and the public Git tag aligned including the beta marker (`0.1.1-beta.1` / `v0.1.1-beta.1` for this cut) in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump both together on a named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
+Keep the app version and the public Git tag aligned including the beta marker (`0.1.1-beta` / `v0.1.1-beta` for this cut) in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump both together on a named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
 
 | Workflow | Trigger | Effect |
 | --- | --- | --- |
@@ -125,7 +125,7 @@ Keep the app version and the public Git tag aligned including the beta marker (`
 | `nightly.yml` | cron + dispatch | Moving `nightly` prerelease from `main` when app source changed. Not a `v*` tag. |
 | `deploy-pages.yml` | `web/**` on `main` | Publishes vocawin.com. |
 
-Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta.1`). Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard. Use one installer per PC, not both.
+Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard. Use one installer per PC, not both.
 
 Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named beta must not be cut from a branch click.
 

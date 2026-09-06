@@ -4,9 +4,9 @@ This is the checklist we already use. A `v*` tag is what ships a **named** teste
 
 ## Tag
 
-The latest tagged tester cut is `v0.1.1-beta.1`. Cut the next `v*` tag only after Jatin asks. Tag the commit testers should run, then push it. That is the only trigger.
+The latest tagged tester cut is `v0.1.1-beta`. Cut the next `v*` tag only after Jatin asks. Tag the commit testers should run, then push it. That is the only trigger.
 
-Keep the app version and the public Git tag aligned, including the beta marker. For this cut that means `0.1.1-beta.1` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`, public tag `v0.1.1-beta.1`, and installers named `VocaWin_0.1.1-beta.1_*`. Bump both together when you cut the next named release. Product status stays Beta in notes and site prose.
+Keep the app version and the public Git tag aligned, including the beta marker. For this cut that means `0.1.1-beta` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`, public tag `v0.1.1-beta`, and installers named `VocaWin_0.1.1-beta_*`. Bump both together when you cut the next named release. Product status stays Beta in notes and site prose.
 
 Do not retag. Do not use workflow_dispatch. `.github/workflows/windows-alpha-release.yml` has no manual trigger on purpose, so a branch click cannot publish.
 
@@ -34,7 +34,7 @@ You can rename the Release to drop the `v` and the `(Windows beta)` suffix. That
 
 ## Public pages
 
-[vocawin.com](https://vocawin.com) lives in `web/` and publishes from `main` when `web/` changes. Name the current tagged cut (`v0.1.1-beta.1`) next to the download facts and in JSON-LD `softwareVersion`, and link [that tag](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.1-beta.1). The primary download button can still go to [Releases](https://github.com/VocaHQ/vocawin/releases). Nightly stays on the moving [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) tag. When we cut the next named tag, bump those pins in the same site PR and keep the app version aligned with the tag (including `-beta.N`). Check the live page still says beta, unsigned, More info then Run anyway.
+[vocawin.com](https://vocawin.com) lives in `web/` and publishes from `main` when `web/` changes. Name the current tagged cut (`v0.1.1-beta`) next to the download facts and in JSON-LD `softwareVersion`, and link [that tag](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.1-beta). The primary download button can still go to [Releases](https://github.com/VocaHQ/vocawin/releases). Nightly stays on the moving [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly) tag. When we cut the next named tag, bump those pins in the same site PR and keep the app version aligned with the tag (including the single `-beta` marker). Check the live page still says beta, unsigned, More info then Run anyway.
 
 The README badge is `github/v/release` with `include_prereleases`. Named `v*` cuts publish as Latest, so the homepage and badge can surface them without relying on the prerelease flag. Leave the badge pointed at `/releases`. Do not pin a tag in the README.
 
@@ -50,4 +50,4 @@ VocaHQ owns vocahq.com and the family PRODUCT.md. If that page still lists an ol
 
 ## What not to do
 
-Do not pin a `v*` tag in the README. vocawin.com should name the current tagged cut and get updated on the next tag. Do not ship a named cut where the app version and the `v*` tag disagree, and do not drop the `-beta.N` marker from either side while the cut is still beta. Do not force the GitHub prerelease checkbox on named `v*` cuts (those publish as Latest for homepage visibility). Do not bump the app version for a nightly alone. Do not tell testers the build is signed, Coming soon, or Available now. Do not cut a named beta from a branch click. Nightly may be dispatched by hand and remains a separate prerelease path.
+Do not pin a `v*` tag in the README. vocawin.com should name the current tagged cut and get updated on the next tag. Do not ship a named cut where the app version and the `v*` tag disagree, and do not drop the `-beta` marker from either side while the cut is still beta. Do not use a numbered suffix like `-beta.1`; next cuts bump the numeric version and keep one `-beta`. Do not force the GitHub prerelease checkbox on named `v*` cuts (those publish as Latest for homepage visibility). Do not bump the app version for a nightly alone. Do not tell testers the build is signed, Coming soon, or Available now. Do not cut a named beta from a branch click. Nightly may be dispatched by hand and remains a separate prerelease path.

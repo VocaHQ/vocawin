@@ -374,7 +374,7 @@ mod tests {
     fn report_lists_version_os_cpu_ram_gpu_and_debug_flag() {
         let report = debug_report(sample_gpu(), false, "[warn] hotkey busy\n[error] boom");
         assert!(
-            report.text.starts_with("VocaWin 0.1.0\n"),
+            report.text.starts_with(&format!("VocaWin {APP_VERSION}\n")),
             "{}",
             report.text
         );
@@ -392,7 +392,7 @@ mod tests {
         assert!(report.text.contains("Debug logging: off"));
         assert!(report.text.contains("[warn] hotkey busy"));
         assert!(report.text.contains("[error] boom"));
-        assert_eq!(report.version, "0.1.0");
+        assert_eq!(report.version, APP_VERSION);
         assert!(!report.debug_logging);
     }
 
