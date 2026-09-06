@@ -32,7 +32,7 @@ Rules:
 
 | Layer | Location | Notes |
 | --- | --- | --- |
-| Tauri 2 shell | `src-tauri/` | Identifier `com.vocahq.vocawin`. Bundles NSIS + MSI. |
+| Tauri 2 shell | `src-tauri/` | Identifier `com.vocahq.vocawin`. Bundles NSIS (MSI paused while version is X.Y.Z-beta). |
 | TypeScript UI | `src/` | Vanilla TS. `src/main.ts` + `src/style.css`. No React. Vite on port **1420**. |
 | Rust | `src-tauri/src/` | Crate `vocawin_lib`. Commands, tray, capture, STT, inject. |
 | Landing page | `web/` | Static vocawin.com. No build step. GitHub Pages. |
@@ -66,7 +66,7 @@ Prereqs: Node 20+ (CI uses 22), Rust stable, and [Tauri Windows prerequisites](h
 | `npm run build` | `tsc --noEmit && vite build` |
 | `npm run tauri` | Tauri CLI passthrough |
 | `npm run tauri dev` | Desktop development |
-| `npm run tauri build` | NSIS `.exe` + MSI on Windows |
+| `npm run tauri build` | NSIS `.exe` on Windows (`bundle.targets` is nsis-only while version is X.Y.Z-beta) |
 | `npm run check` | Frontend build + `cargo test --manifest-path src-tauri/Cargo.toml` |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit tests (Linux/macOS OK) |
 
@@ -107,7 +107,7 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 ## Windows pitfalls (verified)
 
-- **Unsigned / SmartScreen** — NSIS and MSI have no purchased CA. Windows will say the publisher is unknown. That is expected. Do not claim a Store listing or a signed stable.
+- **Unsigned / SmartScreen** — NSIS has no purchased CA. Windows will say the publisher is unknown. That is expected. Do not claim a Store listing or a signed stable.
 - **Elevated windows** — UIPI can block clipboard/`SendInput` injection into admin targets. Documented in README and `web/`; do not promise it works there.
 - **GPU** — Vulkan (whisper.cpp) and DirectML (ONNX) with CPU fallback. Catalog labels must follow `cfg(vocawin_whisper_vulkan)`.
 - **Hotkeys** — `RegisterHotKey` cannot bind a lone modifier; the LL hook does. AltGr (Ctrl+Right Alt) must not be consumed. Default is Right Alt (`AltRight`).
@@ -120,12 +120,12 @@ Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-be
 
 | Workflow | Trigger | Effect |
 | --- | --- | --- |
-| `windows-ci.yml` | `main` push, PRs, dispatch | Source-change filter. PRs: `cargo test` only. `main`/dispatch: unsigned NSIS+MSI **artifact**. Docs-only PRs skip the Windows VMs so the required check is not left pending. |
-| `windows-alpha-release.yml` | `v*` tag only | Unsigned NSIS+MSI on a **Latest** GitHub Release (`prerelease: false`) so it shows on the repo homepage. No `workflow_dispatch`. `includeUpdaterJson: false`. |
+| `windows-ci.yml` | `main` push, PRs, dispatch | Source-change filter. PRs: `cargo test` only. `main`/dispatch: unsigned NSIS **artifact**. Docs-only PRs skip the Windows VMs so the required check is not left pending. |
+| `windows-alpha-release.yml` | `v*` tag only | Unsigned NSIS on a **Latest** GitHub Release (`prerelease: false`) so it shows on the repo homepage. X.Y.Z-beta cuts are NSIS-only (MSI rejects `-beta`). No `workflow_dispatch`. `includeUpdaterJson: false`. |
 | `nightly.yml` | cron + dispatch | Moving `nightly` prerelease from `main` when app source changed. Not a `v*` tag. |
 | `deploy-pages.yml` | `web/**` on `main` | Publishes vocawin.com. |
 
-Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard. Use one installer per PC, not both.
+Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. While the app version is X.Y.Z-beta, the tagged cut is NSIS only (current-user): `bundle.targets` is `nsis` and workflows use `--bundles nsis`. To restore MSI on a numeric-only version, add `msi` to both places in the same PR (keep the `wix` block). No automatic switch.
 
 Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named beta must not be cut from a branch click.
 

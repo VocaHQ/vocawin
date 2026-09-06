@@ -127,14 +127,14 @@ jobs:
       - name: Test Rust command layer
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Build NSIS and MSI
+      - name: Build NSIS
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_TARGET_DIR: C:\t
           CMAKE_GENERATOR: Ninja
         with:
-          args: --bundles nsis,msi
+          args: --bundles nsis
           includeUpdaterJson: false
 
       - name: Stage nightly installers
@@ -145,15 +145,12 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $nsis = Get-ChildItem "C:\t\release\bundle\nsis\*-setup.exe" | Select-Object -First 1
-          $msi = Get-ChildItem "C:\t\release\bundle\msi\*.msi" | Select-Object -First 1
-          if (-not $nsis -or -not $msi) {
-            throw "Missing NSIS or MSI under C:\t\release\bundle"
+          if (-not $nsis) {
+            throw "Missing NSIS under C:\t\release\bundle\nsis"
           }
           New-Item -ItemType Directory -Force nightly-out | Out-Null
           Copy-Item $nsis.FullName "nightly-out\VocaWin-nightly-$env:NIGHTLY_DATE-$env:SHORT_SHA-x64-setup.exe"
-          Copy-Item $msi.FullName "nightly-out\VocaWin-nightly-$env:NIGHTLY_DATE-$env:SHORT_SHA-x64.msi"
           Copy-Item $nsis.FullName "nightly-out\VocaWin-nightly-x64-setup.exe"
-          Copy-Item $msi.FullName "nightly-out\VocaWin-nightly-x64.msi"
           Get-FileHash "nightly-out\*" -Algorithm SHA256 |
             ForEach-Object { "{0}  {1}" -f $_.Hash.ToLowerInvariant(), (Split-Path $_.Path -Leaf) } |
             Set-Content -Encoding ascii nightly-out\checksums.txt
@@ -183,9 +180,8 @@ jobs:
             "## Install",
             "",
             "- ``VocaWin-nightly-x64-setup.exe`` — NSIS, current-user",
-            "- ``VocaWin-nightly-x64.msi`` — WiX wizard",
             "",
-            "Use one, not both, on the same PC. Read the [setup guide](https://github.com/VocaHQ/vocawin/blob/main/docs/setup.md) first.",
+            "Install the NSIS setup, then read the [setup guide](https://github.com/VocaHQ/vocawin/blob/main/docs/setup.md) first.",
             "",
             "## Build",
             "",
@@ -215,8 +211,6 @@ jobs:
             --target $sha `
             --repo $repo `
             nightly-out/VocaWin-nightly-x64-setup.exe `
-            nightly-out/VocaWin-nightly-x64.msi `
             nightly-out/VocaWin-nightly-$($env:NIGHTLY_DATE)-$($env:SHORT_SHA)-x64-setup.exe `
-            nightly-out/VocaWin-nightly-$($env:NIGHTLY_DATE)-$($env:SHORT_SHA)-x64.msi `
             nightly-out/checksums.txt
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
