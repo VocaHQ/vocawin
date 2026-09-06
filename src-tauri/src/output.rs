@@ -92,10 +92,14 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
     // enabled copy-to-clipboard.
     if options.copy_to_clipboard {
         return match inject_via_clipboard(text, false) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                crate::logbuf::debug("Injected via clipboard (copy-to-clipboard on).");
+                Ok(())
+            }
             Err(clipboard_error) => inject_send_input(text)
                 .and_then(|_| write_clipboard_unicode(text))
                 .map_err(|send_input_error| {
+                    crate::logbuf::warn("Clipboard paste failed; SendInput also failed.");
                     format!(
                         "Clipboard paste failed ({clipboard_error}); SendInput also failed ({send_input_error})"
                     )
@@ -103,12 +107,20 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
         };
     }
     match inject_send_input(text) {
-        Ok(()) => Ok(()),
-        Err(send_input_error) => inject_via_clipboard(text, true).map_err(|clipboard_error| {
-            format!(
-                "SendInput failed ({send_input_error}); clipboard paste also failed ({clipboard_error})"
-            )
-        }),
+        Ok(()) => {
+            crate::logbuf::debug("Injected via SendInput.");
+            Ok(())
+        }
+        Err(send_input_error) => inject_via_clipboard(text, true)
+            .map(|()| {
+                crate::logbuf::warn("SendInput failed; fell back to clipboard paste.");
+            })
+            .map_err(|clipboard_error| {
+                crate::logbuf::error("SendInput and clipboard paste both failed.");
+                format!(
+                    "SendInput failed ({send_input_error}); clipboard paste also failed ({clipboard_error})"
+                )
+            }),
     }
 }
 

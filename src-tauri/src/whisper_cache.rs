@@ -122,6 +122,9 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                 false
             }
             Ok(CacheCommand::Unload) => {
+                if loaded_path.is_some() {
+                    crate::logbuf::info("Whisper model unloaded.");
+                }
                 loaded_path = None;
                 context = None;
                 loaded.store(false, Ordering::Relaxed);
@@ -177,6 +180,13 @@ fn run_transcribe(
         .map_err(|error| format!("Could not load Whisper model: {error}"))?;
         *context = Some(next);
         *loaded_path = Some(model_path.clone());
+        crate::logbuf::info(format!(
+            "Loaded Whisper model {} (gpu={use_gpu}, device={gpu_device})",
+            model_path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("whisper")
+        ));
     }
     let ctx = context
         .as_ref()
