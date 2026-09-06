@@ -84,9 +84,7 @@ fn redact_home_paths(text: &str) -> String {
     while let Some((idx, prefix_len)) = find_profile_prefix(rest) {
         result.push_str(&rest[..idx + prefix_len]);
         let after = &rest[idx + prefix_len..];
-        let end = after
-            .find(|c: char| c == '/' || c == '\\' || c.is_whitespace() || c == '"' || c == '\'')
-            .unwrap_or(after.len());
+        let end = username_end(after);
         if end > 0 {
             result.push_str("<user>");
             rest = &after[end..];
@@ -125,6 +123,18 @@ fn profile_prefix_len(bytes: &[u8]) -> Option<usize> {
         }
     }
     None
+}
+
+/// Account names can contain spaces (`C:\Users\John Doe\...`). If a later
+/// `/` or `\` is present, take everything up to it. Otherwise stop at
+/// whitespace, a quote, or the end of the string (bare `C:\Users\Ada`).
+fn username_end(after: &str) -> usize {
+    if let Some(sep) = after.find(|c: char| c == '/' || c == '\\') {
+        return sep;
+    }
+    after
+        .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+        .unwrap_or(after.len())
 }
 
 fn os_name() -> String {
@@ -433,6 +443,26 @@ C:/Users\<user>\x.bin
         assert!(!out.contains("Ada"));
         assert!(!out.contains("ada"));
         assert!(out.contains("<user>"));
+    }
+
+    #[test]
+    fn redact_keeps_spaces_inside_a_profile_name() {
+        let windows = redact_home_paths(
+            r"[error] Model missing at C:\Users\John Doe\AppData\Roaming\com.vocahq.vocawin\models\x.bin",
+        );
+        assert!(windows.contains(r"C:\Users\<user>\AppData"));
+        assert!(!windows.contains("John"));
+        assert!(!windows.contains("Doe"));
+
+        let mixed = redact_home_paths(
+            r"[error] also C:\Users\John Doe/AppData\Roaming\com.vocahq.vocawin\models\x.bin",
+        );
+        assert!(mixed.contains(r"C:\Users\<user>/AppData"));
+        assert!(!mixed.contains("John"));
+        assert!(!mixed.contains("Doe"));
+
+        let bare = redact_home_paths(r"C:\Users\Ada");
+        assert_eq!(bare, r"C:\Users\<user>");
     }
 
     #[test]
