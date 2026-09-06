@@ -125,16 +125,17 @@ fn profile_prefix_len(bytes: &[u8]) -> Option<usize> {
     None
 }
 
-/// Account names can contain spaces (`C:\Users\John Doe\...`). If a later
-/// `/` or `\` is present, take everything up to it. Otherwise do not stop
-/// at space: end at `"`, `'`, newline, CR, or a Windows-illegal path char
-/// (`<>|?*`), else the end of the string (bare `C:\Users\John Doe`).
+/// Account names can contain spaces and apostrophes (`C:\Users\O'Brien`,
+/// `C:\Users\John Doe\...`). If a later `/` or `\` is present, take
+/// everything up to it. Otherwise end only at newline, CR, or the end of
+/// the string. Do not stop at space, apostrophe, quote, or `<>|?*` — a
+/// bare profile path may sit on the rest of a support-report line.
 fn username_end(after: &str) -> usize {
     if let Some(sep) = after.find(|c: char| c == '/' || c == '\\') {
         return sep;
     }
     after
-        .find(|c: char| matches!(c, '"' | '\'' | '\n' | '\r' | '<' | '>' | '|' | '?' | '*'))
+        .find(|c: char| matches!(c, '\n' | '\r'))
         .unwrap_or(after.len())
 }
 
@@ -472,6 +473,27 @@ C:/Users\<user>\x.bin
         assert_eq!(bare, r"C:\Users\<user>");
         assert!(!bare.contains("John"));
         assert!(!bare.contains("Doe"));
+    }
+
+    #[test]
+    fn redact_windows_profile_with_apostrophe() {
+        let bare = redact_home_paths(r"C:\Users\O'Brien");
+        assert_eq!(bare, r"C:\Users\<user>");
+        assert!(!bare.contains("O'Brien"));
+        assert!(!bare.contains("Brien"));
+
+        let nested = redact_home_paths(
+            r"[error] Model missing at C:\Users\O'Brien\AppData\Roaming\com.vocahq.vocawin\models\x.bin",
+        );
+        assert!(nested.contains(r"C:\Users\<user>\AppData"));
+        assert!(!nested.contains("O'Brien"));
+        assert!(!nested.contains("Brien"));
+
+        // Bare profile on a log line: rest of the line is redacted on purpose.
+        let rest = redact_home_paths(r"[error] missing at C:\Users\O'Brien (profile)");
+        assert_eq!(rest, r"[error] missing at C:\Users\<user>");
+        assert!(!rest.contains("O'Brien"));
+        assert!(!rest.contains("profile"));
     }
 
     #[test]
