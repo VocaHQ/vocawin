@@ -116,22 +116,22 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 ## Releases and CI
 
-App version stays **`0.1.0`** in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` across betas. The Git tag is the public version. Do not bump the app version for a beta or a nightly. Do not pin a `v*` tag in README or on vocawin.com.
+Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-beta` marker, no `-beta.N`). For this cut that is `0.1.1-beta` / `v0.1.1-beta` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump the numeric part and keep `-beta` on the next named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
 
 | Workflow | Trigger | Effect |
 | --- | --- | --- |
 | `windows-ci.yml` | `main` push, PRs, dispatch | Source-change filter. PRs: `cargo test` only. `main`/dispatch: unsigned NSIS+MSI **artifact**. Docs-only PRs skip the Windows VMs so the required check is not left pending. |
-| `windows-alpha-release.yml` | `v*` tag only | Unsigned NSIS+MSI on a **prerelease**. No `workflow_dispatch`. `includeUpdaterJson: false`. |
+| `windows-alpha-release.yml` | `v*` tag only | Unsigned NSIS+MSI on a **Latest** GitHub Release (`prerelease: false`) so it shows on the repo homepage. No `workflow_dispatch`. `includeUpdaterJson: false`. |
 | `nightly.yml` | cron + dispatch | Moving `nightly` prerelease from `main` when app source changed. Not a `v*` tag. |
 | `deploy-pages.yml` | `web/**` on `main` | Publishes vocawin.com. |
 
-Named tester cuts: `v0.1.0-beta.N` via `RELEASE.md`. Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard. Use one installer per PC, not both.
+Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. NSIS is current-user; MSI is the WiX wizard. Use one installer per PC, not both.
 
 Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named beta must not be cut from a branch click.
 
 ## Website (`web/`)
 
-Static HTML/CSS/JS. Hero download goes to `/releases`, with a quieter nightly link. `web/tests/site.test.mjs` enforces honesty: beta, unsigned, SmartScreen, no `v*` pin, no "coming soon", no telemetry snippets, AGPL-3.0-or-later.
+Static HTML/CSS/JS. Hero download goes to `/releases`, with a quieter nightly link. Site pins name the current tagged cut. `web/tests/site.test.mjs` enforces honesty: beta, unsigned, SmartScreen, current tag pin, no "coming soon", no telemetry snippets, AGPL-3.0-or-later.
 
 If you change landing copy, run `node --test tests/site.test.mjs` from `web/`. Do not edit the VocaHQ directory repo from here.
 

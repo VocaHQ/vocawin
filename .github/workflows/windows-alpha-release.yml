@@ -1,14 +1,15 @@
-# Windows tagged prerelease for testers. Unsigned installers.
+# Windows tagged release for testers. Unsigned installers.
 # Not a purchased CA / store build. vocawin.com points at GitHub Releases.
 #
 # Tag push is the only trigger. windows-ci.yml must never set tagName.
 # PRs only cargo test. Main uploads the installer artifact.
-# Nightlies are a different tag (`nightly`) in nightly.yml.
-# Always prerelease: a GitHub Release here is not a public ship.
+# Nightlies are a different tag (`nightly`) in nightly.yml and stay prerelease.
+# Named v* cuts publish as Latest (prerelease: false) so they show on the repo homepage.
+# Product status stays beta in release name/body. This is not a store ship.
 # No workflow_dispatch, so a branch click cannot publish.
 # includeUpdaterJson is off so we do not upload latest.json.
 
-name: Windows tagged prerelease
+name: Windows tagged release
 
 on:
   push:
@@ -76,7 +77,7 @@ jobs:
 
             The installers are unsigned. Windows will say the publisher is unknown. That is expected. More info, then Run anyway if you trust the file.
           releaseDraft: false
-          prerelease: true
+          prerelease: false
           includeUpdaterJson: false
           releaseCommitish: ${{ github.sha }}
           args: --bundles nsis,msi
