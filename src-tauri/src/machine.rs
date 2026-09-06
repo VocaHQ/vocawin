@@ -126,14 +126,15 @@ fn profile_prefix_len(bytes: &[u8]) -> Option<usize> {
 }
 
 /// Account names can contain spaces (`C:\Users\John Doe\...`). If a later
-/// `/` or `\` is present, take everything up to it. Otherwise stop at
-/// whitespace, a quote, or the end of the string (bare `C:\Users\Ada`).
+/// `/` or `\` is present, take everything up to it. Otherwise do not stop
+/// at space: end at `"`, `'`, newline, CR, or a Windows-illegal path char
+/// (`<>|?*`), else the end of the string (bare `C:\Users\John Doe`).
 fn username_end(after: &str) -> usize {
     if let Some(sep) = after.find(|c: char| c == '/' || c == '\\') {
         return sep;
     }
     after
-        .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+        .find(|c: char| matches!(c, '"' | '\'' | '\n' | '\r' | '<' | '>' | '|' | '?' | '*'))
         .unwrap_or(after.len())
 }
 
@@ -463,6 +464,14 @@ C:/Users\<user>\x.bin
 
         let bare = redact_home_paths(r"C:\Users\Ada");
         assert_eq!(bare, r"C:\Users\<user>");
+    }
+
+    #[test]
+    fn redact_bare_windows_profile_with_spaces() {
+        let bare = redact_home_paths(r"C:\Users\John Doe");
+        assert_eq!(bare, r"C:\Users\<user>");
+        assert!(!bare.contains("John"));
+        assert!(!bare.contains("Doe"));
     }
 
     #[test]
