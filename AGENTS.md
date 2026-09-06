@@ -66,7 +66,7 @@ Prereqs: Node 20+ (CI uses 22), Rust stable, and [Tauri Windows prerequisites](h
 | `npm run build` | `tsc --noEmit && vite build` |
 | `npm run tauri` | Tauri CLI passthrough |
 | `npm run tauri dev` | Desktop development |
-| `npm run tauri build` | NSIS `.exe` on Windows (MSI paused for X.Y.Z-beta) |
+| `npm run tauri build` | NSIS `.exe` on Windows (`bundle.targets` is nsis-only while version is X.Y.Z-beta) |
 | `npm run check` | Frontend build + `cargo test --manifest-path src-tauri/Cargo.toml` |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit tests (Linux/macOS OK) |
 
@@ -125,7 +125,7 @@ Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-be
 | `nightly.yml` | cron + dispatch | Moving `nightly` prerelease from `main` when app source changed. Not a `v*` tag. |
 | `deploy-pages.yml` | `web/**` on `main` | Publishes vocawin.com. |
 
-Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. While the app version is X.Y.Z-beta, the tagged cut is NSIS only (current-user). MSI returns when a cut uses a numeric-only version.
+Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. While the app version is X.Y.Z-beta, the tagged cut is NSIS only (current-user): `bundle.targets` is `nsis` and workflows use `--bundles nsis`. To restore MSI on a numeric-only version, add `msi` to both places in the same PR (keep the `wix` block). No automatic switch.
 
 Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named beta must not be cut from a branch click.
 
