@@ -43,9 +43,9 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 
 ## Try it
 
-Testers can install an unsigned beta today. Download the NSIS `.exe` or the MSI from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
+Testers can install an unsigned beta today. Download the NSIS `.exe` from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). MSI is paused while the version is `0.1.1-beta`. Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
 
-Want today's `main` instead of the last tagged Release? Use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS and MSI, rebuilt when app source on `main` changes. Prefer the latest tagged Release if you want the last cut we named.
+Want today's `main` instead of the last tagged Release? Use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS, rebuilt when app source on `main` changes. MSI is paused there too. Prefer the latest tagged Release if you want the last cut we named.
 
 This is a tester build you can run today. It is not a store listing and not a stable public release.
 
@@ -197,7 +197,7 @@ Windows CI uses `CARGO_TARGET_DIR=C:\t` and `CMAKE_GENERATOR=Ninja`. It does not
 
 ### Installers and CI
 
-Windows CI builds an unsigned NSIS installer on pushes to `main` and on `workflow_dispatch`, then uploads it as a GitHub Actions artifact. Pull requests only run `cargo test`, so a docs change does not package the setup wizard. The installer stays unsigned. SmartScreen can still warn.
+Windows CI builds an unsigned NSIS installer on pushes to `main` and on `workflow_dispatch`, then uploads it as a GitHub Actions artifact. App-source pull requests run `cargo test` only; they do not package the setup wizard. Docs-only PRs skip the Windows VMs via the paths-filter job so the required check is not left pending. The installer stays unsigned. SmartScreen can still warn.
 
 Pushing a `v*` tag builds the same NSIS installer and attaches it to a GitHub Release. While the app version is `X.Y.Z-beta`, tagged cuts are NSIS only (MSI is paused because WiX rejects the `-beta` marker). Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
