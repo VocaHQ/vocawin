@@ -57,7 +57,7 @@ App data: `%APPDATA%\com.vocahq.vocawin\` (`settings.json`, `history.json`, `mod
 
 ## Commands
 
-Prereqs: Node 20+ (CI uses 22), Rust stable, and [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/) (MSVC + WebView2) for a real desktop build.
+Prereqs for a real Windows desktop build: Node 20+ (CI uses 22), Rust stable, [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/) (MSVC + WebView2), LLVM / `libclang` (`LIBCLANG_PATH` is often `C:\Program Files\LLVM\bin`), LunarG Vulkan SDK (`VULKAN_SDK`), CMake (whisper/ggml), and a short `CARGO_TARGET_DIR` like CI (`C:\t`) or OS long paths. Ninja is optional locally; CI sets `CMAKE_GENERATOR=Ninja`. See README Development.
 
 | Command | What |
 | --- | --- |
