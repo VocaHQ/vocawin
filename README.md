@@ -123,20 +123,83 @@ VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does
 
 ## Development
 
-Prerequisites: Node.js 20+, Rust stable, and the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/) (Microsoft C++ Build Tools and WebView2) for a Windows build.
+### Prerequisites
+
+A macOS or Linux host can validate the frontend and the Rust command layer (`npm run check`, `cargo test`). A real desktop build (`npm run tauri dev` / `npm run tauri build`) needs Windows 10/11 plus the same toolchain CI installs:
+
+- Node.js 20+ (CI uses 22)
+- Rust stable
+- [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/): Microsoft C++ Build Tools (MSVC) and WebView2
+- [LLVM](https://github.com/llvm/llvm-project/releases) Windows installer (`LLVM-*-win64.exe`), so `libclang` is on disk. CI sets `LIBCLANG_PATH` to `C:\Program Files\LLVM\bin`.
+- [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for whisper.cpp Vulkan. Confirm `VULKAN_SDK` points at the SDK root (CI uses `C:\VulkanSDK\1.3.290.0`).
+- [CMake](https://cmake.org/download/) for the whisper/ggml native build. Add it to PATH. CI also installs [Ninja](https://ninja-build.org/) and sets `CMAKE_GENERATOR=Ninja`.
+- A way around Windows `MAX_PATH` (260 characters). whisper.cpp Vulkan shader nests go deep even if the repo sits at `C:\vocawin`. Enable [OS long paths](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation), or use a short `CARGO_TARGET_DIR` the way CI does (`C:\t`).
+
+Open a new terminal after installing so PATH and env vars refresh. Chocolatey (`choco install cmake llvm ninja`) matches the CI installers if you already use it.
+
+### Commands
 
 ```bash
 npm install
 npm run tauri dev       # desktop development
-npm run tauri build     # creates NSIS and MSI artifacts on Windows
+npm run tauri build     # NSIS .exe on Windows (MSI is paused while the version is X.Y.Z-beta)
 npm run check           # TypeScript build + Rust tests
 ```
 
-A macOS/Linux host can validate the frontend and Rust command layer, but Windows injection and installer artifacts must be exercised on Windows 10/11.
+Windows injection, WASAPI, Vulkan, DirectML, and installer artifacts must be exercised on Windows 10/11.
 
-Windows CI builds an NSIS (and MSI) installer on pushes to main and on workflow_dispatch, then uploads it as a GitHub Actions artifact. Pull requests only run cargo test, so a docs change does not package the setup wizards. The installers stay unsigned. SmartScreen can still warn.
+### Windows build troubleshooting
 
-Pushing a `v*` tag builds the same NSIS and MSI and attaches them to a GitHub Release marked as a prerelease. Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
+These are the failures that show up when a CI dependency is missing locally.
+
+**Unable to find libclang** (`couldn't find any valid shared libraries matching ['clang.dll', 'libclang.dll']`)
+
+Install LLVM from the [Windows installer](https://github.com/llvm/llvm-project/releases). Then, if the crate still cannot see it:
+
+```powershell
+$env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+```
+
+Set that as a user environment variable so it survives a reboot. Confirm `clang.dll` or `libclang.dll` is in that folder.
+
+**Please install Vulkan SDK and ensure that VULKAN_SDK env variable is set**
+
+Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) and reopen the terminal. Check:
+
+```powershell
+echo $env:VULKAN_SDK
+```
+
+If it is empty, point it at the SDK root, for example `C:\VulkanSDK\1.3.290.0` (use the version you installed). CI pins `1.3.290.0`. A current LunarG Windows SDK is fine for local work.
+
+**is cmake not installed?** (`failed to execute command: program not found`)
+
+Install [CMake](https://cmake.org/download/) and tick "Add CMake to the system PATH" (or `winget install Kitware.CMake`). Confirm `cmake --version` in a new shell. The whisper/ggml crate build needs it.
+
+**exceeds the OS max path limit** / **The fully qualified file name must be less than 260 characters**
+
+whisper-rs-sys nests `target\debug\build\whisper-rs-sys-*\out\build\ggml\ggml-vulkan\...` deep enough to hit `MAX_PATH`. Either of these is enough:
+
+1. Point Cargo at a short target dir, matching CI:
+
+```powershell
+$env:CARGO_TARGET_DIR = "C:\t"
+$env:CMAKE_GENERATOR = "Ninja"   # optional; CI uses Ninja to avoid MSBuild path races
+```
+
+Put [Ninja](https://ninja-build.org/) on PATH if you set `CMAKE_GENERATOR=Ninja`.
+
+2. Enable Windows long paths, then reboot:
+   - Group Policy: Computer Configuration, Administrative Templates, System, Filesystem, Enable Win32 long paths
+   - Or registry: `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, DWORD `LongPathsEnabled` = `1`
+
+Windows CI uses `CARGO_TARGET_DIR=C:\t` and `CMAKE_GENERATOR=Ninja`. It does not enable OS long paths on the runner.
+
+### Installers and CI
+
+Windows CI builds an unsigned NSIS installer on pushes to `main` and on `workflow_dispatch`, then uploads it as a GitHub Actions artifact. Pull requests only run `cargo test`, so a docs change does not package the setup wizard. The installer stays unsigned. SmartScreen can still warn.
+
+Pushing a `v*` tag builds the same NSIS installer and attaches it to a GitHub Release. While the app version is `X.Y.Z-beta`, tagged cuts are NSIS only (MSI is paused because WiX rejects the `-beta` marker). Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
 ## System Requirements
 
