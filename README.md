@@ -197,7 +197,7 @@ Windows CI uses `CARGO_TARGET_DIR=C:\t` and `CMAKE_GENERATOR=Ninja`. It does not
 
 ### Installers and CI
 
-Windows CI builds an unsigned NSIS installer on pushes to `main` and on `workflow_dispatch`, then uploads it as a GitHub Actions artifact. App-source pull requests run `cargo test` only; they do not package the setup wizard. Docs-only PRs skip the Windows VMs via the paths-filter job so the required check is not left pending. The installer stays unsigned. SmartScreen can still warn.
+Windows CI builds an unsigned NSIS installer on source-changing pushes to `main` and on `workflow_dispatch`, then uploads it as a GitHub Actions artifact. App-source pull requests run `cargo test` only; they do not package the setup wizard. Docs-only PRs skip the Windows VMs via the paths-filter job so the required check is not left pending. The installer stays unsigned. SmartScreen can still warn.
 
 Pushing a `v*` tag builds the same NSIS installer and attaches it to a GitHub Release. While the app version is `X.Y.Z-beta`, tagged cuts are NSIS only (MSI is paused because WiX rejects the `-beta` marker). Testers should use [Releases](https://github.com/VocaHQ/vocawin/releases), not the workflow artifact. The build is unsigned, not a purchased CA or store signature. Windows will likely still warn. More info, then Run anyway. There is no Microsoft Store listing and no auto-update. Read [the setup guide](docs/setup.md) before you install, and [file an issue](https://github.com/VocaHQ/vocawin/issues) if something breaks. [vocawin.com](https://vocawin.com) points at the same download.
 
