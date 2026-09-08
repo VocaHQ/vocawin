@@ -6,6 +6,11 @@ Native Windows voice typing: hold a hotkey, speak, text at the caret. After a Wh
 
 This is a **beta**. Installers are **unsigned**. Do not call it signed, Store-ready, stable, or a public ship.
 
+## Commit attribution
+
+Agents must not add themselves as commit co-authors or add `Co-authored-by`
+trailers for agents.
+
 ## Critical: git worktrees for every branch and PR
 
 Never create a branch, commit, or open a pull request in the primary checkout. Always use a linked git worktree so the main working tree stays on `main` and stays clean. Do not `git switch` / `git checkout` a feature branch in the primary directory, and do not leave it dirty.
