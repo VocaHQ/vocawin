@@ -121,7 +121,10 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
     // enabled copy-to-clipboard.
     //
     // Notepad-like targets are the other way around: UNICODE SendInput
-    // reports success but the app drops the glyphs, so paste first.
+    // reports success but the app drops the glyphs, so paste first —
+    // but only when the clipboard can be fully restored afterward.
+    // GDI formats (bitmap / metafile / palette) cannot; EmptyClipboard
+    // would drop them. Fall through to SendInput and leave them alone.
     if options.copy_to_clipboard {
         return match inject_via_clipboard(text, false) {
             Ok(()) => {
@@ -139,16 +142,22 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
         };
     }
     if foreground_prefers_clipboard() {
-        match inject_via_clipboard(text, true) {
-            Ok(()) => {
-                crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
-                return Ok(());
+        if clipboard_is_fully_preservable() {
+            match inject_via_clipboard(text, true) {
+                Ok(()) => {
+                    crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
+                    return Ok(());
+                }
+                Err(clipboard_error) => {
+                    crate::logbuf::warn(format!(
+                        "Clipboard paste failed for Notepad-like target ({clipboard_error}); falling back to SendInput."
+                    ));
+                }
             }
-            Err(clipboard_error) => {
-                crate::logbuf::warn(format!(
-                    "Clipboard paste failed for Notepad-like target ({clipboard_error}); falling back to SendInput."
-                ));
-            }
+        } else {
+            crate::logbuf::warn(
+                "Skipping clipboard inject for Notepad-like target: clipboard has unpreservable formats.",
+            );
         }
     }
     match inject_send_input(text) {
@@ -297,18 +306,46 @@ const CF_UNICODETEXT: u32 = 13;
 
 /// GDI clipboard formats that are not HGLOBAL and cannot be round-tripped
 /// with GetClipboardData/SetClipboardData the same way text can.
-#[cfg(windows)]
+///
+/// CF_BITMAP=2, CF_METAFILEPICT=3, CF_PALETTE=9, CF_ENHMETAFILE=14,
+/// CF_OWNERDISPLAY=0x0080, CF_DSPBITMAP=0x0082, CF_DSPMETAFILEPICT=0x0083,
+/// CF_DSPENHMETAFILE=0x008E.
 fn is_gdi_clipboard_format(format: u32) -> bool {
-    matches!(
-        format,
-        2 | 3 | 9 | 14 | 0x0080 | 0x0082 | 0x0083 | 0x008E
-    )
+    matches!(format, 2 | 3 | 9 | 14 | 0x0080 | 0x0082 | 0x0083 | 0x008E)
+}
+
+/// True when every enumerated format can be snapshotted and restored.
+/// False if any GDI / unpreservable format is present.
+fn clipboard_formats_are_preservable(formats: impl IntoIterator<Item = u32>) -> bool {
+    formats
+        .into_iter()
+        .all(|format| !is_gdi_clipboard_format(format))
 }
 
 #[cfg(windows)]
 #[derive(Clone, Default)]
 struct ClipboardSnapshot {
     formats: Vec<(u32, Vec<u8>)>,
+    /// Set when EnumClipboardFormats listed a GDI format we skipped.
+    /// Restore cannot recover those; an empty `formats` vec is then
+    /// incomplete rather than "clipboard was empty".
+    skipped_unpreservable: bool,
+}
+
+#[cfg(windows)]
+impl ClipboardSnapshot {
+    fn is_preservable(&self) -> bool {
+        !self.skipped_unpreservable
+    }
+}
+
+/// Peek the current clipboard via the same capture path used for restore.
+/// Capture failure is treated as unknown (do not change existing behavior).
+#[cfg(windows)]
+fn clipboard_is_fully_preservable() -> bool {
+    capture_clipboard_snapshot()
+        .map(|snapshot| snapshot.is_preservable())
+        .unwrap_or(true)
 }
 
 #[cfg(windows)]
@@ -412,7 +449,9 @@ fn restore_pending_clipboard(generation: u64, expected_text: Option<&str>) {
 }
 
 #[cfg(windows)]
-fn key_down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+fn key_down(
+    vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
     use windows::Win32::UI::Input::KeyboardAndMouse::{INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT};
     INPUT {
         r#type: INPUT_KEYBOARD,
@@ -429,7 +468,9 @@ fn key_down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> win
 }
 
 #[cfg(windows)]
-fn key_up(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+fn key_up(
+    vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
     };
@@ -506,7 +547,12 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, SetClipboardData};
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-    let encoded: Vec<u16> = HSTRING::from(text).as_wide().iter().copied().chain([0]).collect();
+    let encoded: Vec<u16> = HSTRING::from(text)
+        .as_wide()
+        .iter()
+        .copied()
+        .chain([0])
+        .collect();
     let bytes = encoded.len() * 2;
     unsafe {
         let mem = GlobalAlloc(GMEM_MOVEABLE, bytes)
@@ -568,6 +614,7 @@ fn capture_clipboard_snapshot() -> Result<ClipboardSnapshot, String> {
                 break;
             }
             if is_gdi_clipboard_format(format) {
+                snapshot.skipped_unpreservable = true;
                 continue;
             }
             let Ok(handle) = GetClipboardData(format) else {
@@ -688,5 +735,63 @@ mod tests {
         assert!(!prefers_clipboard_inject("Code.exe"));
         assert!(!prefers_clipboard_inject("explorer.exe"));
         assert!(!prefers_clipboard_inject(""));
+    }
+
+    #[test]
+    fn clipboard_without_gdi_formats_is_preservable() {
+        const CF_TEXT: u32 = 1;
+        const CF_DIB: u32 = 8;
+        const CF_UNICODETEXT: u32 = 13;
+        const CF_HDROP: u32 = 15;
+
+        assert!(clipboard_formats_are_preservable([] as [u32; 0]));
+        assert!(clipboard_formats_are_preservable([CF_UNICODETEXT]));
+        assert!(clipboard_formats_are_preservable([
+            CF_TEXT,
+            CF_UNICODETEXT,
+            CF_DIB,
+            CF_HDROP
+        ]));
+        assert!(!is_gdi_clipboard_format(CF_UNICODETEXT));
+        assert!(!is_gdi_clipboard_format(CF_DIB));
+    }
+
+    #[test]
+    fn clipboard_with_gdi_formats_is_not_preservable() {
+        const CF_TEXT: u32 = 1;
+        const CF_BITMAP: u32 = 2;
+        const CF_METAFILEPICT: u32 = 3;
+        const CF_PALETTE: u32 = 9;
+        const CF_UNICODETEXT: u32 = 13;
+        const CF_ENHMETAFILE: u32 = 14;
+        const CF_OWNERDISPLAY: u32 = 0x0080;
+        const CF_DSPBITMAP: u32 = 0x0082;
+        const CF_DSPMETAFILEPICT: u32 = 0x0083;
+        const CF_DSPENHMETAFILE: u32 = 0x008E;
+
+        for format in [
+            CF_BITMAP,
+            CF_METAFILEPICT,
+            CF_PALETTE,
+            CF_ENHMETAFILE,
+            CF_OWNERDISPLAY,
+            CF_DSPBITMAP,
+            CF_DSPMETAFILEPICT,
+            CF_DSPENHMETAFILE,
+        ] {
+            assert!(is_gdi_clipboard_format(format));
+            assert!(!clipboard_formats_are_preservable([format]));
+        }
+        // Mixed: restore would drop the GDI object after EmptyClipboard.
+        assert!(!clipboard_formats_are_preservable([
+            CF_TEXT,
+            CF_UNICODETEXT,
+            CF_ENHMETAFILE
+        ]));
+        // GDI-only: restore would clear_clipboard() because formats vec is empty.
+        assert!(!clipboard_formats_are_preservable([
+            CF_BITMAP,
+            CF_ENHMETAFILE
+        ]));
     }
 }
