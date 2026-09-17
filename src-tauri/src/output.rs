@@ -8,7 +8,9 @@
 //!
 //! Notepad and WordPad are an exception: `KEYEVENTF_UNICODE` SendInput is
 //! accepted (caret advances) but glyphs are dropped or blank, so those
-//! targets prefer clipboard paste with restore.
+//! targets prefer clipboard paste with restore. If the clipboard cannot
+//! be fully restored, injection fails closed rather than reporting
+//! SendInput success while the transcript never appears.
 
 pub fn append_trailing_space(text: &str) -> String {
     if text.is_empty() {
@@ -124,7 +126,10 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
     // reports success but the app drops the glyphs, so paste first —
     // but only when the clipboard can be fully restored afterward.
     // GDI formats (bitmap / metafile / palette) cannot; EmptyClipboard
-    // would drop them. Fall through to SendInput and leave them alone.
+    // would drop them. Capture failure is the same: unknown must not
+    // EmptyClipboard GDI. In both cases — and if paste itself fails —
+    // do not fall through to SendInput (that would claim success while
+    // dropping the transcript).
     if options.copy_to_clipboard {
         return match inject_via_clipboard(text, false) {
             Ok(()) => {
@@ -142,23 +147,7 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
         };
     }
     if foreground_prefers_clipboard() {
-        if clipboard_is_fully_preservable() {
-            match inject_via_clipboard(text, true) {
-                Ok(()) => {
-                    crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
-                    return Ok(());
-                }
-                Err(clipboard_error) => {
-                    crate::logbuf::warn(format!(
-                        "Clipboard paste failed for Notepad-like target ({clipboard_error}); falling back to SendInput."
-                    ));
-                }
-            }
-        } else {
-            crate::logbuf::warn(
-                "Skipping clipboard inject for Notepad-like target: clipboard has unpreservable formats.",
-            );
-        }
+        return inject_notepad_like(text);
     }
     match inject_send_input(text) {
         Ok(()) => {
@@ -175,6 +164,55 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
                     "SendInput failed ({send_input_error}); clipboard paste also failed ({clipboard_error})"
                 )
             }),
+    }
+}
+
+/// Paste into Notepad/WordPad via clipboard+restore. Capture once and
+/// reuse that snapshot; never treat UNICODE SendInput Ok as success.
+#[cfg(windows)]
+fn inject_notepad_like(text: &str) -> Result<(), String> {
+    let captured = capture_clipboard_snapshot();
+    match notepad_like_clipboard_decision(
+        captured
+            .as_ref()
+            .map(|snapshot| snapshot.is_preservable())
+            .map_err(|_| ()),
+    ) {
+        NotepadLikeClipboardDecision::PasteAndRestore => {
+            let snapshot = match captured {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    return Err(NOTEPAD_LIKE_CAPTURE_FAILED.into());
+                }
+            };
+            match inject_via_clipboard_with_snapshot(text, snapshot) {
+                Ok(()) => {
+                    crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
+                    Ok(())
+                }
+                Err(clipboard_error) => {
+                    crate::logbuf::warn(format!(
+                        "Clipboard paste failed for Notepad-like target ({clipboard_error}); not falling back to SendInput (glyphs would drop)."
+                    ));
+                    Err(format!(
+                        "Clipboard paste into Notepad/WordPad failed ({clipboard_error}). UNICODE SendInput would drop glyphs, so the transcript was not injected."
+                    ))
+                }
+            }
+        }
+        NotepadLikeClipboardDecision::RejectUnpreservable => {
+            crate::logbuf::warn(
+                "Cannot inject into Notepad-like target: clipboard has unpreservable formats.",
+            );
+            Err(NOTEPAD_LIKE_UNPRESERVABLE.into())
+        }
+        NotepadLikeClipboardDecision::RejectCaptureFailed => {
+            let detail = captured.err().unwrap_or_default();
+            crate::logbuf::warn(format!(
+                "Cannot inject into Notepad-like target: clipboard capture failed ({detail})."
+            ));
+            Err(NOTEPAD_LIKE_CAPTURE_FAILED.into())
+        }
     }
 }
 
@@ -322,6 +360,55 @@ fn clipboard_formats_are_preservable(formats: impl IntoIterator<Item = u32>) -> 
         .all(|format| !is_gdi_clipboard_format(format))
 }
 
+/// User-facing errors for the Notepad/WordPad prefer-clipboard path.
+/// UNICODE SendInput reports success but those apps drop glyphs, so we
+/// never claim Ok via SendInput when clipboard paste is unsafe or failed.
+const NOTEPAD_LIKE_UNPRESERVABLE: &str = concat!(
+    "Cannot inject into Notepad/WordPad: the clipboard has image or other ",
+    "formats that cannot be restored after paste. Clear the clipboard or copy ",
+    "text first, then try again.",
+);
+
+const NOTEPAD_LIKE_CAPTURE_FAILED: &str = concat!(
+    "Cannot inject into Notepad/WordPad: the clipboard could not be captured, ",
+    "so it cannot be restored after paste. Clear the clipboard or copy text ",
+    "first, then try again.",
+);
+
+/// Outcome of the Notepad/WordPad clipboard-prefer path *before* paste.
+/// `capture`: `Ok(true)` snapshot is fully preservable, `Ok(false)` has
+/// unpreservable GDI formats, `Err` capture failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NotepadLikeClipboardDecision {
+    PasteAndRestore,
+    RejectUnpreservable,
+    RejectCaptureFailed,
+}
+
+fn notepad_like_clipboard_decision(capture: Result<bool, ()>) -> NotepadLikeClipboardDecision {
+    match capture {
+        Ok(true) => NotepadLikeClipboardDecision::PasteAndRestore,
+        Ok(false) => NotepadLikeClipboardDecision::RejectUnpreservable,
+        Err(()) => NotepadLikeClipboardDecision::RejectCaptureFailed,
+    }
+}
+
+impl NotepadLikeClipboardDecision {
+    fn reject_message(self) -> Option<&'static str> {
+        match self {
+            Self::PasteAndRestore => None,
+            Self::RejectUnpreservable => Some(NOTEPAD_LIKE_UNPRESERVABLE),
+            Self::RejectCaptureFailed => Some(NOTEPAD_LIKE_CAPTURE_FAILED),
+        }
+    }
+}
+
+/// Empty captured formats means "clipboard was empty" only when no GDI
+/// format was skipped. An incomplete snapshot must not EmptyClipboard.
+fn should_clear_clipboard_on_restore(formats_empty: bool, skipped_unpreservable: bool) -> bool {
+    formats_empty && !skipped_unpreservable
+}
+
 #[cfg(windows)]
 #[derive(Clone, Default)]
 struct ClipboardSnapshot {
@@ -337,15 +424,6 @@ impl ClipboardSnapshot {
     fn is_preservable(&self) -> bool {
         !self.skipped_unpreservable
     }
-}
-
-/// Peek the current clipboard via the same capture path used for restore.
-/// Capture failure is treated as unknown (do not change existing behavior).
-#[cfg(windows)]
-fn clipboard_is_fully_preservable() -> bool {
-    capture_clipboard_snapshot()
-        .map(|snapshot| snapshot.is_preservable())
-        .unwrap_or(true)
 }
 
 #[cfg(windows)]
@@ -376,6 +454,25 @@ fn clipboard_restore_state() -> &'static std::sync::Mutex<ClipboardRestoreState>
 
 #[cfg(windows)]
 fn inject_via_clipboard(text: &str, restore: bool) -> Result<(), String> {
+    inject_via_clipboard_inner(text, restore, None)
+}
+
+/// Paste via clipboard and restore using a snapshot captured by the caller
+/// so restore does not recapture (and does not copy every format twice).
+#[cfg(windows)]
+fn inject_via_clipboard_with_snapshot(
+    text: &str,
+    snapshot: ClipboardSnapshot,
+) -> Result<(), String> {
+    inject_via_clipboard_inner(text, true, Some(snapshot))
+}
+
+#[cfg(windows)]
+fn inject_via_clipboard_inner(
+    text: &str,
+    restore: bool,
+    snapshot: Option<ClipboardSnapshot>,
+) -> Result<(), String> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, VK_CONTROL, VK_V};
 
     let generation = {
@@ -385,9 +482,12 @@ fn inject_via_clipboard(text: &str, restore: bool) -> Result<(), String> {
         state.generation = state.generation.wrapping_add(1);
         if restore {
             if matches!(state.pending, PendingRestore::Idle) {
-                state.pending = match capture_clipboard_snapshot() {
-                    Ok(snapshot) => PendingRestore::Snapshot(snapshot),
-                    Err(_) => PendingRestore::Failed,
+                state.pending = match snapshot {
+                    Some(snapshot) => PendingRestore::Snapshot(snapshot),
+                    None => match capture_clipboard_snapshot() {
+                        Ok(snapshot) => PendingRestore::Snapshot(snapshot),
+                        Err(_) => PendingRestore::Failed,
+                    },
                 };
             }
         } else {
@@ -438,9 +538,6 @@ fn restore_pending_clipboard(generation: u64, expected_text: Option<&str>) {
         }
     }
     match pending {
-        PendingRestore::Snapshot(snapshot) if snapshot.formats.is_empty() => {
-            let _ = clear_clipboard();
-        }
         PendingRestore::Snapshot(snapshot) => {
             let _ = restore_clipboard_snapshot(&snapshot);
         }
@@ -644,8 +741,16 @@ fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot) -> Result<(), String
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, SetClipboardData};
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-    if snapshot.formats.is_empty() {
+    if should_clear_clipboard_on_restore(
+        snapshot.formats.is_empty(),
+        snapshot.skipped_unpreservable,
+    ) {
         return clear_clipboard();
+    }
+    if snapshot.formats.is_empty() {
+        // Incomplete snapshot (GDI formats were skipped): do not
+        // EmptyClipboard. Incomplete != empty.
+        return Ok(());
     }
     open_clipboard_with_retry()?;
     let result = (|| unsafe {
@@ -788,10 +893,59 @@ mod tests {
             CF_UNICODETEXT,
             CF_ENHMETAFILE
         ]));
-        // GDI-only: restore would clear_clipboard() because formats vec is empty.
+        // GDI-only: formats vec is empty after skip; restore must not
+        // treat that as "clipboard was empty" and EmptyClipboard.
         assert!(!clipboard_formats_are_preservable([
             CF_BITMAP,
             CF_ENHMETAFILE
         ]));
+    }
+
+    #[test]
+    fn notepad_like_fails_closed_when_clipboard_cannot_be_restored() {
+        assert_eq!(
+            notepad_like_clipboard_decision(Ok(true)),
+            NotepadLikeClipboardDecision::PasteAndRestore
+        );
+        assert_eq!(
+            notepad_like_clipboard_decision(Ok(false)),
+            NotepadLikeClipboardDecision::RejectUnpreservable
+        );
+        assert_eq!(
+            notepad_like_clipboard_decision(Err(())),
+            NotepadLikeClipboardDecision::RejectCaptureFailed
+        );
+        assert!(notepad_like_clipboard_decision(Ok(true))
+            .reject_message()
+            .is_none());
+
+        let unpreservable = notepad_like_clipboard_decision(Ok(false))
+            .reject_message()
+            .expect("unpreservable must reject");
+        assert!(
+            unpreservable.contains("Clear the clipboard")
+                && unpreservable.contains("copy text")
+                && unpreservable.contains("try again")
+        );
+
+        let capture_failed = notepad_like_clipboard_decision(Err(()))
+            .reject_message()
+            .expect("capture failure must reject");
+        assert!(
+            capture_failed.contains("Clear the clipboard")
+                && capture_failed.contains("copy text")
+                && capture_failed.contains("try again")
+        );
+    }
+
+    #[test]
+    fn incomplete_clipboard_snapshot_must_not_clear_on_restore() {
+        // Empty + fully captured: clipboard really was empty.
+        assert!(should_clear_clipboard_on_restore(true, false));
+        // Empty formats but GDI was skipped: incomplete != empty.
+        assert!(!should_clear_clipboard_on_restore(true, true));
+        // Non-empty HGLOBAL formats: restore those, do not clear.
+        assert!(!should_clear_clipboard_on_restore(false, false));
+        assert!(!should_clear_clipboard_on_restore(false, true));
     }
 }
