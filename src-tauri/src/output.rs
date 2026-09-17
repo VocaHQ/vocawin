@@ -129,21 +129,32 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
     // would drop them. Capture failure is the same: unknown must not
     // EmptyClipboard GDI. In both cases — and if paste itself fails —
     // do not fall through to SendInput (that would claim success while
-    // dropping the transcript).
+    // dropping the transcript). Copy-to-clipboard paste failure is the
+    // same for those targets: fail closed instead of SendInput.
     if options.copy_to_clipboard {
         return match inject_via_clipboard(text, false) {
             Ok(()) => {
                 crate::logbuf::debug("Injected via clipboard (copy-to-clipboard on).");
                 Ok(())
             }
-            Err(clipboard_error) => inject_send_input(text)
-                .and_then(|_| write_clipboard_unicode(text))
-                .map_err(|send_input_error| {
-                    crate::logbuf::warn("Clipboard paste failed; SendInput also failed.");
-                    format!(
-                        "Clipboard paste failed ({clipboard_error}); SendInput also failed ({send_input_error})"
-                    )
-                }),
+            Err(clipboard_error) => match copy_to_clipboard_paste_failure_decision(
+                foreground_prefers_clipboard(),
+            ) {
+                CopyToClipboardPasteFailureDecision::FailClosed => {
+                    crate::logbuf::warn(format!(
+                        "Clipboard paste failed for Notepad-like target ({clipboard_error}); not falling back to SendInput (glyphs would drop)."
+                    ));
+                    Err(notepad_like_copy_to_clipboard_paste_failed(&clipboard_error))
+                }
+                CopyToClipboardPasteFailureDecision::TrySendInput => inject_send_input(text)
+                    .and_then(|_| write_clipboard_unicode(text))
+                    .map_err(|send_input_error| {
+                        crate::logbuf::warn("Clipboard paste failed; SendInput also failed.");
+                        format!(
+                            "Clipboard paste failed ({clipboard_error}); SendInput also failed ({send_input_error})"
+                        )
+                    }),
+            },
         };
     }
     if foreground_prefers_clipboard() {
@@ -375,6 +386,13 @@ const NOTEPAD_LIKE_CAPTURE_FAILED: &str = concat!(
     "first, then try again.",
 );
 
+/// Trailing copy-to-clipboard paste-failure text. Prefixed with the
+/// clipboard error the same way `inject_notepad_like` formats paste failure.
+const NOTEPAD_LIKE_COPY_TO_CLIPBOARD_PASTE_FAILED: &str = concat!(
+    "UNICODE SendInput would drop glyphs, so the transcript was not injected. ",
+    "Copy-to-clipboard may have left the text on the clipboard.",
+);
+
 /// Generic restore-path reject (SendInput fallback). Notepad/WordPad uses
 /// `NOTEPAD_LIKE_UNPRESERVABLE` instead so that path stays fail-closed.
 const CLIPBOARD_RESTORE_UNPRESERVABLE: &str = concat!(
@@ -399,6 +417,30 @@ fn notepad_like_clipboard_decision(capture: Result<bool, ()>) -> NotepadLikeClip
         Ok(false) => NotepadLikeClipboardDecision::RejectUnpreservable,
         Err(()) => NotepadLikeClipboardDecision::RejectCaptureFailed,
     }
+}
+
+/// After copy-to-clipboard Ctrl+V fails: Notepad/WordPad must not fall
+/// through to UNICODE SendInput (Ok with dropped glyphs). Other apps may.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CopyToClipboardPasteFailureDecision {
+    FailClosed,
+    TrySendInput,
+}
+
+fn copy_to_clipboard_paste_failure_decision(
+    prefers_clipboard: bool,
+) -> CopyToClipboardPasteFailureDecision {
+    if prefers_clipboard {
+        CopyToClipboardPasteFailureDecision::FailClosed
+    } else {
+        CopyToClipboardPasteFailureDecision::TrySendInput
+    }
+}
+
+fn notepad_like_copy_to_clipboard_paste_failed(clipboard_error: &str) -> String {
+    format!(
+        "Clipboard paste into Notepad/WordPad failed ({clipboard_error}). {NOTEPAD_LIKE_COPY_TO_CLIPBOARD_PASTE_FAILED}"
+    )
 }
 
 impl NotepadLikeClipboardDecision {
@@ -980,6 +1022,39 @@ mod tests {
         assert!(
             CLIPBOARD_RESTORE_UNPRESERVABLE.contains("refusing clipboard paste restore")
                 && !CLIPBOARD_RESTORE_UNPRESERVABLE.contains("Notepad")
+        );
+    }
+
+    #[test]
+    fn copy_to_clipboard_paste_failure_fails_closed_for_notepad_like() {
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(true),
+            CopyToClipboardPasteFailureDecision::FailClosed
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(false),
+            CopyToClipboardPasteFailureDecision::TrySendInput
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(prefers_clipboard_inject("notepad.exe")),
+            CopyToClipboardPasteFailureDecision::FailClosed
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(prefers_clipboard_inject("wordpad.exe")),
+            CopyToClipboardPasteFailureDecision::FailClosed
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(prefers_clipboard_inject("chrome.exe")),
+            CopyToClipboardPasteFailureDecision::TrySendInput
+        );
+
+        let message = notepad_like_copy_to_clipboard_paste_failed("Ctrl+V SendInput failed");
+        assert!(
+            message.contains("Notepad/WordPad")
+                && message.contains("Ctrl+V SendInput failed")
+                && message.contains("UNICODE SendInput")
+                && message.contains("not injected")
+                && message.contains("clipboard")
         );
     }
 }
