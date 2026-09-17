@@ -113,8 +113,8 @@ test("family cards match PRODUCT.md phone and gateway status", () => {
   assert.match(html, /1,000\s+seats/);
   assert.match(html, /Android 13\+/);
   assert.match(html, /iOS 17\+/);
-  assert.match(html, /phone · beta \/ testflight/);
-  assert.match(html, /<small>beta \/ testflight<\/small>/);
+  assert.match(html, /phone · android beta \/ ios testflight/);
+  assert.match(html, /<small>android beta \/ ios testflight<\/small>/);
   assert.match(html, /<small>beta<\/small>/);
   assert.doesNotMatch(html, /<small>early<\/small>/);
   assert.doesNotMatch(html, /iPhone currently needs an iOS 17\+ source build/);
