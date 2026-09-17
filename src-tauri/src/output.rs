@@ -5,6 +5,12 @@
 //! (IBus/wtype first): type into the focused window and leave the clipboard
 //! alone. Clipboard + Ctrl+V is the fallback, and that path restores the
 //! previous clipboard unless the user opts into copy-to-clipboard.
+//!
+//! Notepad and WordPad are an exception: `KEYEVENTF_UNICODE` SendInput is
+//! accepted (caret advances) but glyphs are dropped or blank, so those
+//! targets prefer clipboard paste with restore. If the clipboard cannot
+//! be fully restored, injection fails closed rather than reporting
+//! SendInput success while the transcript never appears.
 
 pub fn append_trailing_space(text: &str) -> String {
     if text.is_empty() {
@@ -69,6 +75,31 @@ impl InjectOptions {
     }
 }
 
+/// Classic Notepad / WordPad accept UNICODE SendInput (caret moves) but
+/// drop or blank the glyphs. Clipboard Ctrl+V usually works.
+const CLIPBOARD_INJECT_PROCESS_NAMES: &[&str] = &["notepad.exe", "wordpad.exe"];
+
+/// Lowercase basename, ensure `.exe` — same shape as `autopause`.
+fn normalize_process_name(name: &str) -> String {
+    let trimmed = name.trim().trim_matches('"').to_ascii_lowercase();
+    let file_name = trimmed
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(&trimmed)
+        .to_string();
+    if file_name.ends_with(".exe") {
+        file_name
+    } else if file_name.is_empty() {
+        file_name
+    } else {
+        format!("{file_name}.exe")
+    }
+}
+
+fn prefers_clipboard_inject(process_name: &str) -> bool {
+    CLIPBOARD_INJECT_PROCESS_NAMES.contains(&normalize_process_name(process_name).as_str())
+}
+
 pub fn inject(text: &str, options: InjectOptions) -> Result<(), String> {
     if text.is_empty() {
         return Ok(());
@@ -90,21 +121,44 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
     // Clipboard + Ctrl+V is the fallback (layout-independent, like VocaLinux
     // ydotool paste) and restores the previous clipboard unless the user
     // enabled copy-to-clipboard.
+    //
+    // Notepad-like targets are the other way around: UNICODE SendInput
+    // reports success but the app drops the glyphs, so paste first —
+    // but only when the clipboard can be fully restored afterward.
+    // GDI formats (bitmap / metafile / palette) cannot; EmptyClipboard
+    // would drop them. Capture failure is the same: unknown must not
+    // EmptyClipboard GDI. In both cases — and if paste itself fails —
+    // do not fall through to SendInput (that would claim success while
+    // dropping the transcript). Copy-to-clipboard paste failure is the
+    // same for those targets: fail closed instead of SendInput.
     if options.copy_to_clipboard {
         return match inject_via_clipboard(text, false) {
             Ok(()) => {
                 crate::logbuf::debug("Injected via clipboard (copy-to-clipboard on).");
                 Ok(())
             }
-            Err(clipboard_error) => inject_send_input(text)
-                .and_then(|_| write_clipboard_unicode(text))
-                .map_err(|send_input_error| {
-                    crate::logbuf::warn("Clipboard paste failed; SendInput also failed.");
-                    format!(
-                        "Clipboard paste failed ({clipboard_error}); SendInput also failed ({send_input_error})"
-                    )
-                }),
+            Err(clipboard_error) => match copy_to_clipboard_paste_failure_decision(
+                foreground_prefers_clipboard(),
+            ) {
+                CopyToClipboardPasteFailureDecision::FailClosed => {
+                    crate::logbuf::warn(format!(
+                        "Clipboard paste failed for Notepad-like target ({clipboard_error}); not falling back to SendInput (glyphs would drop)."
+                    ));
+                    Err(notepad_like_copy_to_clipboard_paste_failed(&clipboard_error))
+                }
+                CopyToClipboardPasteFailureDecision::TrySendInput => inject_send_input(text)
+                    .and_then(|_| write_clipboard_unicode(text))
+                    .map_err(|send_input_error| {
+                        crate::logbuf::warn("Clipboard paste failed; SendInput also failed.");
+                        format!(
+                            "Clipboard paste failed ({clipboard_error}); SendInput also failed ({send_input_error})"
+                        )
+                    }),
+            },
         };
+    }
+    if foreground_prefers_clipboard() {
+        return inject_notepad_like(text);
     }
     match inject_send_input(text) {
         Ok(()) => {
@@ -121,6 +175,120 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
                     "SendInput failed ({send_input_error}); clipboard paste also failed ({clipboard_error})"
                 )
             }),
+    }
+}
+
+/// Paste into Notepad/WordPad via clipboard+restore. Capture once and
+/// reuse that snapshot; never treat UNICODE SendInput Ok as success.
+#[cfg(windows)]
+fn inject_notepad_like(text: &str) -> Result<(), String> {
+    let captured = capture_clipboard_snapshot();
+    match notepad_like_clipboard_decision(
+        captured
+            .as_ref()
+            .map(|snapshot| snapshot.is_preservable())
+            .map_err(|_| ()),
+    ) {
+        NotepadLikeClipboardDecision::PasteAndRestore => {
+            let snapshot = match captured {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    return Err(NOTEPAD_LIKE_CAPTURE_FAILED.into());
+                }
+            };
+            match inject_via_clipboard_with_snapshot(text, snapshot) {
+                Ok(()) => {
+                    crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
+                    Ok(())
+                }
+                Err(clipboard_error) => {
+                    crate::logbuf::warn(format!(
+                        "Clipboard paste failed for Notepad-like target ({clipboard_error}); not falling back to SendInput (glyphs would drop)."
+                    ));
+                    Err(format!(
+                        "Clipboard paste into Notepad/WordPad failed ({clipboard_error}). UNICODE SendInput would drop glyphs, so the transcript was not injected."
+                    ))
+                }
+            }
+        }
+        NotepadLikeClipboardDecision::RejectUnpreservable => {
+            crate::logbuf::warn(
+                "Cannot inject into Notepad-like target: clipboard has unpreservable formats.",
+            );
+            Err(NOTEPAD_LIKE_UNPRESERVABLE.into())
+        }
+        NotepadLikeClipboardDecision::RejectCaptureFailed => {
+            let detail = captured.err().unwrap_or_default();
+            crate::logbuf::warn(format!(
+                "Cannot inject into Notepad-like target: clipboard capture failed ({detail})."
+            ));
+            Err(NOTEPAD_LIKE_CAPTURE_FAILED.into())
+        }
+    }
+}
+
+#[cfg(windows)]
+fn foreground_prefers_clipboard() -> bool {
+    match foreground_process_name() {
+        Some(name) => prefers_clipboard_inject(&name),
+        None => false,
+    }
+}
+
+#[cfg(windows)]
+fn foreground_process_name() -> Option<String> {
+    use windows::Win32::Foundation::{CloseHandle, HWND};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd == HWND::default() {
+            return None;
+        }
+        let mut pid = 0u32;
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            cntUsage: 0,
+            th32ProcessID: 0,
+            th32DefaultHeapID: 0,
+            th32ModuleID: 0,
+            cntThreads: 0,
+            th32ParentProcessID: 0,
+            pcPriClassBase: 0,
+            dwFlags: 0,
+            szExeFile: [0; 260],
+        };
+        let mut name = None;
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                if entry.th32ProcessID == pid {
+                    let len = entry
+                        .szExeFile
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(entry.szExeFile.len());
+                    let exe = String::from_utf16_lossy(&entry.szExeFile[..len]);
+                    if !exe.is_empty() {
+                        name = Some(exe);
+                    }
+                    break;
+                }
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+        name
     }
 }
 
@@ -187,18 +355,131 @@ const CF_UNICODETEXT: u32 = 13;
 
 /// GDI clipboard formats that are not HGLOBAL and cannot be round-tripped
 /// with GetClipboardData/SetClipboardData the same way text can.
-#[cfg(windows)]
+///
+/// CF_BITMAP=2, CF_METAFILEPICT=3, CF_PALETTE=9, CF_ENHMETAFILE=14,
+/// CF_OWNERDISPLAY=0x0080, CF_DSPBITMAP=0x0082, CF_DSPMETAFILEPICT=0x0083,
+/// CF_DSPENHMETAFILE=0x008E.
 fn is_gdi_clipboard_format(format: u32) -> bool {
-    matches!(
-        format,
-        2 | 3 | 9 | 14 | 0x0080 | 0x0082 | 0x0083 | 0x008E
+    matches!(format, 2 | 3 | 9 | 14 | 0x0080 | 0x0082 | 0x0083 | 0x008E)
+}
+
+/// True when every enumerated format can be snapshotted and restored.
+/// False if any GDI / unpreservable format is present.
+fn clipboard_formats_are_preservable(formats: impl IntoIterator<Item = u32>) -> bool {
+    formats
+        .into_iter()
+        .all(|format| !is_gdi_clipboard_format(format))
+}
+
+/// User-facing errors for the Notepad/WordPad prefer-clipboard path.
+/// UNICODE SendInput reports success but those apps drop glyphs, so we
+/// never claim Ok via SendInput when clipboard paste is unsafe or failed.
+const NOTEPAD_LIKE_UNPRESERVABLE: &str = concat!(
+    "Cannot inject into Notepad/WordPad: the clipboard has image or other ",
+    "formats that cannot be restored after paste. Clear the clipboard or copy ",
+    "text first, then try again.",
+);
+
+const NOTEPAD_LIKE_CAPTURE_FAILED: &str = concat!(
+    "Cannot inject into Notepad/WordPad: the clipboard could not be captured, ",
+    "so it cannot be restored after paste. Clear the clipboard or copy text ",
+    "first, then try again.",
+);
+
+/// Trailing copy-to-clipboard paste-failure text. Prefixed with the
+/// clipboard error the same way `inject_notepad_like` formats paste failure.
+const NOTEPAD_LIKE_COPY_TO_CLIPBOARD_PASTE_FAILED: &str = concat!(
+    "UNICODE SendInput would drop glyphs, so the transcript was not injected. ",
+    "Copy-to-clipboard may have left the text on the clipboard.",
+);
+
+/// Generic restore-path reject (SendInput fallback). Notepad/WordPad uses
+/// `NOTEPAD_LIKE_UNPRESERVABLE` instead so that path stays fail-closed.
+const CLIPBOARD_RESTORE_UNPRESERVABLE: &str = concat!(
+    "Clipboard has image or other formats that cannot be restored after paste; ",
+    "refusing clipboard paste restore. Clear the clipboard or copy text first, ",
+    "then try again.",
+);
+
+/// Outcome of the Notepad/WordPad clipboard-prefer path *before* paste.
+/// `capture`: `Ok(true)` snapshot is fully preservable, `Ok(false)` has
+/// unpreservable GDI formats, `Err` capture failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NotepadLikeClipboardDecision {
+    PasteAndRestore,
+    RejectUnpreservable,
+    RejectCaptureFailed,
+}
+
+fn notepad_like_clipboard_decision(capture: Result<bool, ()>) -> NotepadLikeClipboardDecision {
+    match capture {
+        Ok(true) => NotepadLikeClipboardDecision::PasteAndRestore,
+        Ok(false) => NotepadLikeClipboardDecision::RejectUnpreservable,
+        Err(()) => NotepadLikeClipboardDecision::RejectCaptureFailed,
+    }
+}
+
+/// After copy-to-clipboard Ctrl+V fails: Notepad/WordPad must not fall
+/// through to UNICODE SendInput (Ok with dropped glyphs). Other apps may.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CopyToClipboardPasteFailureDecision {
+    FailClosed,
+    TrySendInput,
+}
+
+fn copy_to_clipboard_paste_failure_decision(
+    prefers_clipboard: bool,
+) -> CopyToClipboardPasteFailureDecision {
+    if prefers_clipboard {
+        CopyToClipboardPasteFailureDecision::FailClosed
+    } else {
+        CopyToClipboardPasteFailureDecision::TrySendInput
+    }
+}
+
+fn notepad_like_copy_to_clipboard_paste_failed(clipboard_error: &str) -> String {
+    format!(
+        "Clipboard paste into Notepad/WordPad failed ({clipboard_error}). {NOTEPAD_LIKE_COPY_TO_CLIPBOARD_PASTE_FAILED}"
     )
+}
+
+impl NotepadLikeClipboardDecision {
+    fn reject_message(self) -> Option<&'static str> {
+        match self {
+            Self::PasteAndRestore => None,
+            Self::RejectUnpreservable => Some(NOTEPAD_LIKE_UNPRESERVABLE),
+            Self::RejectCaptureFailed => Some(NOTEPAD_LIKE_CAPTURE_FAILED),
+        }
+    }
+}
+
+/// Empty captured formats means "clipboard was empty" only when no GDI
+/// format was skipped. An incomplete snapshot must not EmptyClipboard.
+fn should_clear_clipboard_on_restore(formats_empty: bool, skipped_unpreservable: bool) -> bool {
+    formats_empty && !skipped_unpreservable
+}
+
+/// Restore-path paste must not overwrite the clipboard when the snapshot
+/// skipped GDI formats. Callers reject before `write_clipboard_unicode`.
+fn may_replace_clipboard_for_restore(skipped_unpreservable: bool) -> bool {
+    !skipped_unpreservable
 }
 
 #[cfg(windows)]
 #[derive(Clone, Default)]
 struct ClipboardSnapshot {
     formats: Vec<(u32, Vec<u8>)>,
+    /// Set when EnumClipboardFormats listed a GDI format we skipped.
+    /// Restore cannot recover those; an empty `formats` vec is then
+    /// incomplete rather than "clipboard was empty".
+    skipped_unpreservable: bool,
+}
+
+#[cfg(windows)]
+impl ClipboardSnapshot {
+    fn is_preservable(&self) -> bool {
+        !self.skipped_unpreservable
+    }
 }
 
 #[cfg(windows)]
@@ -229,23 +510,55 @@ fn clipboard_restore_state() -> &'static std::sync::Mutex<ClipboardRestoreState>
 
 #[cfg(windows)]
 fn inject_via_clipboard(text: &str, restore: bool) -> Result<(), String> {
+    inject_via_clipboard_inner(text, restore, None)
+}
+
+/// Paste via clipboard and restore using a snapshot captured by the caller
+/// so restore does not recapture (and does not copy every format twice).
+#[cfg(windows)]
+fn inject_via_clipboard_with_snapshot(
+    text: &str,
+    snapshot: ClipboardSnapshot,
+) -> Result<(), String> {
+    inject_via_clipboard_inner(text, true, Some(snapshot))
+}
+
+#[cfg(windows)]
+fn inject_via_clipboard_inner(
+    text: &str,
+    restore: bool,
+    snapshot: Option<ClipboardSnapshot>,
+) -> Result<(), String> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, VK_CONTROL, VK_V};
 
     let generation = {
         let mut state = clipboard_restore_state()
             .lock()
             .map_err(|_| "clipboard restore lock poisoned")?;
-        state.generation = state.generation.wrapping_add(1);
         if restore {
             if matches!(state.pending, PendingRestore::Idle) {
-                state.pending = match capture_clipboard_snapshot() {
-                    Ok(snapshot) => PendingRestore::Snapshot(snapshot),
-                    Err(_) => PendingRestore::Failed,
+                let resolved = match snapshot {
+                    Some(snapshot) => Ok(snapshot),
+                    None => capture_clipboard_snapshot(),
                 };
+                match resolved {
+                    Ok(snapshot) => {
+                        // Fail closed before write: an unpreservable snapshot
+                        // cannot be restored, and writing would destroy GDI.
+                        if !may_replace_clipboard_for_restore(snapshot.skipped_unpreservable) {
+                            return Err(CLIPBOARD_RESTORE_UNPRESERVABLE.into());
+                        }
+                        state.pending = PendingRestore::Snapshot(snapshot);
+                    }
+                    Err(_) => {
+                        state.pending = PendingRestore::Failed;
+                    }
+                }
             }
         } else {
             state.pending = PendingRestore::Idle;
         }
+        state.generation = state.generation.wrapping_add(1);
         state.generation
     };
 
@@ -291,9 +604,6 @@ fn restore_pending_clipboard(generation: u64, expected_text: Option<&str>) {
         }
     }
     match pending {
-        PendingRestore::Snapshot(snapshot) if snapshot.formats.is_empty() => {
-            let _ = clear_clipboard();
-        }
         PendingRestore::Snapshot(snapshot) => {
             let _ = restore_clipboard_snapshot(&snapshot);
         }
@@ -302,7 +612,9 @@ fn restore_pending_clipboard(generation: u64, expected_text: Option<&str>) {
 }
 
 #[cfg(windows)]
-fn key_down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+fn key_down(
+    vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
     use windows::Win32::UI::Input::KeyboardAndMouse::{INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT};
     INPUT {
         r#type: INPUT_KEYBOARD,
@@ -319,7 +631,9 @@ fn key_down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> win
 }
 
 #[cfg(windows)]
-fn key_up(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+fn key_up(
+    vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
     };
@@ -396,7 +710,12 @@ fn write_clipboard_unicode(text: &str) -> Result<(), String> {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, SetClipboardData};
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-    let encoded: Vec<u16> = HSTRING::from(text).as_wide().iter().copied().chain([0]).collect();
+    let encoded: Vec<u16> = HSTRING::from(text)
+        .as_wide()
+        .iter()
+        .copied()
+        .chain([0])
+        .collect();
     let bytes = encoded.len() * 2;
     unsafe {
         let mem = GlobalAlloc(GMEM_MOVEABLE, bytes)
@@ -458,6 +777,7 @@ fn capture_clipboard_snapshot() -> Result<ClipboardSnapshot, String> {
                 break;
             }
             if is_gdi_clipboard_format(format) {
+                snapshot.skipped_unpreservable = true;
                 continue;
             }
             let Ok(handle) = GetClipboardData(format) else {
@@ -487,8 +807,16 @@ fn restore_clipboard_snapshot(snapshot: &ClipboardSnapshot) -> Result<(), String
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, SetClipboardData};
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-    if snapshot.formats.is_empty() {
+    if should_clear_clipboard_on_restore(
+        snapshot.formats.is_empty(),
+        snapshot.skipped_unpreservable,
+    ) {
         return clear_clipboard();
+    }
+    if snapshot.formats.is_empty() {
+        // Incomplete snapshot (GDI formats were skipped): do not
+        // EmptyClipboard. Incomplete != empty.
+        return Ok(());
     }
     open_clipboard_with_retry()?;
     let result = (|| unsafe {
@@ -566,5 +894,167 @@ mod tests {
             copy_to_clipboard: true,
         };
         assert!(!options.restore_clipboard());
+    }
+
+    #[test]
+    fn notepad_like_targets_prefer_clipboard_inject() {
+        assert!(prefers_clipboard_inject("notepad.exe"));
+        assert!(prefers_clipboard_inject("NOTEPAD.EXE"));
+        assert!(prefers_clipboard_inject("Notepad"));
+        assert!(prefers_clipboard_inject("wordpad.exe"));
+        assert!(!prefers_clipboard_inject("chrome.exe"));
+        assert!(!prefers_clipboard_inject("Code.exe"));
+        assert!(!prefers_clipboard_inject("explorer.exe"));
+        assert!(!prefers_clipboard_inject(""));
+    }
+
+    #[test]
+    fn clipboard_without_gdi_formats_is_preservable() {
+        const CF_TEXT: u32 = 1;
+        const CF_DIB: u32 = 8;
+        const CF_UNICODETEXT: u32 = 13;
+        const CF_HDROP: u32 = 15;
+
+        assert!(clipboard_formats_are_preservable([] as [u32; 0]));
+        assert!(clipboard_formats_are_preservable([CF_UNICODETEXT]));
+        assert!(clipboard_formats_are_preservable([
+            CF_TEXT,
+            CF_UNICODETEXT,
+            CF_DIB,
+            CF_HDROP
+        ]));
+        assert!(!is_gdi_clipboard_format(CF_UNICODETEXT));
+        assert!(!is_gdi_clipboard_format(CF_DIB));
+    }
+
+    #[test]
+    fn clipboard_with_gdi_formats_is_not_preservable() {
+        const CF_TEXT: u32 = 1;
+        const CF_BITMAP: u32 = 2;
+        const CF_METAFILEPICT: u32 = 3;
+        const CF_PALETTE: u32 = 9;
+        const CF_UNICODETEXT: u32 = 13;
+        const CF_ENHMETAFILE: u32 = 14;
+        const CF_OWNERDISPLAY: u32 = 0x0080;
+        const CF_DSPBITMAP: u32 = 0x0082;
+        const CF_DSPMETAFILEPICT: u32 = 0x0083;
+        const CF_DSPENHMETAFILE: u32 = 0x008E;
+
+        for format in [
+            CF_BITMAP,
+            CF_METAFILEPICT,
+            CF_PALETTE,
+            CF_ENHMETAFILE,
+            CF_OWNERDISPLAY,
+            CF_DSPBITMAP,
+            CF_DSPMETAFILEPICT,
+            CF_DSPENHMETAFILE,
+        ] {
+            assert!(is_gdi_clipboard_format(format));
+            assert!(!clipboard_formats_are_preservable([format]));
+        }
+        // Mixed: restore would drop the GDI object after EmptyClipboard.
+        assert!(!clipboard_formats_are_preservable([
+            CF_TEXT,
+            CF_UNICODETEXT,
+            CF_ENHMETAFILE
+        ]));
+        // GDI-only: formats vec is empty after skip; restore must not
+        // treat that as "clipboard was empty" and EmptyClipboard.
+        assert!(!clipboard_formats_are_preservable([
+            CF_BITMAP,
+            CF_ENHMETAFILE
+        ]));
+    }
+
+    #[test]
+    fn notepad_like_fails_closed_when_clipboard_cannot_be_restored() {
+        assert_eq!(
+            notepad_like_clipboard_decision(Ok(true)),
+            NotepadLikeClipboardDecision::PasteAndRestore
+        );
+        assert_eq!(
+            notepad_like_clipboard_decision(Ok(false)),
+            NotepadLikeClipboardDecision::RejectUnpreservable
+        );
+        assert_eq!(
+            notepad_like_clipboard_decision(Err(())),
+            NotepadLikeClipboardDecision::RejectCaptureFailed
+        );
+        assert!(notepad_like_clipboard_decision(Ok(true))
+            .reject_message()
+            .is_none());
+
+        let unpreservable = notepad_like_clipboard_decision(Ok(false))
+            .reject_message()
+            .expect("unpreservable must reject");
+        assert!(
+            unpreservable.contains("Clear the clipboard")
+                && unpreservable.contains("copy text")
+                && unpreservable.contains("try again")
+        );
+
+        let capture_failed = notepad_like_clipboard_decision(Err(()))
+            .reject_message()
+            .expect("capture failure must reject");
+        assert!(
+            capture_failed.contains("Clear the clipboard")
+                && capture_failed.contains("copy text")
+                && capture_failed.contains("try again")
+        );
+    }
+
+    #[test]
+    fn incomplete_clipboard_snapshot_must_not_clear_on_restore() {
+        // Empty + fully captured: clipboard really was empty.
+        assert!(should_clear_clipboard_on_restore(true, false));
+        // Empty formats but GDI was skipped: incomplete != empty.
+        assert!(!should_clear_clipboard_on_restore(true, true));
+        // Non-empty HGLOBAL formats: restore those, do not clear.
+        assert!(!should_clear_clipboard_on_restore(false, false));
+        assert!(!should_clear_clipboard_on_restore(false, true));
+    }
+
+    #[test]
+    fn unpreservable_snapshot_must_not_replace_clipboard_for_restore() {
+        assert!(may_replace_clipboard_for_restore(false));
+        assert!(!may_replace_clipboard_for_restore(true));
+        assert!(
+            CLIPBOARD_RESTORE_UNPRESERVABLE.contains("refusing clipboard paste restore")
+                && !CLIPBOARD_RESTORE_UNPRESERVABLE.contains("Notepad")
+        );
+    }
+
+    #[test]
+    fn copy_to_clipboard_paste_failure_fails_closed_for_notepad_like() {
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(true),
+            CopyToClipboardPasteFailureDecision::FailClosed
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(false),
+            CopyToClipboardPasteFailureDecision::TrySendInput
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(prefers_clipboard_inject("notepad.exe")),
+            CopyToClipboardPasteFailureDecision::FailClosed
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(prefers_clipboard_inject("wordpad.exe")),
+            CopyToClipboardPasteFailureDecision::FailClosed
+        );
+        assert_eq!(
+            copy_to_clipboard_paste_failure_decision(prefers_clipboard_inject("chrome.exe")),
+            CopyToClipboardPasteFailureDecision::TrySendInput
+        );
+
+        let message = notepad_like_copy_to_clipboard_paste_failed("Ctrl+V SendInput failed");
+        assert!(
+            message.contains("Notepad/WordPad")
+                && message.contains("Ctrl+V SendInput failed")
+                && message.contains("UNICODE SendInput")
+                && message.contains("not injected")
+                && message.contains("clipboard")
+        );
     }
 }
