@@ -375,6 +375,14 @@ const NOTEPAD_LIKE_CAPTURE_FAILED: &str = concat!(
     "first, then try again.",
 );
 
+/// Generic restore-path reject (SendInput fallback). Notepad/WordPad uses
+/// `NOTEPAD_LIKE_UNPRESERVABLE` instead so that path stays fail-closed.
+const CLIPBOARD_RESTORE_UNPRESERVABLE: &str = concat!(
+    "Clipboard has image or other formats that cannot be restored after paste; ",
+    "refusing clipboard paste restore. Clear the clipboard or copy text first, ",
+    "then try again.",
+);
+
 /// Outcome of the Notepad/WordPad clipboard-prefer path *before* paste.
 /// `capture`: `Ok(true)` snapshot is fully preservable, `Ok(false)` has
 /// unpreservable GDI formats, `Err` capture failed.
@@ -407,6 +415,12 @@ impl NotepadLikeClipboardDecision {
 /// format was skipped. An incomplete snapshot must not EmptyClipboard.
 fn should_clear_clipboard_on_restore(formats_empty: bool, skipped_unpreservable: bool) -> bool {
     formats_empty && !skipped_unpreservable
+}
+
+/// Restore-path paste must not overwrite the clipboard when the snapshot
+/// skipped GDI formats. Callers reject before `write_clipboard_unicode`.
+fn may_replace_clipboard_for_restore(skipped_unpreservable: bool) -> bool {
+    !skipped_unpreservable
 }
 
 #[cfg(windows)]
@@ -479,20 +493,30 @@ fn inject_via_clipboard_inner(
         let mut state = clipboard_restore_state()
             .lock()
             .map_err(|_| "clipboard restore lock poisoned")?;
-        state.generation = state.generation.wrapping_add(1);
         if restore {
             if matches!(state.pending, PendingRestore::Idle) {
-                state.pending = match snapshot {
-                    Some(snapshot) => PendingRestore::Snapshot(snapshot),
-                    None => match capture_clipboard_snapshot() {
-                        Ok(snapshot) => PendingRestore::Snapshot(snapshot),
-                        Err(_) => PendingRestore::Failed,
-                    },
+                let resolved = match snapshot {
+                    Some(snapshot) => Ok(snapshot),
+                    None => capture_clipboard_snapshot(),
                 };
+                match resolved {
+                    Ok(snapshot) => {
+                        // Fail closed before write: an unpreservable snapshot
+                        // cannot be restored, and writing would destroy GDI.
+                        if !may_replace_clipboard_for_restore(snapshot.skipped_unpreservable) {
+                            return Err(CLIPBOARD_RESTORE_UNPRESERVABLE.into());
+                        }
+                        state.pending = PendingRestore::Snapshot(snapshot);
+                    }
+                    Err(_) => {
+                        state.pending = PendingRestore::Failed;
+                    }
+                }
             }
         } else {
             state.pending = PendingRestore::Idle;
         }
+        state.generation = state.generation.wrapping_add(1);
         state.generation
     };
 
@@ -947,5 +971,15 @@ mod tests {
         // Non-empty HGLOBAL formats: restore those, do not clear.
         assert!(!should_clear_clipboard_on_restore(false, false));
         assert!(!should_clear_clipboard_on_restore(false, true));
+    }
+
+    #[test]
+    fn unpreservable_snapshot_must_not_replace_clipboard_for_restore() {
+        assert!(may_replace_clipboard_for_restore(false));
+        assert!(!may_replace_clipboard_for_restore(true));
+        assert!(
+            CLIPBOARD_RESTORE_UNPRESERVABLE.contains("refusing clipboard paste restore")
+                && !CLIPBOARD_RESTORE_UNPRESERVABLE.contains("Notepad")
+        );
     }
 }
