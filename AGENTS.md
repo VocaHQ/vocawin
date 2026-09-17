@@ -114,6 +114,7 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 - **Unsigned / SmartScreen** — NSIS has no purchased CA. Windows will say the publisher is unknown. That is expected. Do not claim a Store listing or a signed stable.
 - **Elevated windows** — UIPI can block clipboard/`SendInput` injection into admin targets. Documented in README and `web/`; do not promise it works there.
+- **Notepad / WordPad** — UNICODE `SendInput` can advance the caret and drop glyphs. Those targets prefer clipboard paste with restore; other apps stay SendInput-first.
 - **GPU** — Vulkan (whisper.cpp) and DirectML (ONNX) with CPU fallback. Catalog labels must follow `cfg(vocawin_whisper_vulkan)`.
 - **Hotkeys** — `RegisterHotKey` cannot bind a lone modifier; the LL hook does. AltGr (Ctrl+Right Alt) must not be consumed. Default is Right Alt (`AltRight`).
 - **CI path length** — Windows jobs set `CARGO_TARGET_DIR=C:\t` and `CMAKE_GENERATOR=Ninja` because whisper.cpp Vulkan shader nests hit `MAX_PATH`. Do not switch those jobs back to the default `target/` + MSBuild without a proven fix.
