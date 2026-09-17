@@ -5,6 +5,10 @@
 //! (IBus/wtype first): type into the focused window and leave the clipboard
 //! alone. Clipboard + Ctrl+V is the fallback, and that path restores the
 //! previous clipboard unless the user opts into copy-to-clipboard.
+//!
+//! Notepad and WordPad are an exception: `KEYEVENTF_UNICODE` SendInput is
+//! accepted (caret advances) but glyphs are dropped or blank, so those
+//! targets prefer clipboard paste with restore.
 
 pub fn append_trailing_space(text: &str) -> String {
     if text.is_empty() {
@@ -69,6 +73,31 @@ impl InjectOptions {
     }
 }
 
+/// Classic Notepad / WordPad accept UNICODE SendInput (caret moves) but
+/// drop or blank the glyphs. Clipboard Ctrl+V usually works.
+const CLIPBOARD_INJECT_PROCESS_NAMES: &[&str] = &["notepad.exe", "wordpad.exe"];
+
+/// Lowercase basename, ensure `.exe` — same shape as `autopause`.
+fn normalize_process_name(name: &str) -> String {
+    let trimmed = name.trim().trim_matches('"').to_ascii_lowercase();
+    let file_name = trimmed
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(&trimmed)
+        .to_string();
+    if file_name.ends_with(".exe") {
+        file_name
+    } else if file_name.is_empty() {
+        file_name
+    } else {
+        format!("{file_name}.exe")
+    }
+}
+
+fn prefers_clipboard_inject(process_name: &str) -> bool {
+    CLIPBOARD_INJECT_PROCESS_NAMES.contains(&normalize_process_name(process_name).as_str())
+}
+
 pub fn inject(text: &str, options: InjectOptions) -> Result<(), String> {
     if text.is_empty() {
         return Ok(());
@@ -90,6 +119,9 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
     // Clipboard + Ctrl+V is the fallback (layout-independent, like VocaLinux
     // ydotool paste) and restores the previous clipboard unless the user
     // enabled copy-to-clipboard.
+    //
+    // Notepad-like targets are the other way around: UNICODE SendInput
+    // reports success but the app drops the glyphs, so paste first.
     if options.copy_to_clipboard {
         return match inject_via_clipboard(text, false) {
             Ok(()) => {
@@ -106,6 +138,19 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
                 }),
         };
     }
+    if foreground_prefers_clipboard() {
+        match inject_via_clipboard(text, true) {
+            Ok(()) => {
+                crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
+                return Ok(());
+            }
+            Err(clipboard_error) => {
+                crate::logbuf::warn(format!(
+                    "Clipboard paste failed for Notepad-like target ({clipboard_error}); falling back to SendInput."
+                ));
+            }
+        }
+    }
     match inject_send_input(text) {
         Ok(()) => {
             crate::logbuf::debug("Injected via SendInput.");
@@ -121,6 +166,71 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
                     "SendInput failed ({send_input_error}); clipboard paste also failed ({clipboard_error})"
                 )
             }),
+    }
+}
+
+#[cfg(windows)]
+fn foreground_prefers_clipboard() -> bool {
+    match foreground_process_name() {
+        Some(name) => prefers_clipboard_inject(&name),
+        None => false,
+    }
+}
+
+#[cfg(windows)]
+fn foreground_process_name() -> Option<String> {
+    use windows::Win32::Foundation::{CloseHandle, HWND};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd == HWND::default() {
+            return None;
+        }
+        let mut pid = 0u32;
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            cntUsage: 0,
+            th32ProcessID: 0,
+            th32DefaultHeapID: 0,
+            th32ModuleID: 0,
+            cntThreads: 0,
+            th32ParentProcessID: 0,
+            pcPriClassBase: 0,
+            dwFlags: 0,
+            szExeFile: [0; 260],
+        };
+        let mut name = None;
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                if entry.th32ProcessID == pid {
+                    let len = entry
+                        .szExeFile
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(entry.szExeFile.len());
+                    let exe = String::from_utf16_lossy(&entry.szExeFile[..len]);
+                    if !exe.is_empty() {
+                        name = Some(exe);
+                    }
+                    break;
+                }
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+        name
     }
 }
 
@@ -566,5 +676,17 @@ mod tests {
             copy_to_clipboard: true,
         };
         assert!(!options.restore_clipboard());
+    }
+
+    #[test]
+    fn notepad_like_targets_prefer_clipboard_inject() {
+        assert!(prefers_clipboard_inject("notepad.exe"));
+        assert!(prefers_clipboard_inject("NOTEPAD.EXE"));
+        assert!(prefers_clipboard_inject("Notepad"));
+        assert!(prefers_clipboard_inject("wordpad.exe"));
+        assert!(!prefers_clipboard_inject("chrome.exe"));
+        assert!(!prefers_clipboard_inject("Code.exe"));
+        assert!(!prefers_clipboard_inject("explorer.exe"));
+        assert!(!prefers_clipboard_inject(""));
     }
 }
