@@ -182,20 +182,8 @@ fn inject_windows(text: &str, options: InjectOptions) -> Result<(), String> {
 /// reuse that snapshot; never treat UNICODE SendInput Ok as success.
 #[cfg(windows)]
 fn inject_notepad_like(text: &str) -> Result<(), String> {
-    let captured = capture_clipboard_snapshot();
-    match notepad_like_clipboard_decision(
-        captured
-            .as_ref()
-            .map(|snapshot| snapshot.is_preservable())
-            .map_err(|_| ()),
-    ) {
-        NotepadLikeClipboardDecision::PasteAndRestore => {
-            let snapshot = match captured {
-                Ok(snapshot) => snapshot,
-                Err(_) => {
-                    return Err(NOTEPAD_LIKE_CAPTURE_FAILED.into());
-                }
-            };
+    match notepad_like_clipboard_decision(capture_clipboard_snapshot()) {
+        NotepadLikeClipboardDecision::PasteAndRestore(snapshot) => {
             match inject_via_clipboard_with_snapshot(text, snapshot) {
                 Ok(()) => {
                     crate::logbuf::debug("Injected via clipboard (Notepad-like target).");
@@ -217,8 +205,7 @@ fn inject_notepad_like(text: &str) -> Result<(), String> {
             );
             Err(NOTEPAD_LIKE_UNPRESERVABLE.into())
         }
-        NotepadLikeClipboardDecision::RejectCaptureFailed => {
-            let detail = captured.err().unwrap_or_default();
+        NotepadLikeClipboardDecision::RejectCaptureFailed(detail) => {
             crate::logbuf::warn(format!(
                 "Cannot inject into Notepad-like target: clipboard capture failed ({detail})."
             ));
@@ -374,12 +361,14 @@ fn clipboard_formats_are_preservable(formats: impl IntoIterator<Item = u32>) -> 
 /// User-facing errors for the Notepad/WordPad prefer-clipboard path.
 /// UNICODE SendInput reports success but those apps drop glyphs, so we
 /// never claim Ok via SendInput when clipboard paste is unsafe or failed.
+#[cfg(windows)]
 const NOTEPAD_LIKE_UNPRESERVABLE: &str = concat!(
     "Cannot inject into Notepad/WordPad: the clipboard has image or other ",
     "formats that cannot be restored after paste. Clear the clipboard or copy ",
     "text first, then try again.",
 );
 
+#[cfg(windows)]
 const NOTEPAD_LIKE_CAPTURE_FAILED: &str = concat!(
     "Cannot inject into Notepad/WordPad: the clipboard could not be captured, ",
     "so it cannot be restored after paste. Clear the clipboard or copy text ",
@@ -402,20 +391,29 @@ const CLIPBOARD_RESTORE_UNPRESERVABLE: &str = concat!(
 );
 
 /// Outcome of the Notepad/WordPad clipboard-prefer path *before* paste.
-/// `capture`: `Ok(true)` snapshot is fully preservable, `Ok(false)` has
-/// unpreservable GDI formats, `Err` capture failed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// `Ok(snapshot)` pastes when `is_preservable()`; otherwise reject
+/// unpreservable. `Err` owns the capture-failure detail.
+#[cfg(windows)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum NotepadLikeClipboardDecision {
-    PasteAndRestore,
+    PasteAndRestore(ClipboardSnapshot),
     RejectUnpreservable,
-    RejectCaptureFailed,
+    RejectCaptureFailed(String),
 }
 
-fn notepad_like_clipboard_decision(capture: Result<bool, ()>) -> NotepadLikeClipboardDecision {
+#[cfg(windows)]
+fn notepad_like_clipboard_decision(
+    capture: Result<ClipboardSnapshot, String>,
+) -> NotepadLikeClipboardDecision {
     match capture {
-        Ok(true) => NotepadLikeClipboardDecision::PasteAndRestore,
-        Ok(false) => NotepadLikeClipboardDecision::RejectUnpreservable,
-        Err(()) => NotepadLikeClipboardDecision::RejectCaptureFailed,
+        Ok(snapshot) => {
+            if snapshot.is_preservable() {
+                NotepadLikeClipboardDecision::PasteAndRestore(snapshot)
+            } else {
+                NotepadLikeClipboardDecision::RejectUnpreservable
+            }
+        }
+        Err(detail) => NotepadLikeClipboardDecision::RejectCaptureFailed(detail),
     }
 }
 
@@ -443,12 +441,13 @@ fn notepad_like_copy_to_clipboard_paste_failed(clipboard_error: &str) -> String 
     )
 }
 
+#[cfg(windows)]
 impl NotepadLikeClipboardDecision {
-    fn reject_message(self) -> Option<&'static str> {
+    fn reject_message(&self) -> Option<&'static str> {
         match self {
-            Self::PasteAndRestore => None,
+            Self::PasteAndRestore(_) => None,
             Self::RejectUnpreservable => Some(NOTEPAD_LIKE_UNPRESERVABLE),
-            Self::RejectCaptureFailed => Some(NOTEPAD_LIKE_CAPTURE_FAILED),
+            Self::RejectCaptureFailed(_) => Some(NOTEPAD_LIKE_CAPTURE_FAILED),
         }
     }
 }
@@ -466,7 +465,7 @@ fn may_replace_clipboard_for_restore(skipped_unpreservable: bool) -> bool {
 }
 
 #[cfg(windows)]
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct ClipboardSnapshot {
     formats: Vec<(u32, Vec<u8>)>,
     /// Set when EnumClipboardFormats listed a GDI format we skipped.
@@ -967,34 +966,45 @@ mod tests {
         ]));
     }
 
+    #[cfg(windows)]
     #[test]
     fn notepad_like_fails_closed_when_clipboard_cannot_be_restored() {
+        let preservable = ClipboardSnapshot::default();
         assert_eq!(
-            notepad_like_clipboard_decision(Ok(true)),
-            NotepadLikeClipboardDecision::PasteAndRestore
+            notepad_like_clipboard_decision(Ok(preservable.clone())),
+            NotepadLikeClipboardDecision::PasteAndRestore(preservable)
         );
+        let unpreservable_snapshot = ClipboardSnapshot {
+            skipped_unpreservable: true,
+            ..ClipboardSnapshot::default()
+        };
         assert_eq!(
-            notepad_like_clipboard_decision(Ok(false)),
+            notepad_like_clipboard_decision(Ok(unpreservable_snapshot)),
             NotepadLikeClipboardDecision::RejectUnpreservable
         );
         assert_eq!(
-            notepad_like_clipboard_decision(Err(())),
-            NotepadLikeClipboardDecision::RejectCaptureFailed
+            notepad_like_clipboard_decision(Err("some detail".into())),
+            NotepadLikeClipboardDecision::RejectCaptureFailed("some detail".into())
         );
-        assert!(notepad_like_clipboard_decision(Ok(true))
-            .reject_message()
-            .is_none());
+        assert!(
+            notepad_like_clipboard_decision(Ok(ClipboardSnapshot::default()))
+                .reject_message()
+                .is_none()
+        );
 
-        let unpreservable = notepad_like_clipboard_decision(Ok(false))
-            .reject_message()
-            .expect("unpreservable must reject");
+        let unpreservable = notepad_like_clipboard_decision(Ok(ClipboardSnapshot {
+            skipped_unpreservable: true,
+            ..ClipboardSnapshot::default()
+        }))
+        .reject_message()
+        .expect("unpreservable must reject");
         assert!(
             unpreservable.contains("Clear the clipboard")
                 && unpreservable.contains("copy text")
                 && unpreservable.contains("try again")
         );
 
-        let capture_failed = notepad_like_clipboard_decision(Err(()))
+        let capture_failed = notepad_like_clipboard_decision(Err("some detail".into()))
             .reject_message()
             .expect("capture failure must reject");
         assert!(
