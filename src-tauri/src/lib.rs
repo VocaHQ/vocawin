@@ -2,6 +2,7 @@
 //! catalog/adapter boundary so model downloads never require a cloud account.
 
 mod autopause;
+mod autostart;
 mod devices;
 mod gpu;
 mod hardware;
@@ -1040,15 +1041,26 @@ fn save_settings(
     }
     sounds::apply_theme(&mut settings.sound_theme, &mut settings.sound_effects);
     settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
+    let previous_launch = state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned")?
+        .launch_at_login;
+    let launch_error = match apply_launch_at_login(&app, settings.launch_at_login) {
+        Ok(()) => None,
+        Err(error) => {
+            settings.launch_at_login = previous_launch;
+            Some(error)
+        }
+    };
     persist_settings(&state.settings_path, &settings)?;
     // Disk is the source of truth after persist. Refresh AppState before
-    // autostart/hotkey so a later side-effect error cannot leave start_recording
+    // hotkey so a later side-effect error cannot leave start_recording
     // and the UI on different selected models.
     *state
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")? = settings.clone();
-    apply_launch_at_login(&app, settings.launch_at_login)?;
     state
         .whisper_cache
         .configure_idle(settings.idle_unload_enabled, settings.idle_unload_seconds);
@@ -1080,13 +1092,17 @@ fn save_settings(
         .map_err(|_| "Hotkey lock was poisoned")? = settings.hotkey.clone();
     emit_runtime(&app);
     apply_ready_or_parked_tray(&app);
+    if let Some(error) = launch_error {
+        let _ = app.emit("settings-changed", settings);
+        return Err(error);
+    }
     Ok(())
 }
 
-/// auto-launch's Windows disable() always calls RegDeleteValue. A machine that
-/// never enabled launch-at-login has no Run value, and Windows returns
-/// ERROR_FILE_NOT_FOUND ("The system cannot find the file specified. (os error 2)").
-/// That is already-disabled, not a failed settings save.
+/// Plugin disable() can fail when the login item or .desktop file is already
+/// gone ("no such file" / Windows ERROR_FILE_NOT_FOUND). That is
+/// already-disabled, not a failed settings save.
+#[cfg(any(test, not(windows)))]
 fn autostart_disable_error_is_missing(error: impl std::fmt::Display) -> bool {
     let text = error.to_string().to_ascii_lowercase();
     text.contains("os error 2")
@@ -1095,17 +1111,31 @@ fn autostart_disable_error_is_missing(error: impl std::fmt::Display) -> bool {
 }
 
 fn apply_launch_at_login(app: &AppHandle, enabled: bool) -> Result<(), String> {
-    use tauri_plugin_autostart::ManagerExt;
-    let autolaunch = app.autolaunch();
-    if enabled {
-        autolaunch
-            .enable()
-            .map_err(|error| format!("Could not enable launch at login: {error}"))
-    } else {
-        match autolaunch.disable() {
-            Ok(()) => Ok(()),
-            Err(error) if autostart_disable_error_is_missing(&error) => Ok(()),
-            Err(error) => Err(format!("Could not disable launch at login: {error}")),
+    #[cfg(windows)]
+    {
+        let _ = app;
+        autostart::apply(enabled).map_err(|error| {
+            if enabled {
+                format!("Could not enable launch at login: {error}")
+            } else {
+                format!("Could not disable launch at login: {error}")
+            }
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        let autolaunch = app.autolaunch();
+        if enabled {
+            autolaunch
+                .enable()
+                .map_err(|error| format!("Could not enable launch at login: {error}"))
+        } else {
+            match autolaunch.disable() {
+                Ok(()) => Ok(()),
+                Err(error) if autostart_disable_error_is_missing(&error) => Ok(()),
+                Err(error) => Err(format!("Could not disable launch at login: {error}")),
+            }
         }
     }
 }
@@ -2482,7 +2512,10 @@ pub fn run() {
                 saw_model_loaded: Mutex::new(false),
                 whisper_cache,
             });
-            let _ = apply_launch_at_login(&handle, settings.launch_at_login);
+            if let Err(error) = apply_launch_at_login(&handle, settings.launch_at_login) {
+                eprintln!("VocaWin launch-at-login registration failed: {error}");
+                logbuf::error(format!("Launch-at-login registration failed: {error}"));
+            }
             hook::start(handle.clone());
             if let Err(error) = register_dictation_hotkey(&handle, &settings.hotkey) {
                 eprintln!("VocaWin hotkey registration failed: {error}");
@@ -2906,12 +2939,15 @@ fn tray_toggle_login(app: &AppHandle) -> Result<(), String> {
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
     settings.launch_at_login = !settings.launch_at_login;
+    if let Err(error) = apply_launch_at_login(app, settings.launch_at_login) {
+        let _ = refresh_tray_menu(app);
+        return Err(error);
+    }
     persist_settings(&state.settings_path, &settings)?;
     *state
         .settings
         .lock()
         .map_err(|_| "Settings lock was poisoned")? = settings.clone();
-    apply_launch_at_login(app, settings.launch_at_login)?;
     let _ = app.emit("settings-changed", settings);
     refresh_tray_menu(app)?;
     Ok(())
