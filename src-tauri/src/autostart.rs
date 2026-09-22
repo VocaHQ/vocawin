@@ -21,7 +21,6 @@ mod windows_run {
     };
 
     const RUN_VALUE_NAME: &str = "VocaWin";
-    const LEGACY_RUN_VALUE_NAME: &str = "vocawin";
     const RUN_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
     const STARTUP_APPROVED_SUBKEY: &str =
         r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
@@ -50,7 +49,6 @@ mod windows_run {
         let command = windows_run_command_line(&exe.to_string_lossy());
         let run = create_hkcu(RUN_SUBKEY)?;
         set_sz(run.0, RUN_VALUE_NAME, &command)?;
-        delete_value_ok_if_missing(run.0, LEGACY_RUN_VALUE_NAME)?;
         let approved = create_hkcu(STARTUP_APPROVED_SUBKEY)?;
         set_bytes(
             approved.0,
@@ -58,7 +56,6 @@ mod windows_run {
             REG_BINARY,
             &STARTUP_APPROVED_ENABLED,
         )?;
-        delete_value_ok_if_missing(approved.0, LEGACY_RUN_VALUE_NAME)?;
         Ok(())
     }
 
@@ -67,7 +64,6 @@ mod windows_run {
             return Ok(());
         };
         delete_value_ok_if_missing(run.0, RUN_VALUE_NAME)?;
-        delete_value_ok_if_missing(run.0, LEGACY_RUN_VALUE_NAME)?;
         Ok(())
     }
 

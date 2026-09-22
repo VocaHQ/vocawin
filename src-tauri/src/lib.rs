@@ -1046,14 +1046,15 @@ fn save_settings(
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .launch_at_login;
+    persist_settings(&state.settings_path, &settings)?;
     let launch_error = match apply_launch_at_login(&app, settings.launch_at_login) {
         Ok(()) => None,
         Err(error) => {
             settings.launch_at_login = previous_launch;
+            persist_settings(&state.settings_path, &settings)?;
             Some(error)
         }
     };
-    persist_settings(&state.settings_path, &settings)?;
     // Disk is the source of truth after persist. Refresh AppState before
     // hotkey so a later side-effect error cannot leave start_recording
     // and the UI on different selected models.
@@ -2938,12 +2939,19 @@ fn tray_toggle_login(app: &AppHandle) -> Result<(), String> {
         .lock()
         .map_err(|_| "Settings lock was poisoned")?
         .clone();
+    let previous_launch = settings.launch_at_login;
     settings.launch_at_login = !settings.launch_at_login;
+    persist_settings(&state.settings_path, &settings)?;
     if let Err(error) = apply_launch_at_login(app, settings.launch_at_login) {
+        settings.launch_at_login = previous_launch;
+        persist_settings(&state.settings_path, &settings)?;
+        *state
+            .settings
+            .lock()
+            .map_err(|_| "Settings lock was poisoned")? = settings;
         let _ = refresh_tray_menu(app);
         return Err(error);
     }
-    persist_settings(&state.settings_path, &settings)?;
     *state
         .settings
         .lock()
