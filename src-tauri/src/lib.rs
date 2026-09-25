@@ -2140,10 +2140,23 @@ fn transcribe_onnx(
                 ParakeetModel::load(&model_path, &Quantization::Int8)
             })
             .map_err(|error| format!("Could not load Parakeet: {error}"))?;
-            model
+            let padded = model
                 .transcribe_with(pcm, &ParakeetParams::default())
                 .map_err(|error| format!("Parakeet transcription failed: {error}"))?
-                .text
+                .text;
+            // `transcribe_with` puts 250 ms of digital zeros before the take.
+            // When speech starts right away, that can tip the int8 model into
+            // returning nothing for the whole take. The same audio without the
+            // zeros often decodes, so an empty result gets one more pass.
+            if padded.trim().is_empty() {
+                logbuf::debug("Parakeet returned nothing; decoding again without its lead-in.");
+                model
+                    .transcribe_raw(pcm, &transcribe_rs::TranscribeOptions::default())
+                    .map_err(|error| format!("Parakeet transcription failed: {error}"))?
+                    .text
+            } else {
+                padded
+            }
         }
         "moonshine-tiny" | "moonshine-base" => {
             let variant = if model_id == "moonshine-tiny" {
