@@ -61,7 +61,9 @@ test("unsigned beta download is explicit and not oversold", () => {
   assert.doesNotMatch(html, /developer alpha/i);
   assert.doesNotMatch(html, /href="\/setup"/);
   assert.match(html, /download the beta/i);
-  assert.match(html, /NSIS current-user setup\.exe and (an )?MSI/i);
+  assert.match(html, /NSIS current-user setup\.exe/i);
+  assert.doesNotMatch(html, /NSIS current-user setup\.exe and (an )?MSI/i);
+  assert.doesNotMatch(html, /and an MSI/i);
   assert.match(html, /LimitedAvailability/);
   assert.doesNotMatch(html, /PreOrder/);
   assert.doesNotMatch(html, /no public installer/i);
