@@ -2140,23 +2140,16 @@ fn transcribe_onnx(
                 ParakeetModel::load(&model_path, &Quantization::Int8)
             })
             .map_err(|error| format!("Could not load Parakeet: {error}"))?;
-            let padded = model
-                .transcribe_with(pcm, &ParakeetParams::default())
-                .map_err(|error| format!("Parakeet transcription failed: {error}"))?
-                .text;
-            // `transcribe_with` puts 250 ms of digital zeros before the take.
-            // When speech starts right away, that can tip the int8 model into
-            // returning nothing for the whole take. The same audio without the
-            // zeros often decodes, so an empty result gets one more pass.
-            if padded.trim().is_empty() {
-                logbuf::debug("Parakeet returned nothing; decoding again without its lead-in.");
-                model
-                    .transcribe_raw(pcm, &transcribe_rs::TranscribeOptions::default())
-                    .map_err(|error| format!("Parakeet transcription failed: {error}"))?
-                    .text
-            } else {
-                padded
-            }
+            decode_parakeet(|lead_in| {
+                let result = if lead_in {
+                    model.transcribe_with(pcm, &ParakeetParams::default())
+                } else {
+                    model.transcribe_raw(pcm, &transcribe_rs::TranscribeOptions::default())
+                };
+                result
+                    .map(|result| result.text)
+                    .map_err(|error| format!("Parakeet transcription failed: {error}"))
+            })?
         }
         "moonshine-tiny" | "moonshine-base" => {
             let variant = if model_id == "moonshine-tiny" {
@@ -2218,6 +2211,24 @@ fn transcribe_onnx(
         _ => return Err(format!("The {} adapter is not available yet.", model_id)),
     };
     Ok(text.trim().to_string())
+}
+
+/// Parakeet's decode rule. `decode(true)` is transcribe-rs's usual path,
+/// which puts 250 ms of digital zeros before the take; `decode(false)`
+/// leaves them out. When speech starts right away, the zeros can tip the
+/// int8 model into returning nothing for the whole take, while the same
+/// audio without them often decodes. Leaving them out is not better
+/// everywhere, so the usual path runs first and only an empty result gets
+/// a second pass.
+fn decode_parakeet(
+    mut decode: impl FnMut(bool) -> Result<String, String>,
+) -> Result<String, String> {
+    let text = decode(true)?;
+    if !text.trim().is_empty() {
+        return Ok(text);
+    }
+    logbuf::debug("Parakeet returned nothing; decoding again without its lead-in.");
+    decode(false)
 }
 
 /// Decodes a take in `chunking` windows and joins the text. Canary and
@@ -4110,6 +4121,45 @@ mod tests {
         assert_eq!(calls, 2);
     }
 
+    #[test]
+    fn parakeet_text_from_the_usual_decode_is_kept() {
+        let mut calls = Vec::new();
+        let text = decode_parakeet(|lead_in| {
+            calls.push(lead_in);
+            Ok("I have a dream.".into())
+        });
+        assert_eq!(text, Ok("I have a dream.".into()));
+        assert_eq!(calls, vec![true]);
+    }
+
+    #[test]
+    fn an_empty_parakeet_decode_retries_without_the_lead_in() {
+        let mut calls = Vec::new();
+        let text = decode_parakeet(|lead_in| {
+            calls.push(lead_in);
+            Ok(if lead_in {
+                "  ".into()
+            } else {
+                "Everything that money can buy.".into()
+            })
+        });
+        assert_eq!(text, Ok("Everything that money can buy.".into()));
+        assert_eq!(calls, vec![true, false]);
+
+        // Empty both ways stays empty; the caller decides what that means.
+        assert_eq!(decode_parakeet(|_| Ok(String::new())), Ok(String::new()));
+    }
+
+    #[test]
+    fn a_failed_parakeet_decode_is_not_retried() {
+        let mut calls = 0;
+        let text = decode_parakeet(|_| {
+            calls += 1;
+            Err("Parakeet transcription failed: boom".into())
+        });
+        assert_eq!(text, Err("Parakeet transcription failed: boom".into()));
+        assert_eq!(calls, 1);
+    }
     #[test]
     fn catalog_has_unique_ids_and_voca_engines() {
         let catalog = model_catalog();
