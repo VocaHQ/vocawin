@@ -2457,10 +2457,20 @@ listen<Settings>("settings-changed", event => {
 listen<string>("navigate", event => {
   if (ALL_VIEWS.includes(event.payload as View)) openView(event.payload as View);
 }).catch(() => undefined);
+/** Adds a live log line the way `logbuf::append` does: at 500 lines the
+ *  oldest debug line goes first, so the pane keeps the same warnings and
+ *  errors as a copied report. */
+function appendLogLine(lines: LogLine[], line: LogLine): LogLine[] {
+  if (lines.length < 500) return [...lines, line];
+  const oldestDebug = lines.findIndex(entry => entry.level === "debug");
+  const drop = oldestDebug === -1 ? 0 : oldestDebug;
+  return [...lines.slice(0, drop), ...lines.slice(drop + 1), line];
+}
+
 listen<LogLine>("log-line", event => {
   const line = event.payload;
   if (line && typeof line === "object" && "text" in line) {
-    logLines = [...logLines.slice(-499), line];
+    logLines = appendLogLine(logLines, line);
   }
   if (view === "debug") render();
 }).catch(() => undefined);
