@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
+use tauri::AppHandle;
+
 pub struct WhisperCache {
     commands: mpsc::Sender<CacheCommand>,
     loaded: Arc<AtomicBool>,
@@ -42,13 +44,14 @@ enum CacheCommand {
 }
 
 impl WhisperCache {
-    pub fn new() -> Self {
+    /// `app` lets the thread send its lines to an open Debug view live.
+    pub fn new(app: AppHandle) -> Self {
         let (commands, receiver) = mpsc::channel();
         let loaded = Arc::new(AtomicBool::new(false));
         let loaded_for_thread = loaded.clone();
         std::thread::Builder::new()
             .name("vocawin-whisper".into())
-            .spawn(move || cache_thread_main(receiver, loaded_for_thread))
+            .spawn(move || cache_thread_main(app, receiver, loaded_for_thread))
             .expect("Could not start Whisper cache thread");
         Self { commands, loaded }
     }
@@ -105,7 +108,7 @@ impl WhisperCache {
     }
 }
 
-fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicBool>) {
+fn cache_thread_main(app: AppHandle, commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicBool>) {
     let mut loaded_path: Option<PathBuf> = None;
     let mut context: Option<transcribe_cpp::Session> = None;
     let mut last_used = Instant::now();
@@ -125,6 +128,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                 reply,
             }) => {
                 let result = run_transcribe(
+                    &app,
                     &mut loaded_path,
                     &mut context,
                     &model_path,
@@ -147,7 +151,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                 use_gpu,
                 gpu_name,
             }) => {
-                match ensure_loaded(&mut loaded_path, &mut context, &model_path, use_gpu, &gpu_name) {
+                match ensure_loaded(&app, &mut loaded_path, &mut context, &model_path, use_gpu, &gpu_name) {
                     Ok(()) => last_used = Instant::now(),
                     Err(error) => crate::logbuf::debug(format!("Whisper preload failed: {error}")),
                 }
@@ -191,6 +195,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
 /// transcribe.cpp's devices, or its own choice when none matches), and falls
 /// back to CPU if the GPU load fails.
 fn ensure_loaded(
+    app: &AppHandle,
     loaded_path: &mut Option<PathBuf>,
     context: &mut Option<transcribe_cpp::Session>,
     model_path: &PathBuf,
@@ -228,7 +233,7 @@ fn ensure_loaded(
         if !use_gpu {
             return Err(gpu_error);
         }
-        crate::logbuf::warn(format!("Whisper could not load on {on} ({gpu_error}); using CPU."));
+        crate::logbuf::warn_and_emit(app, format!("Whisper could not load on {on} ({gpu_error}); using CPU."));
         Model::load_with(model_path, &cpu())
     });
     let session = loaded
@@ -236,7 +241,7 @@ fn ensure_loaded(
         .map_err(|error| format!("Could not load Whisper model: {error}"))?;
     *context = Some(session);
     *loaded_path = Some(model_path.clone());
-    crate::logbuf::info(format!(
+    crate::logbuf::info_and_emit(app, format!(
         "Loaded Whisper model {} on {on}",
         model_path
             .file_stem()
@@ -264,6 +269,7 @@ fn same_adapter(description: &str, adapter: &str) -> bool {
 }
 
 fn run_transcribe(
+    app: &AppHandle,
     loaded_path: &mut Option<PathBuf>,
     context: &mut Option<transcribe_cpp::Session>,
     model_path: &PathBuf,
@@ -276,7 +282,7 @@ fn run_transcribe(
 ) -> Result<String, String> {
     use transcribe_cpp::{RunExtension, RunOptions, WhisperRunOptions};
 
-    ensure_loaded(loaded_path, context, model_path, use_gpu, gpu_name)?;
+    ensure_loaded(app, loaded_path, context, model_path, use_gpu, gpu_name)?;
     let session = context
         .as_mut()
         .ok_or("Whisper context missing after load")?;
@@ -297,7 +303,7 @@ fn run_transcribe(
         .run(pcm, &options)
         .map_err(|error| format!("Transcription failed: {error}"))?;
     let timings = &transcript.timings;
-    crate::logbuf::debug(format!(
+    crate::logbuf::debug_and_emit(app, format!(
         "Whisper decoded {:.1} s of audio in {:.0} ms (mel {:.0}, encode {:.0}, decode {:.0}) on {}",
         pcm.len() as f32 / 16_000.0,
         timings.mel_ms + timings.encode_ms + timings.decode_ms,

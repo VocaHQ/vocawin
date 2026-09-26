@@ -3969,7 +3969,7 @@ pub fn run() {
                 }
             }
             let handle = app.handle().clone();
-            let whisper_cache = whisper_cache::WhisperCache::new();
+            let whisper_cache = whisper_cache::WhisperCache::new(handle.clone());
             whisper_cache
                 .configure_idle(settings.idle_unload_enabled, settings.idle_unload_seconds);
             logbuf::set_debug_enabled(settings.debug_logging);
