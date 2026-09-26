@@ -122,7 +122,7 @@ Do not add a frontend framework. Add Tauri commands next to the existing `invoke
 
 ## Releases and CI
 
-Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-beta` marker, no `-beta.N`). For this cut that is `0.1.1-beta` / `v0.1.1-beta` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump the numeric part and keep `-beta` on the next named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
+Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-beta` marker, no `-beta.N`). For this cut that is `0.2.0-beta` / `v0.2.0-beta` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Bump the numeric part and keep `-beta` on the next named cut. Do not bump the app version for a nightly alone. Do not pin a `v*` tag in README; vocawin.com names the current tagged cut and updates when that cut changes.
 
 | Workflow | Trigger | Effect |
 | --- | --- | --- |
@@ -131,7 +131,7 @@ Keep the app version and the public Git tag aligned as `X.Y.Z-beta` (single `-be
 | `nightly.yml` | cron + dispatch | Moving `nightly` prerelease from `main` when app source changed. Not a `v*` tag. |
 | `deploy-pages.yml` | `web/**` on `main` | Publishes vocawin.com. |
 
-Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.1.1-beta`). Testers use GitHub Releases, not the CI artifact. While the app version is X.Y.Z-beta, the tagged cut is NSIS only (current-user): `bundle.targets` is `nsis` and workflows use `--bundles nsis`. To restore MSI on a numeric-only version, add `msi` to both places in the same PR (keep the `wix` block). No automatic switch.
+Named tester cuts: `v*` via `RELEASE.md` (latest prep is `v0.2.0-beta`). Testers use GitHub Releases, not the CI artifact. While the app version is X.Y.Z-beta, the tagged cut is NSIS only (current-user): `bundle.targets` is `nsis` and workflows use `--bundles nsis`. To restore MSI on a numeric-only version, add `msi` to both places in the same PR (keep the `wix` block). No automatic switch.
 
 Do not set `tagName` in `windows-ci.yml`. Do not enable an updater. Do not retag. Nightly may be dispatched; a named beta must not be cut from a branch click.
 

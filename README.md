@@ -43,7 +43,7 @@ It sits next to [VocaLinux](https://vocalinux.com), [VocaMac](https://vocamac.co
 
 ## Try it
 
-Testers can install an unsigned beta today. Download the NSIS `.exe` from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). MSI is paused while the version is `0.1.1-beta`. Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
+Testers can install an unsigned beta today. Download the NSIS `.exe` from [GitHub Releases](https://github.com/VocaHQ/vocawin/releases). MSI is paused while the version is `0.2.0-beta`. Windows will likely say the publisher is unknown. That is SmartScreen. More info, then Run anyway if you trust the file. Read [the setup guide](docs/setup.md) first.
 
 Want today's `main` instead of the last tagged Release? Use the [nightly](https://github.com/VocaHQ/vocawin/releases/tag/nightly). Same unsigned NSIS, rebuilt when app source on `main` changes. MSI is paused there too. Prefer the latest tagged Release if you want the last cut we named.
 
