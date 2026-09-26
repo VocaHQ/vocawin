@@ -10,6 +10,7 @@ mod dictionary;
 mod ducking;
 mod gpu;
 mod hardware;
+mod hinglish;
 mod history;
 mod hook;
 mod hotkey;
@@ -153,6 +154,15 @@ fn model_catalog() -> Vec<Model> {
             languages: "English",
             acceleration: whisper_accel,
             description: "Fast English-only Whisper derivative.",
+        },
+        Model {
+            id: VOCA_HINGLISH,
+            name: "Voca Hinglish",
+            engine: "whisper.cpp",
+            size: "874 MB",
+            languages: "Hindi, English",
+            acceleration: whisper_accel,
+            description: "Writes Hindi speech in Roman script (Hinglish). Always decodes as English, so it ignores the language setting.",
         },
         Model {
             id: "parakeet-tdt-0.6b-v3",
@@ -1576,8 +1586,17 @@ fn get_models() -> Vec<Model> {
     model_catalog()
 }
 
+/// Oriserve's Whisper Hindi2Hinglish Apex (a Large v3 Turbo fine-tune) as a
+/// whisper.cpp GGML q8_0 file. Same model as VocaMac's Voca Hinglish.
+const VOCA_HINGLISH: &str = "voca-hinglish";
+
+/// Models that run on whisper.cpp from a single GGML `.bin`.
+fn is_whisper_model(id: &str) -> bool {
+    id.starts_with("whisper-") || id.starts_with("distil-whisper-") || id == VOCA_HINGLISH
+}
+
 fn model_path(models_path: &Path, id: &str) -> PathBuf {
-    if id.starts_with("whisper-") || id.starts_with("distil-whisper-") {
+    if is_whisper_model(id) {
         models_path.join(format!("{id}.bin"))
     } else {
         models_path.join(id)
@@ -1621,6 +1640,11 @@ fn model_package(id: &str) -> Option<ModelPackage> {
         "distil-whisper-large-v3" => Some(ModelPackage::GgmlBin {
             url: "https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main/ggml-distil-large-v3.bin",
         }),
+        // A third-party conversion, pinned to a commit so the file cannot
+        // change under the catalog.
+        VOCA_HINGLISH => Some(ModelPackage::GgmlBin {
+            url: "https://huggingface.co/Marquestra/Whisper-Hindi2Hinglish-Apex-GGML/resolve/d1de3ff618856e5675c47d3158ca820506fb4d9e/ggml-apex-hinglish-q8_0.bin",
+        }),
         "parakeet-tdt-0.6b-v3" => Some(ModelPackage::TarGz {
             url: "https://blob.handy.computer/parakeet-v3-int8.tar.gz",
         }),
@@ -1659,7 +1683,7 @@ fn model_package(id: &str) -> Option<ModelPackage> {
 fn model_is_installed(models_path: &Path, id: &str) -> bool {
     let path = model_path(models_path, id);
     match id {
-        id if id.starts_with("whisper-") || id.starts_with("distil-whisper-") => path.is_file(),
+        id if is_whisper_model(id) => path.is_file(),
         "parakeet-tdt-0.6b-v3" => {
             path.join("encoder-model.int8.onnx").is_file() && path.join("vocab.txt").is_file()
         }
@@ -2512,8 +2536,13 @@ fn language_code(language: &str) -> Option<&'static str> {
 }
 
 /// The language the text rules may assume: the chosen one, or English for
-/// an English-only model. `None` lets them judge the text.
+/// an English-only model. `None` lets them judge the text. Voca Hinglish
+/// decodes as English but writes Hindi in Latin letters; English rules
+/// would "correct" those words, so its text counts as Hindi.
 fn text_language(settings: &Settings) -> Option<&'static str> {
+    if settings.selected_model == VOCA_HINGLISH {
+        return Some("hi");
+    }
     language_code(&settings.language).or_else(|| {
         model_catalog()
             .iter()
@@ -2694,10 +2723,8 @@ fn decode_with_cpu_fallback(
 }
 
 fn recognize(state: &AppState, settings: &Settings, pcm: Vec<f32>) -> Result<String, String> {
-    let language = language_code(&settings.language);
-    if !settings.selected_model.starts_with("whisper-")
-        && !settings.selected_model.starts_with("distil-whisper-")
-    {
+    let language = decoder_language(settings);
+    if !is_whisper_model(&settings.selected_model) {
         return transcribe_onnx_accelerated(
             &settings.selected_model,
             &state.models_path,
@@ -2717,7 +2744,7 @@ fn recognize(state: &AppState, settings: &Settings, pcm: Vec<f32>) -> Result<Str
     }
     let gpu = gpu::detect_gpu();
     let use_gpu = cfg!(vocawin_whisper_vulkan) && gpu.available;
-    state.whisper_cache.transcribe(
+    let text = state.whisper_cache.transcribe(
         model_path,
         pcm,
         language.map(str::to_string),
@@ -2725,7 +2752,23 @@ fn recognize(state: &AppState, settings: &Settings, pcm: Vec<f32>) -> Result<Str
         gpu.device_index,
         true,
         vocabulary::whisper_prompt(&settings.custom_vocabulary),
-    )
+    )?;
+    Ok(if settings.selected_model == VOCA_HINGLISH {
+        hinglish::keep_expected_scripts(&text)
+    } else {
+        text
+    })
+}
+
+/// The language the decoder is told. Voca Hinglish writes romanized Hindi
+/// only when decoded as English; asked for Hindi, or left to detect, it
+/// falls back to Devanagari or translates. So it ignores the setting.
+fn decoder_language(settings: &Settings) -> Option<&'static str> {
+    if settings.selected_model == VOCA_HINGLISH {
+        Some("en")
+    } else {
+        language_code(&settings.language)
+    }
 }
 
 /// The text rules every take gets (see `pipeline`).
@@ -4173,6 +4216,34 @@ mod tests {
         assert!(!catalog
             .iter()
             .any(|m| m.id.contains("vosk") || m.id.contains("ctc")));
+    }
+
+    #[test]
+    fn voca_hinglish_is_a_whisper_model_pinned_to_english() {
+        assert!(is_whisper_model(VOCA_HINGLISH));
+        assert!(matches!(
+            model_package(VOCA_HINGLISH),
+            Some(ModelPackage::GgmlBin { .. })
+        ));
+        assert_eq!(
+            model_path(Path::new("models"), VOCA_HINGLISH),
+            Path::new("models").join("voca-hinglish.bin")
+        );
+        for language in ["Hindi", "Auto-detect", "English", "German"] {
+            let settings = Settings {
+                selected_model: VOCA_HINGLISH.into(),
+                language: language.into(),
+                ..Settings::default()
+            };
+            assert_eq!(decoder_language(&settings), Some("en"), "{language}");
+            assert_eq!(text_language(&settings), Some("hi"), "{language}");
+        }
+        let whisper = Settings {
+            selected_model: "whisper-small".into(),
+            language: "Hindi".into(),
+            ..Settings::default()
+        };
+        assert_eq!(decoder_language(&whisper), Some("hi"));
     }
 
     #[test]

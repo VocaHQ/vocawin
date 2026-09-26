@@ -1392,6 +1392,7 @@ const PARAKEET_LANGUAGES = ["English", "Spanish", "French", "German", "Italian",
  *  several languages, so it needs a multilingual model). */
 function modelSpeaks(model: Model, language: string) {
   const multilingual = (list: string[]) => language === "Auto-detect" ? list.length > 1 : list.includes(language);
+  if (model.id === "voca-hinglish") return multilingual(["Hindi", "English"]);
   if (model.engine === "whisper.cpp") return modelIsEnglishOnly(model) ? language === "English" : true;
   switch (model.id) {
     case "parakeet-tdt-0.6b-v3": return multilingual(PARAKEET_LANGUAGES);
@@ -1410,6 +1411,7 @@ function suggestedModels(language: string) {
   if (recommendation && fits.some(model => model.id === recommendation!.modelId)) preferred.push(recommendation.modelId);
   if (language === "English") preferred.push("parakeet-tdt-0.6b-v3", "moonshine-base");
   else if (language === "Russian") preferred.push("gigaam-v3", "parakeet-tdt-0.6b-v3");
+  else if (language === "Hindi") preferred.push("voca-hinglish");
   else if (["Chinese", "Japanese", "Korean"].includes(language)) preferred.push("sensevoice-small");
   else if (PARAKEET_LANGUAGES.includes(language)) preferred.push("parakeet-tdt-0.6b-v3");
   preferred.push("whisper-small", "whisper-base");
