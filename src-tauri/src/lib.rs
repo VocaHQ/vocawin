@@ -2140,6 +2140,15 @@ fn load_onnx<M>(
     load()
 }
 
+/// The language Canary 180M Flash is told. It cannot detect one, and
+/// without one it assumes English: German speech came out translated,
+/// badly. Languages it does not know (and Auto-detect) stay English.
+fn canary_language(language: Option<&str>) -> Option<String> {
+    language
+        .filter(|code| ["en", "de", "es", "fr"].contains(code))
+        .map(str::to_owned)
+}
+
 fn transcribe_onnx(
     model_id: &str,
     models_path: &std::path::Path,
@@ -2231,9 +2240,13 @@ fn transcribe_onnx(
                 CanaryModel::load(&model_path, &Quantization::Int8)
             })
             .map_err(|error| format!("Could not load Canary: {error}"))?;
+            let params = CanaryParams {
+                language: canary_language(language),
+                ..CanaryParams::default()
+            };
             decode_in_windows(pcm, |window| {
                 model
-                    .transcribe_with(window, &CanaryParams::default())
+                    .transcribe_with(window, &params)
                     .map(|result| result.text)
                     .map_err(|error| format!("Canary transcription failed: {error}"))
             })?
@@ -2676,11 +2689,13 @@ fn recognize_and_format(state: &AppState, settings: &Settings, pcm: &[f32]) -> R
 
 /// ONNX models that run on DirectML when Windows has a hardware GPU. The
 /// catalog's "CPU · DirectML" label comes from this list.
+///
+/// Canary stays on CPU. Its int8 decoder runs once per output token, and on
+/// DirectML every step crosses between CPU and GPU, so a 180M model decoded
+/// slower than on CPU and sometimes returned nothing. An empty result is not
+/// an error, so the CPU fallback never caught it.
 fn onnx_uses_directml(model_id: &str) -> bool {
-    matches!(
-        model_id,
-        "parakeet-tdt-0.6b-v3" | "sensevoice-small" | "canary-180m"
-    )
+    matches!(model_id, "parakeet-tdt-0.6b-v3" | "sensevoice-small")
 }
 
 /// Set once DirectML has failed a take that CPU then decoded, so later takes
@@ -2708,7 +2723,15 @@ fn transcribe_onnx_accelerated(
         } else {
             OrtAccelerator::CpuOnly
         };
-        transcribe_onnx(model_id, models_path, pcm, language, accelerator)
+        let started = std::time::Instant::now();
+        let result = transcribe_onnx(model_id, models_path, pcm, language, accelerator);
+        logbuf::debug(format!(
+            "{model_id} on {}: {} ms for {:.1} s of audio (load included).",
+            if gpu { "DirectML" } else { "CPU" },
+            started.elapsed().as_millis(),
+            pcm.len() as f32 / 16_000.0
+        ));
+        result
     });
     if directml_broken {
         DIRECTML_FAILED.store(true, Ordering::Relaxed);
@@ -4339,6 +4362,14 @@ mod tests {
     }
 
     #[test]
+    fn canary_is_told_the_chosen_language() {
+        assert_eq!(canary_language(Some("de")).as_deref(), Some("de"));
+        assert_eq!(canary_language(Some("fr")).as_deref(), Some("fr"));
+        assert_eq!(canary_language(Some("ja")), None);
+        assert_eq!(canary_language(None), None);
+    }
+
+    #[test]
     fn onnx_directml_label_matches_the_models_that_use_it() {
         let onnx: Vec<_> = model_catalog()
             .into_iter()
@@ -4353,7 +4384,8 @@ mod tests {
             };
             assert_eq!(model.acceleration, expected, "{}", model.id);
         }
-        assert!(onnx_uses_directml("canary-180m"));
+        assert!(onnx_uses_directml("parakeet-tdt-0.6b-v3"));
+        assert!(!onnx_uses_directml("canary-180m"));
         assert!(!onnx_uses_directml("moonshine-base"));
         assert!(!onnx_uses_directml("whisper-tiny"));
     }

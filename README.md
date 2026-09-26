@@ -90,7 +90,7 @@ Tauri UI (TypeScript)
 | Engine | Initial models | Windows acceleration |
 | --- | --- | --- |
 | whisper.cpp | Tiny through Large v3 Turbo, Distil-Whisper, Voca Hinglish | Vulkan, CPU fallback |
-| ONNX Runtime | Parakeet, Moonshine, SenseVoice, GigaAM, Canary | DirectML, CPU fallback |
+| ONNX Runtime | Parakeet, Moonshine, SenseVoice, GigaAM, Canary | DirectML for Parakeet and SenseVoice, CPU fallback; others CPU |
 
 ### Local model setup (developers)
 
