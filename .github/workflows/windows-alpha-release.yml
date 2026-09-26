@@ -60,6 +60,18 @@ jobs:
           Start-Process -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
           echo "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
           echo "C:\VulkanSDK\$ver\Bin" >> $env:GITHUB_PATH
+      # transcribe.cpp's ggml-vulkan does find_package(SPIRV-Headers CONFIG),
+      # which this Vulkan SDK install does not provide. The header-only
+      # package from the runner's vcpkg on CMAKE_PREFIX_PATH resolves it
+      # (the cmake crate forwards CMAKE_PREFIX_PATH). Same fix as Handy's CI.
+      - name: Install SPIRV-Headers for the transcribe.cpp Vulkan build
+        shell: pwsh
+        run: |
+          vcpkg install spirv-headers:x64-windows
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg install spirv-headers failed" }
+          $prefix = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" -replace '\\','/'
+          $combined = if ($env:CMAKE_PREFIX_PATH) { "$prefix;$env:CMAKE_PREFIX_PATH" } else { $prefix }
+          Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=$combined"
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Install frontend dependencies
         run: npm ci
