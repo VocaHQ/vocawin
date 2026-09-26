@@ -3333,8 +3333,10 @@ fn stop_capture(state: &AppState) -> Result<Option<(Vec<f32>, u32)>, String> {
 
 /// Stop and discard: auto-pause and Escape.
 fn abandon_voice_session(state: &AppState) {
-    live_preview::stop();
+    // Stop the microphone first: waiting for a preview pass must not keep
+    // it recording.
     let _ = state.recorder.stop();
+    live_preview::stop();
     set_recording_flag(state, recording_after_stop_attempt());
     state.session_opening.store(false, Ordering::SeqCst);
     state.release_during_open.store(false, Ordering::SeqCst);

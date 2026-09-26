@@ -68,8 +68,10 @@ function render(payload: Payload) {
   });
 }
 
-/** Live preview: the latest words replace the hint while listening. The
- *  span clips from the left, so the newest words stay in view. */
+/** Characters of live preview that fit the pill at its 13 px font. */
+const LIVE_CHARS = 44;
+
+/** Live preview: the latest words replace the hint while listening. */
 function showLive(text: string) {
   if (!pill.classList.contains("listening")) return;
   pill.querySelector(".hint")?.remove();
@@ -79,7 +81,9 @@ function showLive(text: string) {
     live.className = "live";
     pill.append(live);
   }
-  live.textContent = text;
+  // Keep the newest words: the start is cut in code, since CSS ellipsis
+  // cuts the end and a right-to-left trick does not hold for Latin text.
+  live.textContent = text.length > LIVE_CHARS ? `…${text.slice(-LIVE_CHARS).trimStart()}` : text;
   pill.setAttribute("aria-label", `Listening. ${text}`);
   requestAnimationFrame(() => {
     const width = Math.ceil(pill.getBoundingClientRect().width) + SHADOW_ROOM;
