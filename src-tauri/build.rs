@@ -26,5 +26,12 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(vocawin_whisper_vulkan)");
     if target_os == "windows" {
         println!("cargo:rustc-cfg=vocawin_whisper_vulkan");
+        // transcribe-cpp links vulkan-1.lib but, unlike whisper-rs, does not
+        // point the linker at the Vulkan SDK's Lib folder.
+        println!("cargo:rerun-if-env-changed=VULKAN_SDK");
+        if let Some(sdk) = std::env::var_os("VULKAN_SDK") {
+            let lib = std::path::Path::new(&sdk).join("Lib");
+            println!("cargo:rustc-link-search=native={}", lib.display());
+        }
     }
 }
