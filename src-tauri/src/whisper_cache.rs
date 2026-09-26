@@ -284,6 +284,7 @@ fn run_transcribe(
     let prompt = initial_prompt.replace('\0', "");
     let options = RunOptions {
         language: language.map(str::to_owned),
+        timestamps: timestamps_for(pcm.len()),
         family: (!prompt.is_empty()).then(|| {
             RunExtension::Whisper(WhisperRunOptions {
                 initial_prompt: Some(prompt),
@@ -295,6 +296,16 @@ fn run_transcribe(
     let transcript = session
         .run(pcm, &options)
         .map_err(|error| format!("Transcription failed: {error}"))?;
+    let timings = &transcript.timings;
+    crate::logbuf::debug(format!(
+        "Whisper decoded {:.1} s of audio in {:.0} ms (mel {:.0}, encode {:.0}, decode {:.0}) on {}",
+        pcm.len() as f32 / 16_000.0,
+        timings.mel_ms + timings.encode_ms + timings.decode_ms,
+        timings.mel_ms,
+        timings.encode_ms,
+        timings.decode_ms,
+        session.model().backend(),
+    ));
     let segments: Vec<&str> = if transcript.segments.is_empty() {
         vec![transcript.text.as_str()]
     } else {
@@ -311,6 +322,21 @@ fn run_transcribe(
         *loaded_path = None;
     }
     Ok(text)
+}
+
+/// Samples in one Whisper window (30 s at 16 kHz).
+const WINDOW_SAMPLES: usize = 30 * 16_000;
+
+/// Segment timestamps cost decode steps (a timestamp token opens and closes
+/// every segment) and nothing reads them, so a take that fits one window
+/// skips them. A longer take keeps them: the long-form seek loop uses them
+/// to start the next window between words instead of at a hard 30 s cut.
+fn timestamps_for(samples: usize) -> transcribe_cpp::TimestampKind {
+    if samples <= WINDOW_SAMPLES {
+        transcribe_cpp::TimestampKind::None
+    } else {
+        transcribe_cpp::TimestampKind::Auto
+    }
 }
 
 /// A segment's text without whisper.cpp's non-speech markers. On silence or
@@ -360,7 +386,15 @@ fn only_markers(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{same_adapter, spoken_text};
+    use super::{same_adapter, spoken_text, timestamps_for, WINDOW_SAMPLES};
+    use transcribe_cpp::TimestampKind;
+
+    #[test]
+    fn takes_that_fit_one_window_skip_timestamps() {
+        assert_eq!(timestamps_for(16_000), TimestampKind::None);
+        assert_eq!(timestamps_for(WINDOW_SAMPLES), TimestampKind::None);
+        assert_eq!(timestamps_for(WINDOW_SAMPLES + 1), TimestampKind::Auto);
+    }
 
     #[test]
     fn vulkan_devices_match_their_dxgi_adapter() {
