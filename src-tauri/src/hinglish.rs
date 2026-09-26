@@ -5,7 +5,19 @@
 //! derails it can write another script entirely: one dictation ended in
 //! "в ктттт…". Letters from any other script are decoder garbage and are
 //! removed; a word keeps whatever it held besides them ("amazing.в" stays
-//! "amazing."), and a word left without letters or digits is dropped.
+//! "amazing."), and a word left without letters or digits is dropped. A
+//! take that is only `nan` is silence (see `clean`).
+
+/// Voca Hinglish's text for a take. It writes `nan` when it hears only
+/// silence or noise (its training data labelled silent clips that way);
+/// that take has no text. Anything else keeps only Latin and Devanagari.
+pub fn clean(text: &str) -> String {
+    let words = text.trim().trim_matches(|ch: char| ch.is_ascii_punctuation());
+    if words.eq_ignore_ascii_case("nan") {
+        return String::new();
+    }
+    keep_expected_scripts(text)
+}
 
 /// `text` with only Latin and Devanagari letters.
 pub fn keep_expected_scripts(text: &str) -> String {
@@ -82,7 +94,16 @@ fn is_mark(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::keep_expected_scripts;
+    use super::{clean, keep_expected_scripts};
+
+    #[test]
+    fn nan_for_silence_is_no_text() {
+        for text in ["nan", " nan", "Nan.", "NaN"] {
+            assert_eq!(clean(text), "", "{text:?}");
+        }
+        assert_eq!(clean("Naan aur daal chahiye."), "Naan aur daal chahiye.");
+        assert_eq!(clean("nan bhai"), "nan bhai");
+    }
 
     #[test]
     fn words_in_other_scripts_are_dropped() {

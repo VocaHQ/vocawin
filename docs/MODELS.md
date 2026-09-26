@@ -40,7 +40,7 @@ On Windows, Parakeet, SenseVoice and Canary run on ONNX Runtime's DirectML execu
 
 The same model as VocaMac's Voca Hinglish: Oriserve's Hindi2Hinglish Apex, a Whisper Large v3 Turbo fine-tune that writes Hindi speech in Roman script. VocaMac runs a WhisperKit (CoreML) build, which Windows cannot load, so VocaWin downloads a whisper.cpp q8_0 conversion made by a third party (Apache-2.0, same license as the model). The URL names a commit, so the file cannot change under the catalog.
 
-It always decodes as English, which is how it was trained to write romanized Hindi, so it ignores the language setting. Its text goes through the text rules as Hindi, so English cleanup does not respell Hindi words. Letters outside Latin and Devanagari are decoder garbage and are removed (`src-tauri/src/hinglish.rs`, matching VocaMac).
+It always decodes as English, which is how it was trained to write romanized Hindi, so it ignores the language setting. Its text goes through the text rules as Hindi, so English cleanup does not respell Hindi words. Letters outside Latin and Devanagari are decoder garbage and are removed (`src-tauri/src/hinglish.rs`, matching VocaMac). On silence or room noise the model writes `nan`, so a take that is only `nan` counts as no speech.
 
 ## Long takes
 

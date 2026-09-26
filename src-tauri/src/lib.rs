@@ -159,7 +159,7 @@ fn model_catalog() -> Vec<Model> {
             id: VOCA_HINGLISH,
             name: "Voca Hinglish",
             engine: "whisper.cpp",
-            size: "874 MB",
+            size: "834 MB",
             languages: "Hindi, English",
             acceleration: whisper_accel,
             description: "Writes Hindi speech in Roman script (Hinglish). Always decodes as English, so it ignores the language setting.",
@@ -2754,7 +2754,7 @@ fn recognize(state: &AppState, settings: &Settings, pcm: Vec<f32>) -> Result<Str
         vocabulary::whisper_prompt(&settings.custom_vocabulary),
     )?;
     Ok(if settings.selected_model == VOCA_HINGLISH {
-        hinglish::keep_expected_scripts(&text)
+        hinglish::clean(&text)
     } else {
         text
     })
