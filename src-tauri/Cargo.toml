@@ -39,12 +39,12 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 # Non-Windows keeps CPU-only whisper for shared unit tests.
 [target.'cfg(not(windows))'.dependencies]
-whisper-rs = { version = "0.16" }
+transcribe-cpp = { version = "0.2.3", default-features = false }
 
 # Vulkan for whisper.cpp on Windows (NVIDIA/AMD/Intel). CUDA skipped to keep
 # windows-latest CI free of the CUDA toolkit; Vulkan covers TROOPER's RTX path.
 [target.'cfg(windows)'.dependencies]
-whisper-rs = { version = "0.16", features = ["vulkan"] }
+transcribe-cpp = { version = "0.2.3", default-features = false, features = ["vulkan"] }
 transcribe-rs = { version = "0.3.8", features = ["onnx", "ort-directml"] }
 windows = { version = "0.58", features = [
   "Win32_Foundation",

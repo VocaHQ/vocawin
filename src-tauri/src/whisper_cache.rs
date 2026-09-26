@@ -1,5 +1,10 @@
 //! Whisper keep-alive cache with optional idle unload (opt-in).
 //! Never / disabled keeps the model in RAM. A timeout unloads after quiet time.
+//!
+//! Whisper runs on transcribe.cpp (`transcribe-cpp`), Handy's engine, which
+//! reads the same whisper.cpp GGML `.bin` files the catalog downloads (and
+//! GGUF). It replaced whisper-rs so that one ggml serves every native model:
+//! linking both put two ggml versions behind one set of symbols.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,7 +22,7 @@ enum CacheCommand {
         pcm: Vec<f32>,
         language: Option<String>,
         use_gpu: bool,
-        gpu_device: i32,
+        gpu_name: String,
         keep_alive: bool,
         initial_prompt: String,
         reply: mpsc::Sender<Result<String, String>>,
@@ -27,7 +32,7 @@ enum CacheCommand {
     Preload {
         model_path: PathBuf,
         use_gpu: bool,
-        gpu_device: i32,
+        gpu_name: String,
     },
     Unload,
     ConfigureIdle {
@@ -58,7 +63,7 @@ impl WhisperCache {
         pcm: Vec<f32>,
         language: Option<String>,
         use_gpu: bool,
-        gpu_device: i32,
+        gpu_name: String,
         keep_alive: bool,
         initial_prompt: String,
     ) -> Result<String, String> {
@@ -69,7 +74,7 @@ impl WhisperCache {
                 pcm,
                 language,
                 use_gpu,
-                gpu_device,
+                gpu_name,
                 keep_alive,
                 initial_prompt,
                 reply,
@@ -81,11 +86,11 @@ impl WhisperCache {
     }
 
     /// Starts loading `model_path` without waiting for it.
-    pub fn preload(&self, model_path: PathBuf, use_gpu: bool, gpu_device: i32) {
+    pub fn preload(&self, model_path: PathBuf, use_gpu: bool, gpu_name: String) {
         let _ = self.commands.send(CacheCommand::Preload {
             model_path,
             use_gpu,
-            gpu_device,
+            gpu_name,
         });
     }
 
@@ -102,7 +107,7 @@ impl WhisperCache {
 
 fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicBool>) {
     let mut loaded_path: Option<PathBuf> = None;
-    let mut context: Option<whisper_rs::WhisperContext> = None;
+    let mut context: Option<transcribe_cpp::Session> = None;
     let mut last_used = Instant::now();
     let mut idle_enabled = false;
     let mut idle_seconds = 300u32;
@@ -114,7 +119,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                 pcm,
                 language,
                 use_gpu,
-                gpu_device,
+                gpu_name,
                 keep_alive,
                 initial_prompt,
                 reply,
@@ -126,7 +131,7 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
                     &pcm,
                     language.as_deref(),
                     use_gpu,
-                    gpu_device,
+                    &gpu_name,
                     keep_alive,
                     &initial_prompt,
                 );
@@ -140,9 +145,9 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
             Ok(CacheCommand::Preload {
                 model_path,
                 use_gpu,
-                gpu_device,
+                gpu_name,
             }) => {
-                match ensure_loaded(&mut loaded_path, &mut context, &model_path, use_gpu, gpu_device) {
+                match ensure_loaded(&mut loaded_path, &mut context, &model_path, use_gpu, &gpu_name) {
                     Ok(()) => last_used = Instant::now(),
                     Err(error) => crate::logbuf::debug(format!("Whisper preload failed: {error}")),
                 }
@@ -181,29 +186,58 @@ fn cache_thread_main(commands: mpsc::Receiver<CacheCommand>, loaded: Arc<AtomicB
     }
 }
 
-/// Loads `model_path` unless it is the model already loaded.
+/// Loads `model_path` unless it is the model already loaded. With `use_gpu`
+/// it asks for Vulkan on the adapter VocaWin picked (matched by name among
+/// transcribe.cpp's devices, or its own choice when none matches), and falls
+/// back to CPU if the GPU load fails.
 fn ensure_loaded(
     loaded_path: &mut Option<PathBuf>,
-    context: &mut Option<whisper_rs::WhisperContext>,
+    context: &mut Option<transcribe_cpp::Session>,
     model_path: &PathBuf,
     use_gpu: bool,
-    gpu_device: i32,
+    gpu_name: &str,
 ) -> Result<(), String> {
+    use transcribe_cpp::{Backend, Model, ModelOptions};
+
     if context.is_some() && loaded_path.as_ref() == Some(model_path) {
         return Ok(());
     }
-    let mut context_params = whisper_rs::WhisperContextParameters::default();
-    context_params.use_gpu(use_gpu);
-    context_params.gpu_device(if gpu_device >= 0 { gpu_device } else { 0 });
-    let next = whisper_rs::WhisperContext::new_with_params(
-        model_path.to_string_lossy().as_ref(),
-        context_params,
-    )
-    .map_err(|error| format!("Could not load Whisper model: {error}"))?;
-    *context = Some(next);
+    let cpu = || ModelOptions {
+        backend: Backend::Cpu,
+        device: None,
+    };
+    let (options, on) = if use_gpu {
+        let device = transcribe_cpp::devices()
+            .into_iter()
+            .find(|device| device.kind == "vulkan" && same_adapter(&device.description, gpu_name));
+        let label = device
+            .as_ref()
+            .map(|device| device.description.clone())
+            .unwrap_or_else(|| "Vulkan".into());
+        (
+            ModelOptions {
+                backend: Backend::Vulkan,
+                device,
+            },
+            label,
+        )
+    } else {
+        (cpu(), "CPU".to_string())
+    };
+    let loaded = Model::load_with(model_path, &options).or_else(|gpu_error| {
+        if !use_gpu {
+            return Err(gpu_error);
+        }
+        crate::logbuf::warn(format!("Whisper could not load on {on} ({gpu_error}); using CPU."));
+        Model::load_with(model_path, &cpu())
+    });
+    let session = loaded
+        .and_then(|model| model.session())
+        .map_err(|error| format!("Could not load Whisper model: {error}"))?;
+    *context = Some(session);
     *loaded_path = Some(model_path.clone());
     crate::logbuf::info(format!(
-        "Loaded Whisper model {} (gpu={use_gpu}, device={gpu_device})",
+        "Loaded Whisper model {} on {on}",
         model_path
             .file_stem()
             .and_then(|name| name.to_str())
@@ -212,49 +246,63 @@ fn ensure_loaded(
     Ok(())
 }
 
+/// Whether a transcribe.cpp device description names the DXGI adapter
+/// (Vulkan and DXGI word the same GPU slightly differently).
+fn same_adapter(description: &str, adapter: &str) -> bool {
+    let normalize = |text: &str| {
+        text.to_ascii_lowercase()
+            .replace("(r)", "")
+            .replace("(tm)", "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let (description, adapter) = (normalize(description), normalize(adapter));
+    !adapter.is_empty()
+        && !description.is_empty()
+        && (description.contains(&adapter) || adapter.contains(&description))
+}
+
 fn run_transcribe(
     loaded_path: &mut Option<PathBuf>,
-    context: &mut Option<whisper_rs::WhisperContext>,
+    context: &mut Option<transcribe_cpp::Session>,
     model_path: &PathBuf,
     pcm: &[f32],
     language: Option<&str>,
     use_gpu: bool,
-    gpu_device: i32,
+    gpu_name: &str,
     keep_alive: bool,
     initial_prompt: &str,
 ) -> Result<String, String> {
-    ensure_loaded(loaded_path, context, model_path, use_gpu, gpu_device)?;
-    let ctx = context
-        .as_ref()
+    use transcribe_cpp::{RunExtension, RunOptions, WhisperRunOptions};
+
+    ensure_loaded(loaded_path, context, model_path, use_gpu, gpu_name)?;
+    let session = context
+        .as_mut()
         .ok_or("Whisper context missing after load")?;
-    let mut session = ctx
-        .create_state()
-        .map_err(|error| format!("Could not create Whisper session: {error}"))?;
-    let mut parameters =
-        whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
-    parameters.set_translate(false);
-    parameters.set_language(language);
-    parameters.set_print_special(false);
-    parameters.set_print_progress(false);
-    parameters.set_print_realtime(false);
-    parameters.set_print_timestamps(false);
     // Engine field is initial_prompt (whisper.cpp has no vocabulary param).
-    // Phone Android also sets carry_initial_prompt so the list survives
-    // later 30s windows. whisper-rs 0.16 does not expose that flag; a single
-    // PTT take is one window, so the prompt still reaches the decoder.
     let prompt = initial_prompt.replace('\0', "");
-    if !prompt.is_empty() {
-        parameters.set_initial_prompt(&prompt);
-    }
-    session
-        .full(parameters, pcm)
+    let options = RunOptions {
+        language: language.map(str::to_owned),
+        family: (!prompt.is_empty()).then(|| {
+            RunExtension::Whisper(WhisperRunOptions {
+                initial_prompt: Some(prompt),
+                ..Default::default()
+            })
+        }),
+        ..Default::default()
+    };
+    let transcript = session
+        .run(pcm, &options)
         .map_err(|error| format!("Transcription failed: {error}"))?;
-    let text = (0..session.full_n_segments())
-        .filter_map(|index| {
-            session
-                .get_segment(index)
-                .and_then(|segment| segment.to_str().ok().map(spoken_text))
-        })
+    let segments: Vec<&str> = if transcript.segments.is_empty() {
+        vec![transcript.text.as_str()]
+    } else {
+        transcript.segments.iter().map(|segment| segment.text.as_str()).collect()
+    };
+    let text = segments
+        .into_iter()
+        .map(spoken_text)
         .filter(|segment| !segment.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
@@ -312,7 +360,16 @@ fn only_markers(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::spoken_text;
+    use super::{same_adapter, spoken_text};
+
+    #[test]
+    fn vulkan_devices_match_their_dxgi_adapter() {
+        assert!(same_adapter("NVIDIA GeForce RTX 4060 Laptop GPU", "NVIDIA GeForce RTX 4060 Laptop GPU"));
+        assert!(same_adapter("Intel(R) Iris(R) Xe Graphics", "Intel Iris Xe Graphics"));
+        assert!(same_adapter("AMD Radeon RX 7800 XT (RADV NAVI32)", "AMD Radeon RX 7800 XT"));
+        assert!(!same_adapter("AMD Radeon RX 7800 XT", "NVIDIA GeForce RTX 4060"));
+        assert!(!same_adapter("NVIDIA GeForce RTX 4060", ""));
+    }
 
     #[test]
     fn non_speech_markers_are_dropped() {

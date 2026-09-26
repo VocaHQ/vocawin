@@ -62,7 +62,7 @@ struct Model {
 }
 
 /// Compile-time honesty for Whisper catalog labels. Set by `build.rs` only when
-/// the Windows target enables `whisper-rs/vulkan`.
+/// the Windows target enables `transcribe-cpp/vulkan`.
 fn whisper_acceleration() -> &'static str {
     if cfg!(vocawin_whisper_vulkan) {
         "CPU · Vulkan"
@@ -82,7 +82,7 @@ fn onnx_acceleration(model_id: &str) -> &'static str {
 fn gpu_backends_summary() -> Vec<&'static str> {
     let mut backends = Vec::new();
     if cfg!(vocawin_whisper_vulkan) {
-        backends.push("Vulkan (whisper.cpp)");
+        backends.push("Vulkan (transcribe.cpp)");
     }
     if cfg!(windows) {
         backends.push("DirectML (ONNX Runtime)");
@@ -3199,7 +3199,7 @@ fn preload_selected_model(state: &AppState, settings: &Settings) {
         state.whisper_cache.preload(
             state.models_path.join(format!("{model_id}.bin")),
             cfg!(vocawin_whisper_vulkan) && gpu.available,
-            gpu.device_index,
+            gpu.name.clone(),
         );
         return;
     }
@@ -3270,7 +3270,7 @@ fn recognize(state: &AppState, settings: &Settings, pcm: Vec<f32>) -> Result<Str
         pcm,
         language.map(str::to_string),
         use_gpu,
-        gpu.device_index,
+        gpu.name.clone(),
         true,
         vocabulary::whisper_prompt(&settings.custom_vocabulary),
     )?;

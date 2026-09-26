@@ -56,7 +56,7 @@ Rust modules (keep work in the matching file):
 | `autopause.rs` / `power.rs` | Opt-in app pause; sleep/wake hotkey rebind |
 | `sounds.rs` / `logbuf.rs` | PlaySound themes; in-memory logs (not a file) |
 
-Windows builds enable `whisper-rs` **Vulkan** and `transcribe-rs` **DirectML**. Non-Windows keeps CPU-only whisper so `cargo test` still runs. `build.rs` sets `cfg(vocawin_whisper_vulkan)` only for Windows targets — catalog strings must match that cfg.
+Windows builds enable `transcribe-cpp` (transcribe.cpp, Handy's engine; runs Whisper `.bin`/GGUF) **Vulkan** and `transcribe-rs` **DirectML**. Do not add `whisper-rs` back: it bundles its own ggml, and two ggml versions in one binary share one set of symbols. Non-Windows keeps CPU-only whisper so `cargo test` still runs. `build.rs` sets `cfg(vocawin_whisper_vulkan)` only for Windows targets — catalog strings must match that cfg.
 
 App data: `%APPDATA%\com.vocahq.vocawin\` (`settings.json`, `history.json`, `models/`). Window title says Beta. Close hides to tray; Quit is tray-only. Autostart uses `--start-minimized`.
 
