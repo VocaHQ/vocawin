@@ -82,14 +82,25 @@ pub fn push_level(level: Level, line: impl Into<String>) {
     let text = line.into();
     eprintln!("[{}] {text}", level.as_str());
     if let Ok(mut lines) = LINES.lock() {
-        if lines.len() >= CAPACITY {
-            lines.pop_front();
-        }
-        lines.push_back(Entry {
-            level,
-            text,
-        });
+        append(&mut lines, Entry { level, text });
     }
+}
+
+/// Adds `entry`, making room first. Debug lines are dropped before anything
+/// else, oldest first, so a long session of per-take detail cannot push a
+/// warning or error out before the user opens Logs.
+fn append(lines: &mut VecDeque<Entry>, entry: Entry) {
+    if lines.len() >= CAPACITY {
+        match lines.iter().position(|line| line.level == Level::Debug) {
+            Some(oldest_debug) => {
+                lines.remove(oldest_debug);
+            }
+            None => {
+                lines.pop_front();
+            }
+        }
+    }
+    lines.push_back(entry);
 }
 
 pub fn snapshot() -> Vec<LogLine> {
@@ -174,6 +185,35 @@ pub fn clear() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(level: Level, text: &str) -> Entry {
+        Entry {
+            level,
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn a_full_buffer_drops_debug_lines_before_warnings() {
+        let mut lines = VecDeque::new();
+        append(&mut lines, entry(Level::Error, "keep me"));
+        for index in 0..CAPACITY * 2 {
+            append(&mut lines, entry(Level::Debug, &format!("detail {index}")));
+        }
+        assert_eq!(lines.len(), CAPACITY);
+        assert_eq!(lines[0].text, "keep me");
+        assert_eq!(lines.back().unwrap().text, format!("detail {}", CAPACITY * 2 - 1));
+    }
+
+    #[test]
+    fn a_full_buffer_of_warnings_drops_the_oldest() {
+        let mut lines = VecDeque::new();
+        for index in 0..=CAPACITY {
+            append(&mut lines, entry(Level::Warn, &format!("warn {index}")));
+        }
+        assert_eq!(lines.len(), CAPACITY);
+        assert_eq!(lines[0].text, "warn 1");
+    }
     use std::sync::Mutex;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());

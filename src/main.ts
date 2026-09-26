@@ -237,6 +237,14 @@ const LANGUAGE_CORE = [
   "Thai",
   "Romanian",
   "Hungarian",
+  "Bulgarian",
+  "Croatian",
+  "Estonian",
+  "Latvian",
+  "Lithuanian",
+  "Maltese",
+  "Slovak",
+  "Slovenian",
   "Catalan",
 ];
 
@@ -1387,20 +1395,22 @@ function aboutPage() {
 
 /** Languages Parakeet TDT v3 transcribes, among the ones VocaWin lists.
  *  Canary 1B v2 covers the same 25 European languages. */
-const PARAKEET_LANGUAGES = ["English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Russian", "Polish", "Ukrainian", "Swedish", "Danish", "Finnish", "Czech", "Greek", "Romanian", "Hungarian"];
+const PARAKEET_LANGUAGES = ["English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Russian", "Polish", "Ukrainian", "Swedish", "Danish", "Finnish", "Czech", "Greek", "Romanian", "Hungarian", "Bulgarian", "Croatian", "Estonian", "Latvian", "Lithuanian", "Maltese", "Slovak", "Slovenian"];
 
 /** Whether a catalog model can transcribe `language` ("Auto-detect" means
  *  several languages, so it needs a multilingual model). */
 function modelSpeaks(model: Model, language: string) {
   const multilingual = (list: string[]) => language === "Auto-detect" ? list.length > 1 : list.includes(language);
+  // Canary and Cohere cannot detect the language; Auto-detect gives them English.
+  const told = (list: string[]) => language !== "Auto-detect" && list.includes(language);
   if (model.id === "voca-hinglish") return multilingual(["Hindi", "English"]);
   if (model.engine === "whisper.cpp") return modelIsEnglishOnly(model) ? language === "English" : true;
   switch (model.id) {
     case "parakeet-tdt-0.6b-v3": return multilingual(PARAKEET_LANGUAGES);
     case "sensevoice-small": return multilingual(["Chinese", "Japanese", "Korean", "English"]);
-    case "canary-180m": return multilingual(["English", "Spanish", "German", "French"]);
-    case "canary-1b-v2": return multilingual(PARAKEET_LANGUAGES);
-    case "cohere-transcribe": return multilingual(["English", "German", "French", "Italian", "Spanish", "Portuguese", "Greek", "Dutch", "Polish", "Arabic", "Vietnamese", "Chinese", "Japanese", "Korean"]);
+    case "canary-180m": return told(["English", "Spanish", "German", "French"]);
+    case "canary-1b-v2": return told(PARAKEET_LANGUAGES);
+    case "cohere-transcribe": return told(["English", "German", "French", "Italian", "Spanish", "Portuguese", "Greek", "Dutch", "Polish", "Arabic", "Vietnamese", "Chinese", "Japanese", "Korean"]);
     case "gigaam-v3": return language === "Russian";
     default: return language === "English" && modelIsEnglishOnly(model);
   }

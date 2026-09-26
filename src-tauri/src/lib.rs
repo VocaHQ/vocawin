@@ -2669,6 +2669,14 @@ fn language_code(language: &str) -> Option<&'static str> {
         "Thai" => "th",
         "Romanian" => "ro",
         "Hungarian" => "hu",
+        "Bulgarian" => "bg",
+        "Croatian" => "hr",
+        "Estonian" => "et",
+        "Latvian" => "lv",
+        "Lithuanian" => "lt",
+        "Maltese" => "mt",
+        "Slovak" => "sk",
+        "Slovenian" => "sl",
         "Catalan" => "ca",
         _ => return None,
     })
@@ -4496,6 +4504,21 @@ mod tests {
             Some("ja")
         );
         assert_eq!(prompt_language(Some("hi"), COHERE_LANGUAGES), None);
+    }
+
+    #[test]
+    fn every_canary_v2_language_can_be_chosen() {
+        let chosen: Vec<_> = [
+            "English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Russian",
+            "Polish", "Ukrainian", "Swedish", "Danish", "Finnish", "Czech", "Greek", "Romanian",
+            "Hungarian", "Bulgarian", "Croatian", "Estonian", "Latvian", "Lithuanian", "Maltese",
+            "Slovak", "Slovenian",
+        ]
+        .iter()
+        .filter_map(|name| language_code(name))
+        .collect();
+        assert_eq!(chosen.len(), CANARY_V2_LANGUAGES.len());
+        assert!(CANARY_V2_LANGUAGES.iter().all(|code| chosen.contains(code)));
     }
 
     #[test]
