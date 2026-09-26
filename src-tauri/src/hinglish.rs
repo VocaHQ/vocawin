@@ -12,22 +12,33 @@
 /// silence or noise (its training data labelled silent clips that way);
 /// that take has no text. Anything else keeps only Latin and Devanagari.
 pub fn clean(text: &str) -> String {
+    // Filtered first: "nan в" is still silence once the stray word goes.
+    let text = keep_expected_scripts(text);
     let words = text.trim().trim_matches(|ch: char| ch.is_ascii_punctuation());
     if words.eq_ignore_ascii_case("nan") {
         return String::new();
     }
-    keep_expected_scripts(text)
+    text
 }
 
-/// `text` with only Latin and Devanagari letters.
+/// `text` with only Latin and Devanagari letters. Line breaks and the
+/// spacing between kept words stay as they were; only the gap a removed
+/// word leaves is closed up.
 pub fn keep_expected_scripts(text: &str) -> String {
     if !text.chars().any(off_script) {
         return text.to_string();
     }
-    let mut words = Vec::new();
-    for word in text.split_whitespace() {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while !rest.is_empty() {
+        let word_start = rest.find(|ch: char| !ch.is_whitespace()).unwrap_or(rest.len());
+        result.push_str(&rest[..word_start]);
+        rest = &rest[word_start..];
+        let word_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let word = &rest[..word_end];
+        rest = &rest[word_end..];
         if !word.chars().any(off_script) {
-            words.push(word.to_string());
+            result.push_str(word);
             continue;
         }
         let mut kept = String::with_capacity(word.len());
@@ -43,10 +54,29 @@ pub fn keep_expected_scripts(text: &str) -> String {
             }
         }
         if kept.chars().any(char::is_alphanumeric) {
-            words.push(kept);
+            result.push_str(&kept);
         }
     }
-    words.join(" ")
+    close_gaps(&result)
+}
+
+/// Runs of spaces and tabs become one space, and the ends are trimmed, as
+/// VocaMac does after removing words. Line breaks are kept.
+fn close_gaps(text: &str) -> String {
+    let mut closed = String::with_capacity(text.len());
+    let mut in_gap = false;
+    for ch in text.chars() {
+        if ch == ' ' || ch == '\t' {
+            if !in_gap {
+                closed.push(' ');
+            }
+            in_gap = true;
+        } else {
+            closed.push(ch);
+            in_gap = false;
+        }
+    }
+    closed.trim().to_string()
 }
 
 /// A letter outside Latin and Devanagari.
@@ -103,6 +133,15 @@ mod tests {
         }
         assert_eq!(clean("Naan aur daal chahiye."), "Naan aur daal chahiye.");
         assert_eq!(clean("nan bhai"), "nan bhai");
+        assert_eq!(clean("nan в"), "");
+    }
+
+    #[test]
+    fn filtering_keeps_line_breaks() {
+        assert_eq!(
+            keep_expected_scripts("Pehli line hai.\nDoosri в line."),
+            "Pehli line hai.\nDoosri line."
+        );
     }
 
     #[test]
