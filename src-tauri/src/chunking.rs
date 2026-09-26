@@ -5,8 +5,9 @@
 //! sentences and Moonshine repeats a phrase until its token budget runs out.
 //! Those models get the take in windows of at most `WINDOW_SECONDS` plus
 //! `SEARCH_SECONDS`, cut in the quietest stretch near each even split, and
-//! the window texts are joined. GigaAM is split the same way because its
-//! encoder rejects very long takes. Parakeet and SenseVoice decode takes whole.
+//! the window texts are joined. Cohere is split the same way because it
+//! stops after 512 tokens, and GigaAM because its encoder rejects very long
+//! takes. Parakeet and SenseVoice decode takes whole.
 //!
 //! Windows cover every sample. Deciding up front which audio is silence
 //! would sometimes drop quiet speech, so nothing is left out here; a window

@@ -1385,7 +1385,8 @@ function aboutPage() {
     </section>`;
 }
 
-/** Languages Parakeet TDT v3 transcribes, among the ones VocaWin lists. */
+/** Languages Parakeet TDT v3 transcribes, among the ones VocaWin lists.
+ *  Canary 1B v2 covers the same 25 European languages. */
 const PARAKEET_LANGUAGES = ["English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Russian", "Polish", "Ukrainian", "Swedish", "Danish", "Finnish", "Czech", "Greek", "Romanian", "Hungarian"];
 
 /** Whether a catalog model can transcribe `language` ("Auto-detect" means
@@ -1398,6 +1399,8 @@ function modelSpeaks(model: Model, language: string) {
     case "parakeet-tdt-0.6b-v3": return multilingual(PARAKEET_LANGUAGES);
     case "sensevoice-small": return multilingual(["Chinese", "Japanese", "Korean", "English"]);
     case "canary-180m": return multilingual(["English", "Spanish", "German", "French"]);
+    case "canary-1b-v2": return multilingual(PARAKEET_LANGUAGES);
+    case "cohere-transcribe": return multilingual(["English", "German", "French", "Italian", "Spanish", "Portuguese", "Greek", "Dutch", "Polish", "Arabic", "Vietnamese", "Chinese", "Japanese", "Korean"]);
     case "gigaam-v3": return language === "Russian";
     default: return language === "English" && modelIsEnglishOnly(model);
   }

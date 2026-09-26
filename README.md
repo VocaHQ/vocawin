@@ -54,7 +54,7 @@ This is a tester build you can run today. It is not a store listing and not a st
 - **Hold a hotkey, speak, text at the caret** - Default is Right Alt, the same hold as VocaLinux. Double-tap toggles. You can change the hotkey in Settings.
 - **Tray** - Idle, recording, and processing icon states. Close goes to the tray. Show window / Quit.
 - **Settings** - Grouped pages with one search box: shortcuts, models, audio, formatting, dictionary, snippets, history, stats, and power. Export and import a settings backup.
-- **Local models** - In-app Download for Whisper/whisper.cpp, Distil-Whisper, Voca Hinglish, Parakeet, Moonshine, SenseVoice, GigaAM, and Canary.
+- **Local models** - In-app Download for Whisper/whisper.cpp, Distil-Whisper, Voca Hinglish, Parakeet, Moonshine, SenseVoice, GigaAM, Canary, and Cohere Transcribe.
 - **GPU** - whisper.cpp on Vulkan with CPU fallback. ONNX Runtime on DirectML with CPU fallback.
 - **Clipboard stays yours.** Insertion types at the caret and does not replace what you copied. Turn on Copy to clipboard in Settings if you want the transcript left there. Clipboard paste is only a fallback, and that path restores the previous clipboard.
 - **More ways to dictate** - Escape cancels a take. A hands-free shortcut starts and stops without holding a key. A middle or side mouse button works like the hotkey. A paste-last shortcut types your last dictation again.
@@ -82,7 +82,7 @@ Tauri UI (TypeScript)
       ├─ Global push-to-talk shortcut + UI recording coordinator
       ├─ CPAL microphone capture + 16 kHz resampling
       ├─ whisper.cpp adapter (Whisper-family models)
-      ├─ ONNX adapters (Parakeet, Moonshine, SenseVoice, GigaAM, Canary)
+      ├─ ONNX adapters (Parakeet, Moonshine, SenseVoice, GigaAM, Canary, Cohere)
       ├─ System tray (Show / Quit, close-to-tray)
       └─ Windows text injector (SendInput)
 ```
@@ -90,7 +90,7 @@ Tauri UI (TypeScript)
 | Engine | Initial models | Windows acceleration |
 | --- | --- | --- |
 | whisper.cpp | Tiny through Large v3 Turbo, Distil-Whisper, Voca Hinglish | Vulkan, CPU fallback |
-| ONNX Runtime | Parakeet, Moonshine, SenseVoice, GigaAM, Canary | DirectML for Parakeet and SenseVoice, CPU fallback; others CPU |
+| ONNX Runtime | Parakeet, Moonshine, SenseVoice, GigaAM, Canary, Cohere | DirectML for Parakeet and SenseVoice, CPU fallback; others CPU |
 
 ### Local model setup (developers)
 

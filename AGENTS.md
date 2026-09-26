@@ -94,7 +94,7 @@ src/main.ts (dictation / models / history / settings; #logs window)
       ├─ WH_KEYBOARD_LL hotkey + recording coordinator
       ├─ cpal WASAPI capture, mono, resample to 16 kHz
       ├─ whisper.cpp (GGML .bin) via whisper_cache
-      ├─ ONNX (Parakeet TDT, Moonshine, SenseVoice, GigaAM, Canary)
+      ├─ ONNX (Parakeet TDT, Moonshine, SenseVoice, GigaAM, Canary, Cohere)
       ├─ Tray (idle / listening / processing)
       └─ inject: SendInput (no clipboard); clipboard Ctrl+V + restore fallback
 ```

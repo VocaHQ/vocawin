@@ -218,6 +218,24 @@ fn model_catalog() -> Vec<Model> {
             acceleration: onnx_acceleration("canary-180m"),
             description: "Fast four-language transcription.",
         },
+        Model {
+            id: "canary-1b-v2",
+            name: "Canary 1B v2",
+            engine: "ONNX Runtime",
+            size: "982 MB",
+            languages: "25 European languages",
+            acceleration: onnx_acceleration("canary-1b-v2"),
+            description: "Larger Canary for 25 European languages. Slower than 180M Flash.",
+        },
+        Model {
+            id: "cohere-transcribe",
+            name: "Cohere Transcribe",
+            engine: "ONNX Runtime",
+            size: "1.9 GB",
+            languages: "14 languages",
+            acceleration: onnx_acceleration("cohere-transcribe"),
+            description: "Cohere's 2B model (int4) for 14 languages, including Arabic, Chinese, Japanese and Korean.",
+        },
     ]
 }
 
@@ -1670,6 +1688,54 @@ fn model_package(id: &str) -> Option<ModelPackage> {
                 ),
             ],
         }),
+        // istupakov's export, pinned. Its repo has no preprocessor; the
+        // generic 128-bin NeMo one is byte-identical to the file in the
+        // Canary 180M archive, so it comes from the Parakeet repo.
+        "canary-1b-v2" => Some(ModelPackage::Files {
+            files: &[
+                (
+                    "encoder-model.int8.onnx",
+                    "https://huggingface.co/istupakov/canary-1b-v2-onnx/resolve/5ebc1520cef7b6b318b3526ad17adbfe00bc1bfc/encoder-model.int8.onnx",
+                ),
+                (
+                    "decoder-model.int8.onnx",
+                    "https://huggingface.co/istupakov/canary-1b-v2-onnx/resolve/5ebc1520cef7b6b318b3526ad17adbfe00bc1bfc/decoder-model.int8.onnx",
+                ),
+                (
+                    "vocab.txt",
+                    "https://huggingface.co/istupakov/canary-1b-v2-onnx/resolve/5ebc1520cef7b6b318b3526ad17adbfe00bc1bfc/vocab.txt",
+                ),
+                (
+                    "nemo128.onnx",
+                    "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx",
+                ),
+            ],
+        }),
+        // The int4 export transcribe-rs documents, pinned.
+        "cohere-transcribe" => Some(ModelPackage::Files {
+            files: &[
+                (
+                    "cohere-encoder.int4.onnx",
+                    "https://huggingface.co/cstr/cohere-transcribe-onnx-int4/resolve/2c870f89692c61348481884eb6e1222ec3ba25c9/cohere-encoder.int4.onnx",
+                ),
+                (
+                    "cohere-encoder.int4.onnx.data",
+                    "https://huggingface.co/cstr/cohere-transcribe-onnx-int4/resolve/2c870f89692c61348481884eb6e1222ec3ba25c9/cohere-encoder.int4.onnx.data",
+                ),
+                (
+                    "cohere-decoder.int4.onnx",
+                    "https://huggingface.co/cstr/cohere-transcribe-onnx-int4/resolve/2c870f89692c61348481884eb6e1222ec3ba25c9/cohere-decoder.int4.onnx",
+                ),
+                (
+                    "cohere-decoder.int4.onnx.data",
+                    "https://huggingface.co/cstr/cohere-transcribe-onnx-int4/resolve/2c870f89692c61348481884eb6e1222ec3ba25c9/cohere-decoder.int4.onnx.data",
+                ),
+                (
+                    "tokens.txt",
+                    "https://huggingface.co/cstr/cohere-transcribe-onnx-int4/resolve/2c870f89692c61348481884eb6e1222ec3ba25c9/tokens.txt",
+                ),
+            ],
+        }),
         "moonshine-base" => Some(ModelPackage::TarGz {
             url: "https://blob.handy.computer/moonshine-base.tar.gz",
         }),
@@ -1708,6 +1774,23 @@ fn model_is_installed(models_path: &Path, id: &str) -> bool {
         "canary-180m" => {
             path.join("encoder-model.int8.onnx").is_file() && path.join("vocab.txt").is_file()
         }
+        "canary-1b-v2" => [
+            "encoder-model.int8.onnx",
+            "decoder-model.int8.onnx",
+            "nemo128.onnx",
+            "vocab.txt",
+        ]
+        .iter()
+        .all(|file| path.join(file).is_file()),
+        "cohere-transcribe" => [
+            "cohere-encoder.int4.onnx",
+            "cohere-encoder.int4.onnx.data",
+            "cohere-decoder.int4.onnx",
+            "cohere-decoder.int4.onnx.data",
+            "tokens.txt",
+        ]
+        .iter()
+        .all(|file| path.join(file).is_file()),
         _ => path.exists(),
     }
 }
@@ -2140,12 +2223,25 @@ fn load_onnx<M>(
     load()
 }
 
-/// The language Canary 180M Flash is told. It cannot detect one, and
-/// without one it assumes English: German speech came out translated,
-/// badly. Languages it does not know (and Auto-detect) stay English.
-fn canary_language(language: Option<&str>) -> Option<String> {
+/// Languages Canary 180M Flash transcribes.
+const CANARY_FLASH_LANGUAGES: &[&str] = &["en", "de", "es", "fr"];
+/// Languages Canary 1B v2 transcribes.
+const CANARY_V2_LANGUAGES: &[&str] = &[
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv", "lt", "mt",
+    "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+];
+/// Languages Cohere Transcribe transcribes.
+const COHERE_LANGUAGES: &[&str] = &[
+    "en", "de", "fr", "it", "es", "pt", "el", "nl", "pl", "ar", "vi", "zh", "ja", "ko",
+];
+
+/// The language an encoder-decoder model is told. Canary and Cohere cannot
+/// detect one, and without one they assume English: German speech came out
+/// translated, badly. Languages the model does not know (and Auto-detect)
+/// stay English.
+fn prompt_language(language: Option<&str>, supported: &[&str]) -> Option<String> {
     language
-        .filter(|code| ["en", "de", "es", "fr"].contains(code))
+        .filter(|code| supported.contains(code))
         .map(str::to_owned)
 }
 
@@ -2158,6 +2254,7 @@ fn transcribe_onnx(
 ) -> Result<String, String> {
     use transcribe_rs::onnx::{
         canary::{CanaryModel, CanaryParams},
+        cohere::{CohereModel, CohereParams},
         gigaam::GigaAMModel,
         moonshine::{MoonshineModel, MoonshineVariant},
         parakeet::{ParakeetModel, ParakeetParams},
@@ -2235,13 +2332,18 @@ fn transcribe_onnx(
                     .map_err(|error| format!("GigaAM transcription failed: {error}"))
             })?
         }
-        "canary-180m" => {
+        "canary-180m" | "canary-1b-v2" => {
             let mut model = load_onnx(accelerator, || {
                 CanaryModel::load(&model_path, &Quantization::Int8)
             })
             .map_err(|error| format!("Could not load Canary: {error}"))?;
+            let supported = if model_id == "canary-1b-v2" {
+                CANARY_V2_LANGUAGES
+            } else {
+                CANARY_FLASH_LANGUAGES
+            };
             let params = CanaryParams {
-                language: canary_language(language),
+                language: prompt_language(language, supported),
                 ..CanaryParams::default()
             };
             decode_in_windows(pcm, |window| {
@@ -2249,6 +2351,24 @@ fn transcribe_onnx(
                     .transcribe_with(window, &params)
                     .map(|result| result.text)
                     .map_err(|error| format!("Canary transcription failed: {error}"))
+            })?
+        }
+        "cohere-transcribe" => {
+            let mut model = load_onnx(accelerator, || {
+                CohereModel::load(&model_path, &Quantization::Int4)
+            })
+            .map_err(|error| format!("Could not load Cohere Transcribe: {error}"))?;
+            let params = CohereParams {
+                language: prompt_language(language, COHERE_LANGUAGES),
+                ..CohereParams::default()
+            };
+            // It decodes a take in one pass with a 512-token budget, so long
+            // takes go in windows like Canary's.
+            decode_in_windows(pcm, |window| {
+                model
+                    .transcribe_with(window, &params)
+                    .map(|result| result.text)
+                    .map_err(|error| format!("Cohere transcription failed: {error}"))
             })?
         }
         _ => return Err(format!("The {} adapter is not available yet.", model_id)),
@@ -4362,11 +4482,56 @@ mod tests {
     }
 
     #[test]
-    fn canary_is_told_the_chosen_language() {
-        assert_eq!(canary_language(Some("de")).as_deref(), Some("de"));
-        assert_eq!(canary_language(Some("fr")).as_deref(), Some("fr"));
-        assert_eq!(canary_language(Some("ja")), None);
-        assert_eq!(canary_language(None), None);
+    fn encoder_decoder_models_are_told_the_chosen_language() {
+        let flash = CANARY_FLASH_LANGUAGES;
+        assert_eq!(prompt_language(Some("de"), flash).as_deref(), Some("de"));
+        assert_eq!(prompt_language(Some("it"), flash), None);
+        assert_eq!(prompt_language(None, flash), None);
+        assert_eq!(
+            prompt_language(Some("it"), CANARY_V2_LANGUAGES).as_deref(),
+            Some("it")
+        );
+        assert_eq!(
+            prompt_language(Some("ja"), COHERE_LANGUAGES).as_deref(),
+            Some("ja")
+        );
+        assert_eq!(prompt_language(Some("hi"), COHERE_LANGUAGES), None);
+    }
+
+    #[test]
+    fn new_onnx_models_download_what_their_loader_opens() {
+        for (id, needed) in [
+            (
+                "canary-1b-v2",
+                &["encoder-model.int8.onnx", "decoder-model.int8.onnx", "nemo128.onnx", "vocab.txt"][..],
+            ),
+            (
+                "cohere-transcribe",
+                &[
+                    "cohere-encoder.int4.onnx",
+                    "cohere-encoder.int4.onnx.data",
+                    "cohere-decoder.int4.onnx",
+                    "cohere-decoder.int4.onnx.data",
+                    "tokens.txt",
+                ][..],
+            ),
+        ] {
+            let Some(ModelPackage::Files { files }) = model_package(id) else {
+                panic!("{id} should download flat files");
+            };
+            let names: Vec<_> = files.iter().map(|(name, _)| *name).collect();
+            assert_eq!(names.len(), needed.len(), "{id}");
+            assert!(needed.iter().all(|file| names.contains(file)), "{id}");
+            assert!(files.iter().all(|(name, url)| url.ends_with(name) && !url.contains("/main/")), "{id}");
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(id);
+            fs::create_dir_all(&path).unwrap();
+            for file in needed {
+                assert!(!model_is_installed(dir.path(), id), "{id} before {file}");
+                fs::write(path.join(file), b"x").unwrap();
+            }
+            assert!(model_is_installed(dir.path(), id), "{id}");
+        }
     }
 
     #[test]
