@@ -179,11 +179,11 @@ If it is empty, point it at the SDK root, for example `C:\VulkanSDK\1.3.290.0` (
 
 **is cmake not installed?** (`failed to execute command: program not found`)
 
-Install [CMake](https://cmake.org/download/) and tick "Add CMake to the system PATH" (or `winget install Kitware.CMake`). Confirm `cmake --version` in a new shell. The whisper/ggml crate build needs it.
+Install [CMake](https://cmake.org/download/) and tick "Add CMake to the system PATH" (or `winget install Kitware.CMake`). Confirm `cmake --version` in a new shell. The transcribe.cpp/ggml crate build needs it.
 
 **exceeds the OS max path limit** / **The fully qualified file name must be less than 260 characters**
 
-whisper-rs-sys nests `target\debug\build\whisper-rs-sys-*\out\build\ggml\ggml-vulkan\...` deep enough to hit `MAX_PATH`. Either of these is enough:
+transcribe-cpp-sys builds ggml's Vulkan shaders in nested folders under `target\debug\build\transcribe-cpp-sys-*\out` that can hit `MAX_PATH` (it shortens them itself, but a short target dir is still the safe setting). Either of these is enough:
 
 1. Point Cargo at a short target dir, matching CI:
 

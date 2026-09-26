@@ -109,7 +109,7 @@ jobs:
             exit 1
           }
           Write-Output 'GTK glib is absent from the Windows dependency graph.'
-      # Compiles cfg(windows) injection, Vulkan-enabled whisper-rs, and the
+      # Compiles cfg(windows) injection, Vulkan-enabled transcribe.cpp, and the
       # Tauri command layer. Does not require a physical GPU or microphone.
       - name: Test Rust command layer
         run: cargo test --manifest-path src-tauri/Cargo.toml

@@ -9,7 +9,8 @@ pub struct GpuStatus {
     pub name: String,
     pub backend: String,
     pub detail: String,
-    /// DXGI adapter index preferred for Whisper Vulkan (0 when none/CPU).
+    /// DXGI adapter index (-1 when none/CPU). Whisper picks its Vulkan device
+    /// by this adapter's `name`.
     pub device_index: i32,
     pub discrete: bool,
     pub vram_mb: u64,
@@ -122,7 +123,7 @@ fn detect_windows_gpu() -> GpuStatus {
                 available: true,
                 name: chosen.name.clone(),
                 backend: if cfg!(vocawin_whisper_vulkan) {
-                    "Vulkan (whisper.cpp) · DirectML (ONNX)".into()
+                    "Vulkan (transcribe.cpp) · DirectML (ONNX)".into()
                 } else {
                     "CPU".into()
                 },
