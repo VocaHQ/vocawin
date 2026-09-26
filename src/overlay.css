@@ -16,6 +16,7 @@ body{display:grid;place-items:center}
 .bars i{display:block;width:4px;height:4px;border-radius:2px;background:var(--brand);transition:height .06s linear}
 .live-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#ff6b5f;animation:pulse 1.2s ease-in-out infinite}
 .hint{color:var(--muted);font-size:11px}
+.live{max-width:300px;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left;unicode-bidi:plaintext}
 .spinner{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid #ffffff33;border-top-color:var(--brand);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{50%{opacity:.35}}

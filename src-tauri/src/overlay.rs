@@ -183,6 +183,14 @@ pub fn show(app: &AppHandle, phase: Phase, enabled: bool) {
     }
 }
 
+/// Live preview text for the listening pill; ignored in any other phase.
+pub fn live_text(app: &AppHandle, text: &str) {
+    if current().phase != "listening" {
+        return;
+    }
+    let _ = app.emit_to(LABEL, "overlay-live", text.to_string());
+}
+
 pub fn hide(app: &AppHandle) {
     GENERATION.fetch_add(1, Ordering::SeqCst);
     set_current(Payload::hidden());

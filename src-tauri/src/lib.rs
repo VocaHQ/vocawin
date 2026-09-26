@@ -15,6 +15,7 @@ mod history;
 mod hook;
 mod hotkey;
 mod lang_id;
+mod live_preview;
 mod logbuf;
 mod machine;
 mod model_slot;
@@ -332,6 +333,9 @@ struct Settings {
     /// Cut silence before the model hears the recording.
     #[serde(default = "default_true")]
     skip_silence: bool,
+    /// Show text in the pill while speaking (costs CPU; off by default).
+    #[serde(default)]
+    live_preview: bool,
     /// Mute other apps' sound while recording.
     #[serde(default)]
     mute_other_audio: bool,
@@ -421,6 +425,7 @@ impl Default for Settings {
             overlay_position: default_overlay_position(),
             ready_pill: true,
             skip_silence: true,
+            live_preview: false,
             mute_other_audio: false,
             history_retention_days: default_history_retention_days(),
             history_keep_audio: true,
@@ -475,6 +480,16 @@ enum AudioCommand {
     },
     /// Close a microphone kept open after a take (auto-pause).
     ReleaseMicrophone,
+    /// The last `seconds` of the take in progress, for the live preview.
+    Snapshot {
+        seconds: f32,
+        reply: mpsc::Sender<Option<(Vec<f32>, u32)>>,
+    },
+}
+
+/// Where the last `seconds` of `len` samples at `rate` begin.
+fn tail_start(len: usize, rate: u32, seconds: f32) -> usize {
+    len.saturating_sub((rate as f32 * seconds) as usize)
 }
 
 const AUDIO_REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
@@ -825,6 +840,18 @@ fn audio_thread_main(commands: mpsc::Receiver<AudioCommand>, app: AppHandle) {
                             logbuf::debug("Microphone closed.");
                         }
                     }
+                    AudioCommand::Snapshot { seconds, reply } => {
+                        let snapshot = if stream.is_some() && !meter_only {
+                            samples.lock().ok().map(|buffer| {
+                                let rate = sample_rate.unwrap_or(16_000);
+                                let start = tail_start(buffer.len(), rate, seconds);
+                                (buffer[start..].to_vec(), rate)
+                            })
+                        } else {
+                            None
+                        };
+                        let _ = reply.send(snapshot);
+                    }
                     AudioCommand::IsLive { reply } => {
                         let _ = reply.send(stream.is_some() && !meter_only);
                     }
@@ -1016,6 +1043,18 @@ impl AudioRecorder {
             .recv_timeout(std::time::Duration::from_millis(200))
             .unwrap_or(false)
     }
+
+    /// The last `seconds` of the take in progress, if one is recording.
+    fn snapshot(&self, seconds: f32) -> Option<(Vec<f32>, u32)> {
+        let (reply, response) = mpsc::channel();
+        self.commands
+            .send(AudioCommand::Snapshot { seconds, reply })
+            .ok()?;
+        response
+            .recv_timeout(std::time::Duration::from_millis(500))
+            .ok()
+            .flatten()
+    }
 }
 
 /// Non-Windows builds keep an unavailable mic stub so Linux/macOS CI can validate
@@ -1043,6 +1082,9 @@ impl AudioRecorder {
         false
     }
     fn release_microphone(&self) {}
+    fn snapshot(&self, _: f32) -> Option<(Vec<f32>, u32)> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -1185,6 +1227,8 @@ fn complete_take(
     type_it: bool,
     session: u64,
 ) -> Result<String, String> {
+    // The preview must let go of the model before the take decodes.
+    live_preview::stop();
     let state = app.state::<AppState>();
     let settings = state.settings.lock().map(|s| s.clone()).unwrap_or_default();
     let inject = session_injects(&state);
@@ -1254,6 +1298,7 @@ fn complete_take(
 
 /// The session ended without audio to transcribe: put the chrome back.
 fn release_session_chrome(app: &AppHandle) {
+    live_preview::stop();
     let state = app.state::<AppState>();
     state.ducker.restore();
     state.processing.store(false, Ordering::SeqCst);
@@ -2874,6 +2919,9 @@ fn begin_voice_session(
             String::new()
         };
         overlay::show(app, overlay::Phase::Listening { hint }, overlay_on(&settings));
+        if settings.live_preview && overlay_on(&settings) {
+            live_preview::start(app.clone(), session);
+        }
     }
     Ok(())
 }
@@ -3285,6 +3333,7 @@ fn stop_capture(state: &AppState) -> Result<Option<(Vec<f32>, u32)>, String> {
 
 /// Stop and discard: auto-pause and Escape.
 fn abandon_voice_session(state: &AppState) {
+    live_preview::stop();
     let _ = state.recorder.stop();
     set_recording_flag(state, recording_after_stop_attempt());
     state.session_opening.store(false, Ordering::SeqCst);
@@ -5007,6 +5056,14 @@ mod tests {
         assert!(reuse_warm_stream("USB Mic", "USB Mic", 1_000, 1_500));
         assert!(!reuse_warm_stream("USB Mic", "Realtek Mic", 1_000, 1_200), "default changed");
         assert!(!reuse_warm_stream("USB Mic", "USB Mic", 1_000, 2_000), "stream went quiet");
+    }
+
+    #[test]
+    fn a_snapshot_is_the_tail_of_the_take() {
+        assert_eq!(tail_start(480_000, 48_000, 10.0), 0);
+        assert_eq!(tail_start(960_000, 48_000, 10.0), 480_000);
+        assert_eq!(tail_start(100, 16_000, 10.0), 0);
+        assert!(!Settings::default().live_preview);
     }
 
     #[test]

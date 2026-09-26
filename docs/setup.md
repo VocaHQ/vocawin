@@ -18,6 +18,8 @@ Text is typed at the caret, a few characters at a time, and your clipboard is le
 
 After a take the microphone stays open, unrecorded, for 30 seconds, so the next take starts at once; Windows shows its microphone indicator until it closes. Nothing is stored or sent while it is open between takes.
 
+Settings, Recording overlay, Show text while you speak puts what the model hears so far in the pill, about once a second, from the last 10 seconds of audio. It is off by default because it uses more CPU while you dictate; the typed text is still decoded from the whole take when you let go.
+
 The tray mic is teal when idle, red while you speak, amber while a take is processing, and slate when the model is unloaded or paused.
 
 The window title and the sidebar pill say Beta. That means this is a tester build, not a store ship.

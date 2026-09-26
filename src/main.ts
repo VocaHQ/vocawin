@@ -52,6 +52,7 @@ type Settings = {
   overlayPosition: string;
   readyPill: boolean;
   skipSilence: boolean;
+  livePreview: boolean;
   muteOtherAudio: boolean;
   historyRetentionDays: number;
   historyKeepAudio: boolean;
@@ -1078,6 +1079,14 @@ function settingsItems(): SettingsItem[] {
     {
       page: "settings",
       card: "Recording overlay",
+      title: "Show text while you speak",
+      subtitle: "The pill shows what the model hears so far, about once a second. Uses more CPU while you dictate; the typed text is decoded as before.",
+      keywords: "live preview streaming partial text while speaking realtime",
+      html: switchControl("live-preview", settings.livePreview),
+    },
+    {
+      page: "settings",
+      card: "Recording overlay",
       title: "Overlay position",
       subtitle: "Centered on the screen your mouse is on.",
       keywords: "overlay position top bottom screen",
@@ -1851,6 +1860,7 @@ function collectSettingsFromDom() {
   if (retention !== undefined) settings.historyRetentionDays = Number(retention);
   settings.escapeCancels = checked("escape-cancels") ?? settings.escapeCancels;
   settings.skipSilence = checked("skip-silence") ?? settings.skipSilence;
+  settings.livePreview = checked("live-preview") ?? settings.livePreview;
   settings.muteOtherAudio = checked("mute-other-audio") ?? settings.muteOtherAudio;
   settings.numbersAsDigits = checked("numbers-as-digits") ?? settings.numbersAsDigits;
   settings.numberSymbols = checked("number-symbols") ?? settings.numberSymbols;
@@ -2569,6 +2579,7 @@ Promise.all([
     overlayPosition: saved.overlayPosition ?? "bottom",
     readyPill: saved.readyPill ?? true,
     skipSilence: saved.skipSilence ?? true,
+    livePreview: saved.livePreview ?? false,
     muteOtherAudio: saved.muteOtherAudio ?? false,
     historyRetentionDays: saved.historyRetentionDays ?? 30,
     historyKeepAudio: saved.historyKeepAudio ?? true,

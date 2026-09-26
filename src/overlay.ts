@@ -68,9 +68,29 @@ function render(payload: Payload) {
   });
 }
 
+/** Live preview: the latest words replace the hint while listening. The
+ *  span clips from the left, so the newest words stay in view. */
+function showLive(text: string) {
+  if (!pill.classList.contains("listening")) return;
+  pill.querySelector(".hint")?.remove();
+  let live = pill.querySelector<HTMLSpanElement>(".live");
+  if (!live) {
+    live = document.createElement("span");
+    live.className = "live";
+    pill.append(live);
+  }
+  live.textContent = text;
+  pill.setAttribute("aria-label", `Listening. ${text}`);
+  requestAnimationFrame(() => {
+    const width = Math.ceil(pill.getBoundingClientRect().width) + SHADOW_ROOM;
+    void invoke("set_overlay_width", { width }).catch(() => undefined);
+  });
+}
+
 pill.addEventListener("click", () => {
   void invoke("dismiss_overlay").catch(() => undefined);
 });
 
 listen<Payload>("overlay-phase", event => render(event.payload)).catch(() => undefined);
+listen<string>("overlay-live", event => showLive(event.payload)).catch(() => undefined);
 invoke<Payload>("get_overlay_phase").then(render).catch(() => undefined);
