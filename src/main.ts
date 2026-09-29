@@ -2171,7 +2171,14 @@ function bindGatewayControls() {
       if (!saved) return;
       if (next !== previous) {
         gatewayPairing = null;
-        await refreshGatewayStatus({ quiet: true });
+        try {
+          if (next) {
+            settings.gatewayPublicUrl = await invoke<string>("gateway_set_public_url", { url: next });
+          }
+          await refreshGatewayStatus({ quiet: true });
+        } catch (error) {
+          showToast(String(error));
+        }
         render();
       }
     })();
