@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    net::UdpSocket,
+    net::{IpAddr, UdpSocket},
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
@@ -91,8 +91,10 @@ pub fn is_loopback_public_url(raw: &str) -> bool {
             .trim()
             .to_ascii_lowercase()
     };
-    matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1" | "0.0.0.0")
-        || host.starts_with("127.")
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return ip.is_loopback() || ip.is_unspecified();
+    }
+    host == "localhost" || host == "0.0.0.0" || host.starts_with("127.")
 }
 
 pub fn validate_public_url(raw: &str) -> Result<String, String> {
@@ -129,6 +131,10 @@ pub fn generate_token_hex() -> Result<String, String> {
 
 fn fill_random(buf: &mut [u8]) -> Result<(), String> {
     getrandom::getrandom(buf).map_err(|error| format!("Could not generate gateway token: {error}"))
+}
+
+fn is_pairable(live: bool, url_ok: bool, token_ok: bool, container_up: bool) -> bool {
+    live && url_ok && token_ok && container_up
 }
 
 pub fn map_phase(docker_available: bool, container_up: bool, live: bool, ready: bool) -> GatewayPhase {
@@ -411,7 +417,7 @@ pub async fn status(dir: &Path, public_url: &str) -> GatewayStatus {
     let phase = map_phase(docker_available, container_up, live, ready);
     let token_ok = read_token(dir).is_some();
     let url_ok = !public.is_empty() && !is_loopback_public_url(&public);
-    let pairable = live && url_ok && token_ok;
+    let pairable = is_pairable(live, url_ok, token_ok, container_up);
     let message = match phase {
         GatewayPhase::DockerMissing => {
             "Install Docker Desktop for Windows (WSL2 required), then return here.".into()
@@ -457,9 +463,10 @@ pub fn start(dir: &Path, public_url: &str) -> Result<(), String> {
     }
     let url = validate_public_url(public_url)?;
     ensure_gateway_files(dir, &url)?;
-    // Prefer a registry pull of the pinned tag. If GHCR has no public image yet,
-    // operators can shallow-clone tag GATEWAY_RELEASE_TAG into this directory and
-    // run `docker compose … up -d --build` (see docs/gateway-embed.md).
+    // Prefer a registry pull of the pinned tag. Vendored compose.yaml has image
+    // only (no build context). If GHCR has no public image yet, wait for the tag,
+    // docker load an image tagged as the pin, or use an operator compose override
+    // with a build context — see docs/gateway-embed.md.
     let _ = run_compose(dir, &["pull", COMPOSE_SERVICE]);
     run_compose(dir, &["up", "-d", COMPOSE_SERVICE]).map(|_| ())
 }
@@ -483,7 +490,18 @@ pub fn set_public_url(dir: &Path, public_url: &str) -> Result<String, String> {
         validate_public_url(public_url)?
     };
     if dir.exists() || !url.is_empty() {
-        let _ = ensure_gateway_files(dir, &url);
+        let previous = fs::read_to_string(dir.join(".env"))
+            .ok()
+            .and_then(|contents| parse_env_value(&contents, "VOCAGATEWAY_PUBLIC_URL"))
+            .unwrap_or_default();
+        ensure_gateway_files(dir, &url)?;
+        // Recreate only when the saved public URL actually changed. save_settings
+        // also calls this path; recreating on every unrelated Settings autosave
+        // would bounce a healthy container.
+        if container_running(dir) && previous != url {
+            // Never pass --volumes; model data in the named volume must survive.
+            run_compose(dir, &["up", "-d", "--force-recreate", COMPOSE_SERVICE])?;
+        }
     }
     Ok(url)
 }
@@ -493,6 +511,9 @@ pub async fn pairing(dir: &Path, public_url: &str) -> Result<GatewayPairing, Str
     let token = read_token(dir).ok_or_else(|| {
         "Gateway token is missing. Start Gateway once to create the .env file.".to_string()
     })?;
+    if !container_running(dir) {
+        return Err("Gateway Compose project is not running.".into());
+    }
     let (live, _) = probe_live_ready().await;
     if !live {
         return Err("Gateway is not live yet. Wait until status is Live or Ready.".into());
@@ -653,6 +674,7 @@ mod tests {
         assert!(is_loopback_public_url("https://127.0.0.1/"));
         assert!(is_loopback_public_url("http://127.1.2.3:8765"));
         assert!(is_loopback_public_url("http://[::1]:8765"));
+        assert!(is_loopback_public_url("http://[0:0:0:0:0:0:0:1]:8765"));
         assert!(!is_loopback_public_url("http://192.168.1.20:8765"));
         assert!(!is_loopback_public_url("http://100.64.1.2:8765"));
         assert!(!is_loopback_public_url(""));
@@ -662,6 +684,8 @@ mod tests {
     fn validate_public_url_requires_scheme_and_non_loopback() {
         assert!(validate_public_url("192.168.1.20:8765").is_err());
         assert!(validate_public_url("http://127.0.0.1:8765").is_err());
+        assert!(validate_public_url("http://[::1]:8765").is_err());
+        assert!(validate_public_url("http://[0:0:0:0:0:0:0:1]:8765").is_err());
         assert!(validate_public_url("http://192.168.1.20:8765\nVOCAGATEWAY_TOKEN=ab").is_err());
         assert!(validate_public_url("http://192.168.1.20:8765#frag").is_err());
         assert!(validate_public_url("http://192.168.1.20@127.0.0.1:8765").is_err());
@@ -695,6 +719,9 @@ mod tests {
         );
         assert_eq!(map_phase(true, true, true, true), GatewayPhase::Ready);
         assert_eq!(map_phase(true, false, true, true), GatewayPhase::Ready);
+        assert!(is_pairable(true, true, true, true));
+        assert!(!is_pairable(true, true, true, false));
+        assert!(!is_pairable(false, true, true, true));
     }
 
     #[test]

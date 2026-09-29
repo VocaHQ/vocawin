@@ -1437,7 +1437,7 @@ fn save_settings(
     }
     if !settings.gateway_public_url.trim().is_empty() {
         settings.gateway_public_url = gateway::validate_public_url(&settings.gateway_public_url)?;
-        let _ = gateway::set_public_url(&state.gateway_path, &settings.gateway_public_url);
+        gateway::set_public_url(&state.gateway_path, &settings.gateway_public_url)?;
     } else {
         settings.gateway_public_url.clear();
     }

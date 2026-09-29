@@ -15,7 +15,7 @@ Contract source: VocaHQ frozen embed notes (`FROZEN.md`). Pin and paths below mu
 
 Do not use floating `latest`.
 
-If GHCR has no public image for that tag yet, fall back to a shallow clone of `VocaHQ/vocagateway` at tag `v0.1.0` into the gateway data dir and `docker compose … up -d --build`. Prefer image pull when the registry publish exists.
+If GHCR has no public image for that tag yet, a shallow clone plus `docker compose … up -d --build` will not work: vendored `compose.yaml` lists an `image` only and has no `build` context. Fallbacks: wait for the public GHCR tag; `docker load` an image already tagged as the pin; or replace the written compose file with an operator override that adds a `build` context from a `VocaHQ/vocagateway` checkout at tag `v0.1.0`. Prefer image pull when the registry publish exists.
 
 ## Compose
 
@@ -40,7 +40,7 @@ If GHCR has no public image for that tag yet, fall back to a shallow clone of `V
 | --- | --- |
 | `GET http://127.0.0.1:8765/health/live` | Process up |
 | `GET …/health/ready` | Ready for dictation (`503` = not yet) |
-| Pairable | live + non-loopback `PUBLIC_URL` + token (pairable **before** Ready) |
+| Pairable | live + Compose project running + non-loopback `PUBLIC_URL` + token (pairable **before** Ready) |
 | Pairing | `Authorization: Bearer <token>` `GET /v1/admin/pairing?url=…` (Rust only; UI gets URL + QR, not the raw payload/token) |
 | QR | Prefer `GET /v1/admin/pairing/qr.svg` (sanitized before Settings HTML) |
 

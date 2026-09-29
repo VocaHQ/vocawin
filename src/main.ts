@@ -801,9 +801,15 @@ function gatewaySection() {
   const dockerOk = status?.dockerAvailable ?? false;
   const publicUrlTrimmed = (settings.gatewayPublicUrl || "").trim();
   const hasUrl = Boolean(publicUrlTrimmed);
-  const urlLooksLoopback = /:\/\/(localhost|127\.|\[::1\]|0\.0\.0\.0)\b/i.test(publicUrlTrimmed);
+  const urlLooksLoopback = /:\/\/(localhost|127\.|0\.0\.0\.0|\[(?:0:0:0:0:0:0:0:1|::1)\])/i.test(publicUrlTrimmed);
   const canStart = settings.gatewayEnabled && dockerOk && hasUrl && !urlLooksLoopback && !gatewayBusy;
-  const canStop = settings.gatewayEnabled && dockerOk && !gatewayBusy;
+  const gatewayNotStopped = Boolean(
+    status?.live
+    || status?.phase === "starting"
+    || status?.phase === "liveNotReady"
+    || status?.phase === "ready",
+  );
+  const canStop = dockerOk && !gatewayBusy && (settings.gatewayEnabled || gatewayNotStopped);
   const pairable = Boolean(status?.pairable);
   const publicValue = settings.gatewayPublicUrl || status?.suggestedPublicUrl || "";
   const dockerLink = status?.dockerInstallUrl
@@ -1901,12 +1907,12 @@ function bindFilterCombo(selector: string, options: Array<[string, string]>, ass
 function bindAutosave() {
   const persistFromEvent = (event: Event) => {
     const target = event.target as HTMLElement;
-    if (target.id === "settings-search" || target.id === "model-search" || target.id === "engine-filter" || target.id === "language-filter" || target.id === "auto-pause-app" || target.id === "paste-app") return;
+    if (target.id === "settings-search" || target.id === "model-search" || target.id === "engine-filter" || target.id === "language-filter" || target.id === "auto-pause-app" || target.id === "paste-app" || target.id === "gateway-enabled" || target.id === "gateway-public-url") return;
     if (target.classList.contains("draft")) return;
     void persistSettings();
   };
   document.querySelectorAll<HTMLElement>(".setting-row input, .setting-row select, .setting-row textarea, #debug-logging, #idle-unload").forEach(node => {
-    if (node.id === "custom-vocabulary" || node.id === "language" || node.id === "gateway-public-url") {
+    if (node.id === "custom-vocabulary" || node.id === "language") {
       node.addEventListener("change", persistFromEvent);
       node.addEventListener("blur", persistFromEvent);
       return;
@@ -1998,12 +2004,13 @@ async function persistSettings(silent = false, skipCollect = false) {
       await Promise.all([refreshLogs(), refreshDebugReport()]);
       render();
       if (!silent) showToast("Settings saved");
-      return;
+      return true;
     }
     syncSettingsControls();
     // Some rows enable others (symbols need digits); redraw those pages.
     if (view === "formatting" || view === "shortcuts") render();
     if (!silent) showToast("Settings saved");
+    return true;
   } catch (error) {
     // Keep the window honest: show what was actually saved.
     try { settings = await invoke<Settings>("get_settings"); } catch { /* keep local copy */ }
@@ -2015,6 +2022,7 @@ async function persistSettings(silent = false, skipCollect = false) {
     } catch {
       /* keep prior in-memory settings if reload fails */
     }
+    return false;
   }
 }
 
@@ -2084,7 +2092,12 @@ async function refreshGatewayStatus(opts: { quiet?: boolean } = {}) {
     if (next.publicUrl && !settings.gatewayPublicUrl) {
       settings.gatewayPublicUrl = next.publicUrl;
     }
-    if (next.pairable && (!gatewayPairing || !wasPairable)) {
+    const normalizePairUrl = (value: string) => value.trim().replace(/\/+$/, "");
+    const publicUrlChanged = Boolean(
+      gatewayPairing
+      && normalizePairUrl(settings.gatewayPublicUrl) !== normalizePairUrl(gatewayPairing.url),
+    );
+    if (next.pairable && (!gatewayPairing || !wasPairable || publicUrlChanged)) {
       await refreshGatewayPairing(opts);
     }
     if (!next.pairable) {
@@ -2116,6 +2129,7 @@ function startGatewayPolling() {
       live: gatewayStatus?.live,
       ready: gatewayStatus?.ready,
       docker: gatewayStatus?.dockerAvailable,
+      pairUrl: gatewayPairing?.url,
     });
     void refreshGatewayStatus({ quiet: true }).then(() => {
       if (view !== "settings") return;
@@ -2126,6 +2140,7 @@ function startGatewayPolling() {
         live: gatewayStatus?.live,
         ready: gatewayStatus?.ready,
         docker: gatewayStatus?.dockerAvailable,
+        pairUrl: gatewayPairing?.url,
       });
       if (before !== after) render();
     });
@@ -2140,6 +2155,54 @@ function stopGatewayPolling() {
 }
 
 function bindGatewayControls() {
+  const persistGatewayPublicUrl = () => {
+    void (async () => {
+      const previous = settings.gatewayPublicUrl.trim().replace(/\/+$/, "");
+      collectSettingsFromDom();
+      const next = settings.gatewayPublicUrl.trim().replace(/\/+$/, "");
+      const saved = await persistSettings(true, true);
+      if (!saved) return;
+      if (next !== previous) {
+        gatewayPairing = null;
+        await refreshGatewayStatus({ quiet: true });
+        render();
+      }
+    })();
+  };
+  document.querySelector("#gateway-public-url")?.addEventListener("change", persistGatewayPublicUrl);
+  document.querySelector("#gateway-public-url")?.addEventListener("blur", persistGatewayPublicUrl);
+  document.querySelector("#gateway-enabled"?.addEventListener("change", () => {
+    void (async () => {
+      collectSettingsFromDom();
+      const enabled = settings.gatewayEnabled;
+      const dockerOk = gatewayStatus?.dockerAvailable ?? false;
+      const notStopped = Boolean(
+        gatewayStatus?.live
+        || gatewayStatus?.phase === "starting"
+        || gatewayStatus?.phase === "liveNotReady"
+        || gatewayStatus?.phase === "ready",
+      );
+      const shouldStop = !enabled && dockerOk && notStopped;
+      const saved = await persistSettings(!shouldStop, true);
+      if (!saved) return;
+      if (shouldStop) {
+        gatewayBusy = true;
+        render();
+        try {
+          await invoke("gateway_stop");
+          gatewayPairing = null;
+          await refreshGatewayStatus({ quiet: true });
+          showToast("Gateway was stopped.");
+        } catch (error) {
+          showToast(String(error));
+        } finally {
+          gatewayBusy = false;
+        }
+      }
+      render();
+      startGatewayPolling();
+    })();
+  });
   document.querySelector("#gateway-start")?.addEventListener("click", () => {
     void (async () => {
       gatewayBusy = true;
@@ -2150,6 +2213,7 @@ function bindGatewayControls() {
           settings.gatewayPublicUrl = await invoke<string>("gateway_set_public_url", {
             url: settings.gatewayPublicUrl,
           });
+          gatewayPairing = null;
         }
         await invoke("gateway_start");
         showToast("Gateway starting…");
@@ -2190,6 +2254,7 @@ function bindGatewayControls() {
     void (async () => {
       try {
         settings.gatewayPublicUrl = await invoke<string>("gateway_set_public_url", { url: suggested });
+        gatewayPairing = null;
         await persistSettings(true, true);
         showToast("Public URL saved.");
         render();
