@@ -298,7 +298,7 @@ nav{overflow-y:auto;gap:1px;scrollbar-width:thin;scrollbar-color:#c3ccc6 transpa
 .gateway-pairing{padding:8px 22px 18px;border-top:1px solid #e3e9e5}
 .gateway-note{margin:0 0 12px;color:#5a615d;font-size:12px;line-height:1.45}
 .gateway-qr{width:min(220px,100%);margin:0 0 12px;background:#fff;border:1px solid #e3e9e5;border-radius:10px;padding:10px}
-.gateway-qr svg{display:block;width:100%;height:auto}
+.gateway-qr img,.gateway-qr-img{display:block;width:100%;height:auto}
 .gateway-pair-url{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .gateway-pair-url code{font-size:11px;word-break:break-all}
 .gateway-pair-actions{justify-content:flex-start;padding-top:4px}
