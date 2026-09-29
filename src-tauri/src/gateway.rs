@@ -500,7 +500,13 @@ pub fn set_public_url(dir: &Path, public_url: &str) -> Result<String, String> {
         // would bounce a healthy container.
         if container_running(dir) && previous != url {
             // Never pass --volumes; model data in the named volume must survive.
-            run_compose(dir, &["up", "-d", "--force-recreate", COMPOSE_SERVICE])?;
+            if let Err(error) = run_compose(dir, &["up", "-d", "--force-recreate", COMPOSE_SERVICE])
+            {
+                // Roll .env back so a later retry still sees previous != url and
+                // attempts recreate again instead of skipping after a partial write.
+                let _ = ensure_gateway_files(dir, &previous);
+                return Err(error);
+            }
         }
     }
     Ok(url)

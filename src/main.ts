@@ -2142,7 +2142,14 @@ function startGatewayPolling() {
         docker: gatewayStatus?.dockerAvailable,
         pairUrl: gatewayPairing?.url,
       });
-      if (before !== after) render();
+      if (before !== after) {
+        const active = document.activeElement;
+        if (active instanceof HTMLInputElement && active.id === "gateway-public-url") {
+          // Keep in-progress draft; status is already updated in memory.
+          return;
+        }
+        render();
+      }
     });
   }, 4000);
 }
@@ -2171,7 +2178,7 @@ function bindGatewayControls() {
   };
   document.querySelector("#gateway-public-url")?.addEventListener("change", persistGatewayPublicUrl);
   document.querySelector("#gateway-public-url")?.addEventListener("blur", persistGatewayPublicUrl);
-  document.querySelector("#gateway-enabled"?.addEventListener("change", () => {
+  document.querySelector("#gateway-enabled")?.addEventListener("change", () => {
     void (async () => {
       collectSettingsFromDom();
       const enabled = settings.gatewayEnabled;
