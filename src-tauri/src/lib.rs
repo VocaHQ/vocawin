@@ -292,7 +292,6 @@ struct Settings {
     /// Off by default so insertion does not take over whatever was copied.
     #[serde(default)]
     copy_to_clipboard: bool,
-<<<<<<< HEAD
     /// VocaMac cleanup level without a model: `medium` removes "um"/"uh",
     /// single-letter stutters, and spoken corrections; `none` keeps every word.
     #[serde(default = "default_cleanup_level")]
@@ -419,7 +418,6 @@ impl Default for Settings {
             debug_logging: false,
             custom_vocabulary: String::new(),
             copy_to_clipboard: false,
-<<<<<<< HEAD
             cleanup_level: default_cleanup_level(),
             numbers_as_digits: false,
             number_symbols: false,

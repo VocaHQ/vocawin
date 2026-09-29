@@ -1968,7 +1968,6 @@ function collectSettingsFromDom() {
   if (debugLogging) settings.debugLogging = debugLogging.checked;
   const customVocabulary = document.querySelector<HTMLTextAreaElement>("#custom-vocabulary");
   if (customVocabulary) settings.customVocabulary = customVocabulary.value;
-<<<<<<< HEAD
   const pick = (id: string) => document.querySelector<HTMLSelectElement>(`#${id}`)?.value;
   settings.insertionMode = pick("insertion-mode") ?? settings.insertionMode;
   const checked = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)?.checked;
@@ -2841,7 +2840,6 @@ Promise.all([
     debugLogging: saved.debugLogging ?? false,
     customVocabulary: saved.customVocabulary ?? "",
     copyToClipboard: saved.copyToClipboard ?? false,
-<<<<<<< HEAD
     cleanupLevel: saved.cleanupLevel ?? "medium",
     numbersAsDigits: saved.numbersAsDigits ?? false,
     numberSymbols: saved.numberSymbols ?? false,
