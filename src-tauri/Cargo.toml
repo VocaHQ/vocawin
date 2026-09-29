@@ -36,6 +36,7 @@ thiserror = "2"
 regex = "1"
 fancy-regex = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+getrandom = "0.2"
 
 # Non-Windows keeps CPU-only whisper for shared unit tests.
 [target.'cfg(not(windows))'.dependencies]

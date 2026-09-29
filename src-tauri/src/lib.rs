@@ -8,6 +8,7 @@ mod cleanup;
 mod devices;
 mod dictionary;
 mod ducking;
+mod gateway;
 mod gpu;
 mod hardware;
 mod hinglish;
@@ -353,6 +354,12 @@ struct Settings {
     /// that drop typed characters.
     #[serde(default)]
     paste_apps: String,
+    /// Opt-in Settings → Gateway preference. Does not route VocaWin dictation.
+    #[serde(default)]
+    gateway_enabled: bool,
+    /// Phone-reachable non-loopback base URL written into Gateway `.env`.
+    #[serde(default)]
+    gateway_public_url: String,
 }
 
 fn default_true() -> bool {
@@ -431,6 +438,8 @@ impl Default for Settings {
             history_keep_audio: true,
             insertion_mode: default_insertion_mode(),
             paste_apps: String::new(),
+            gateway_enabled: false,
+            gateway_public_url: String::new(),
         }
     }
 }
@@ -1327,6 +1336,8 @@ struct AppState {
     history: history::HistoryStore,
     stats_path: PathBuf,
     models_path: PathBuf,
+    /// Compose project dir: `%APPDATA%/com.vocahq.vocawin/gateway/`.
+    gateway_path: PathBuf,
     downloads: Mutex<HashMap<String, ModelInstallStatus>>,
     recorder: AudioRecorder,
     recording: Mutex<bool>,
@@ -1423,6 +1434,15 @@ fn save_settings(
         settings.auto_pause_enabled = false;
     } else {
         settings.auto_pause_enabled = true;
+    }
+    if !settings.gateway_public_url.trim().is_empty() {
+        settings.gateway_public_url = gateway::validate_public_url(&settings.gateway_public_url)?;
+        // Best-effort .env sync only. An unwritable gateway dir must not block
+        // unrelated Settings saves (hotkey, model, …). Hard failures stay on
+        // gateway_set_public_url / gateway_start.
+        let _ = gateway::set_public_url(&state.gateway_path, &settings.gateway_public_url);
+    } else {
+        settings.gateway_public_url.clear();
     }
     sounds::apply_theme(&mut settings.sound_theme, &mut settings.sound_effects);
     settings.hotkey = hotkey::canonicalize(&settings.hotkey)?;
@@ -3903,13 +3923,76 @@ fn allowed_external_url(url: &str) -> bool {
         "https://vocamac.com",
         "https://vocaphone.vocahq.com",
         "https://vocagateway.vocahq.com",
+        "https://docs.docker.com/desktop/setup/install/windows-install/",
         "https://discord.gg/t6muquAJbm",
         "https://x.com/vocahq",
         "https://github.com/VocaHQ/vocawin",
         "https://github.com/VocaHQ/vocawin/issues/new/choose",
+        "http://127.0.0.1:8765/",
+        "http://127.0.0.1:8765",
         "mailto:hello@vocahq.com",
     ];
     ALLOWED.contains(&url)
+}
+
+#[tauri::command]
+async fn gateway_status(state: State<'_, AppState>) -> Result<gateway::GatewayStatus, String> {
+    let public_url = state
+        .settings
+        .lock()
+        .map(|settings| settings.gateway_public_url.clone())
+        .map_err(|_| "Settings lock was poisoned".to_string())?;
+    Ok(gateway::status(&state.gateway_path, &public_url).await)
+}
+
+#[tauri::command]
+fn gateway_start(state: State<'_, AppState>) -> Result<(), String> {
+    let public_url = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Settings lock was poisoned".to_string())?;
+        if !settings.gateway_enabled {
+            return Err("Turn on Gateway in Settings before starting.".into());
+        }
+        settings.gateway_public_url.clone()
+    };
+    gateway::start(&state.gateway_path, &public_url)
+}
+
+#[tauri::command]
+fn gateway_stop(state: State<'_, AppState>) -> Result<(), String> {
+    gateway::stop(&state.gateway_path)
+}
+
+#[tauri::command]
+fn gateway_set_public_url(
+    url: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let normalized = gateway::set_public_url(&state.gateway_path, &url)?;
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned".to_string())?
+        .clone();
+    settings.gateway_public_url = normalized.clone();
+    persist_settings(&state.settings_path, &settings)?;
+    *state
+        .settings
+        .lock()
+        .map_err(|_| "Settings lock was poisoned".to_string())? = settings;
+    Ok(normalized)
+}
+
+#[tauri::command]
+async fn gateway_pairing(state: State<'_, AppState>) -> Result<gateway::GatewayPairing, String> {
+    let public_url = state
+        .settings
+        .lock()
+        .map(|settings| settings.gateway_public_url.clone())
+        .map_err(|_| "Settings lock was poisoned".to_string())?;
+    gateway::pairing(&state.gateway_path, &public_url).await
 }
 
 #[tauri::command]
@@ -3961,6 +4044,7 @@ pub fn run() {
             );
             let stats_path = app_data.join("stats.json");
             let models_path = app_data.join("models");
+            let gateway_path = gateway::gateway_dir(&app_data);
             fs::create_dir_all(&models_path)?;
             let mut settings = load_settings(&settings_path);
             if fallback_selected_model_if_needed(&mut settings, &models_path) {
@@ -3985,6 +4069,7 @@ pub fn run() {
                 history,
                 stats_path,
                 models_path,
+                gateway_path,
                 downloads: Mutex::new(HashMap::new()),
                 recorder: AudioRecorder::new(handle.clone()),
                 recording: Mutex::new(false),
@@ -4109,7 +4194,12 @@ pub fn run() {
             parse_settings_backup,
             get_overlay_phase,
             set_overlay_width,
-            dismiss_overlay
+            dismiss_overlay,
+            gateway_status,
+            gateway_start,
+            gateway_stop,
+            gateway_set_public_url,
+            gateway_pairing
         ])
         .run(tauri::generate_context!())
         .expect("error while running VocaWin");

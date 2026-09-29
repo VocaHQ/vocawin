@@ -1,0 +1,33 @@
+# Desktop-embed Compose for VocaWin Settings → Gateway (opt-in).
+# Pin: GATEWAY_IMAGE in gateway.rs (v0.1.0). Do not float to latest.
+# Project: docker compose -p vocagateway … (name below is a hint only).
+name: vocagateway
+
+services:
+  gateway:
+    image: ghcr.io/vocahq/vocagateway:v0.1.0
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${VOCAGATEWAY_PUBLISH_HOST:-0.0.0.0}:${VOCAGATEWAY_PUBLISH_PORT:-8765}:${VOCAGATEWAY_PORT:-8765}"
+    environment:
+      VOCAGATEWAY_TOKEN_FILE: /run/secrets/vocagateway_token
+      VOCAGATEWAY_DEBUG: ${VOCAGATEWAY_DEBUG:-false}
+      VOCAGATEWAY_PUBLIC_URL: ${VOCAGATEWAY_PUBLIC_URL:-}
+      VOCAGATEWAY_PAIRING_URL: ${VOCAGATEWAY_PAIRING_URL:-}
+      VOCAGATEWAY_BIND_HOST: ${VOCAGATEWAY_BIND_HOST:-0.0.0.0}
+      VOCAGATEWAY_PORT: ${VOCAGATEWAY_PORT:-8765}
+      VOCAGATEWAY_ENGINE: ${VOCAGATEWAY_ENGINE:-auto}
+      VOCAGATEWAY_RETENTION_HOURS: ${VOCAGATEWAY_RETENTION_HOURS:-24}
+      VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO: ${VOCAGATEWAY_DELETE_SUCCESSFUL_AUDIO:-true}
+    secrets:
+      - vocagateway_token
+    volumes:
+      - vocagateway-data:/data
+
+secrets:
+  vocagateway_token:
+    environment: VOCAGATEWAY_TOKEN
+
+volumes:
+  vocagateway-data:

@@ -115,9 +115,9 @@ Same privacy bar, different machines. Start at [vocahq.com](https://vocahq.com) 
 | macOS | **VocaMac** | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Available |
 | iPhone / Android | **VocaPhone** | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight |
 | Windows | **VocaWin** | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta |
-| Infrastructure | **VocaGateway** | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
+| Infrastructure | **VocaGateway** | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Beta |
 
-VocaGateway is optional self-hosted compute for other Voca clients. VocaWin does not expose a gateway mode today.
+VocaGateway is optional self-hosted compute. VocaWin can start a local Gateway container from Settings for pairing phones and other clients. Win dictation itself stays on this PC. Gateway is not on-device: audio that uses it leaves this machine for the container.
 
 ## Tech Stack
 
@@ -136,7 +136,7 @@ A macOS or Linux host can validate the frontend and the Rust command layer (`npm
 - Rust stable
 - [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/): Microsoft C++ Build Tools (MSVC) and WebView2
 - [LLVM](https://github.com/llvm/llvm-project/releases) Windows installer (`LLVM-*-win64.exe`), so `libclang` is on disk. CI sets `LIBCLANG_PATH` to `C:\Program Files\LLVM\bin`.
-- [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for whisper.cpp Vulkan. Confirm `VULKAN_SDK` points at the SDK root (CI uses `C:\VulkanSDK\1.3.290.0`).
+- [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for whisper.cpp Vulkan. Confirm `VULKAN_SDK` points at the SDK root (CI uses `C:\VulkanSDK\1.4.309.0`).
 - [CMake](https://cmake.org/download/) for the whisper/ggml native build. Add it to PATH. CI also installs [Ninja](https://ninja-build.org/) and sets `CMAKE_GENERATOR=Ninja`.
 - A way around Windows `MAX_PATH` (260 characters). whisper.cpp Vulkan shader nests go deep even if the repo sits at `C:\vocawin`. Enable [OS long paths](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation), or use a short `CARGO_TARGET_DIR` the way CI does (`C:\t`).
 
@@ -175,7 +175,7 @@ Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) and reopen t
 echo $env:VULKAN_SDK
 ```
 
-If it is empty, point it at the SDK root, for example `C:\VulkanSDK\1.3.290.0` (use the version you installed). CI pins `1.3.290.0`. A current LunarG Windows SDK is fine for local work.
+If it is empty, point it at the SDK root, for example `C:\VulkanSDK\1.4.309.0` (use the version you installed). CI pins `1.4.309.0`. A current LunarG Windows SDK is fine for local work.
 
 **is cmake not installed?** (`failed to execute command: program not found`)
 
