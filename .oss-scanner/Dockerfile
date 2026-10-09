@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libjavascriptcoregtk-4.1-dev libssl-dev \
       nodejs npm \
     && rm -rf /var/lib/apt/lists/*
+# Keep cargo on PATH in login shells too (/etc/profile resets PATH).
+RUN echo 'export PATH=/usr/local/cargo/bin:$PATH' > /etc/profile.d/cargo.sh
 
 # scanner contract: the checkout lives inside the image, at /src
 COPY . /src
