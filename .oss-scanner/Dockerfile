@@ -4,7 +4,8 @@
 # build is what this image provides. Windows-only code (cfg(windows): WASAPI,
 # SendInput injection, low-level hooks, Vulkan, DirectML) is in the checkout
 # for source review but is not compiled here.
-FROM rust:1-bookworm
+# trixie: ort's prebuilt ONNX Runtime needs glibc >= 2.38 (__isoc23_strtol).
+FROM rust:1-trixie
 ENV DEBIAN_FRONTEND=noninteractive \
     CC=clang \
     CXX=clang++ \
