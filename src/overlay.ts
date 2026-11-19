@@ -38,6 +38,19 @@ function startLevels() {
   }, 60);
 }
 
+/** Fit the transparent window to the pill. The width is measured after the
+ *  webfont has settled: a single requestAnimationFrame can beat "Segoe UI
+ *  Variable" finishing its layout, leaving the window a few pixels short so
+ *  the trailing hint ("Esc to cancel") is clipped by the window's overflow. */
+function fitWindow() {
+  const report = () => {
+    const width = Math.ceil(pill.getBoundingClientRect().width) + SHADOW_ROOM;
+    void invoke("set_overlay_width", { width }).catch(() => undefined);
+  };
+  requestAnimationFrame(() => requestAnimationFrame(report));
+  void document.fonts.ready.then(report).catch(() => undefined);
+}
+
 function render(payload: Payload) {
   stopLevels();
   pill.className = `pill ${payload.phase}`;
@@ -61,11 +74,7 @@ function render(payload: Payload) {
   pill.hidden = false;
   pill.setAttribute("aria-label", [payload.title, payload.detail].filter(Boolean).join(". "));
   if (payload.phase === "listening") startLevels();
-  // Fit the window to the pill so it covers nothing else on screen.
-  requestAnimationFrame(() => {
-    const width = Math.ceil(pill.getBoundingClientRect().width) + SHADOW_ROOM;
-    void invoke("set_overlay_width", { width }).catch(() => undefined);
-  });
+  fitWindow();
 }
 
 /** Characters of live preview that fit the pill at its 13 px font. */
@@ -85,10 +94,7 @@ function showLive(text: string) {
   // cuts the end and a right-to-left trick does not hold for Latin text.
   live.textContent = text.length > LIVE_CHARS ? `…${text.slice(-LIVE_CHARS).trimStart()}` : text;
   pill.setAttribute("aria-label", `Listening. ${text}`);
-  requestAnimationFrame(() => {
-    const width = Math.ceil(pill.getBoundingClientRect().width) + SHADOW_ROOM;
-    void invoke("set_overlay_width", { width }).catch(() => undefined);
-  });
+  fitWindow();
 }
 
 pill.addEventListener("click", () => {
